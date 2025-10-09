@@ -36,6 +36,14 @@
 
   --sidebar-primary-foreground: 210 5% 98%;
 
+  --victron-blue: 210 100% 45%;
+  --victron-blue-light: 210 100% 55%;
+  --wire-positive: 0 70% 50%;
+  --wire-negative: 0 0% 15%;
+  --wire-ac-hot: 0 70% 50%;
+  --wire-neutral: 210 5% 85%;
+  --wire-ground: 142 71% 45%;
+
   --sidebar-accent: 210 8% 88%;
 
   --sidebar-accent-foreground: 210 15% 20%;
@@ -153,6 +161,14 @@
   --sidebar-primary: 210 100% 60%;
 
   --sidebar-primary-foreground: 210 5% 98%;
+
+  --victron-blue: 210 100% 55%;
+  --victron-blue-light: 210 100% 65%;
+  --wire-positive: 0 70% 55%;
+  --wire-negative: 0 0% 85%;
+  --wire-ac-hot: 0 70% 55%;
+  --wire-neutral: 210 5% 75%;
+  --wire-ground: 142 71% 55%;
 
   --sidebar-accent: 210 8% 16%;
 

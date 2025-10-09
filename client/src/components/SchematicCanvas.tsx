@@ -17,6 +17,7 @@ interface Wire {
   to: string;
   gauge: string;
   current: number;
+  polarity: "positive" | "negative" | "ac";
 }
 
 interface SchematicCanvasProps {
@@ -39,9 +40,11 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
   ]);
 
   const [wires] = useState<Wire[]>([
-    { id: "w1", from: "1", to: "2", gauge: "4 AWG", current: 100 },
-    { id: "w2", from: "3", to: "2", gauge: "6 AWG", current: 30 },
-    { id: "w3", from: "4", to: "3", gauge: "10 AWG", current: 30 },
+    { id: "w1", from: "1", to: "2", gauge: "4/0 AWG", current: 100, polarity: "positive" },
+    { id: "w2", from: "2", to: "1", gauge: "4/0 AWG", current: 100, polarity: "negative" },
+    { id: "w3", from: "3", to: "2", gauge: "6 AWG", current: 30, polarity: "positive" },
+    { id: "w4", from: "2", to: "3", gauge: "6 AWG", current: 30, polarity: "negative" },
+    { id: "w5", from: "4", to: "3", gauge: "10 AWG", current: 30, polarity: "positive" },
   ]);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -68,27 +71,58 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
     if (!comp) return { x: 0, y: 0 };
     
     const widths: Record<string, number> = {
-      multiplus: 140,
-      battery: 120,
-      mppt: 140,
-      'solar-panel': 100,
-      cerbo: 140,
-      bmv: 100,
+      multiplus: 160,
+      battery: 140,
+      mppt: 160,
+      'solar-panel': 110,
+      cerbo: 160,
+      bmv: 120,
     };
     
     const heights: Record<string, number> = {
-      multiplus: 80,
-      battery: 80,
-      mppt: 100,
-      'solar-panel': 100,
-      cerbo: 90,
-      bmv: 100,
+      multiplus: 100,
+      battery: 90,
+      mppt: 110,
+      'solar-panel': 110,
+      cerbo: 100,
+      bmv: 110,
     };
     
     return { 
       x: comp.x + (widths[comp.type] || 100) / 2, 
       y: comp.y + (heights[comp.type] || 80) / 2 
     };
+  };
+
+  const getWireColor = (polarity: string) => {
+    switch (polarity) {
+      case "positive":
+        return "hsl(var(--wire-positive))";
+      case "negative":
+        return "hsl(var(--wire-negative))";
+      case "ac":
+        return "hsl(var(--wire-ac-hot))";
+      default:
+        return "hsl(var(--primary))";
+    }
+  };
+
+  const getWireThickness = (gauge: string) => {
+    const awgMatch = gauge.match(/(\d+(?:\/\d+)?)\s*AWG/);
+    if (!awgMatch) return 3;
+    
+    const awgValue = awgMatch[1];
+    if (awgValue.includes("/")) {
+      return 12;
+    }
+    
+    const awgNum = parseInt(awgValue);
+    if (awgNum <= 4) return 10;
+    if (awgNum <= 6) return 8;
+    if (awgNum <= 8) return 6;
+    if (awgNum <= 10) return 5;
+    if (awgNum <= 12) return 4;
+    return 3;
   };
 
   return (
@@ -148,27 +182,31 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
               const from = getComponentPosition(wire.from);
               const to = getComponentPosition(wire.to);
               const midY = (from.y + to.y) / 2;
+              const wireColor = getWireColor(wire.polarity);
+              const wireThickness = getWireThickness(wire.gauge);
+              const offsetX = wire.polarity === "negative" ? 8 : -8;
+              
               return (
                 <g key={wire.id}>
                   <path
-                    d={`M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`}
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="2"
+                    d={`M ${from.x + offsetX} ${from.y} L ${from.x + offsetX} ${midY} L ${to.x + offsetX} ${midY} L ${to.x + offsetX} ${to.y}`}
+                    stroke={wireColor}
+                    strokeWidth={wireThickness}
                     fill="none"
-                    className="hover:stroke-primary/80"
+                    className="hover:opacity-80"
                   />
                   <rect
-                    x={(from.x + to.x) / 2 - 30}
-                    y={midY - 12}
-                    width="60"
-                    height="24"
+                    x={(from.x + to.x) / 2 - 35 + offsetX}
+                    y={midY - 14}
+                    width="70"
+                    height="28"
                     fill="hsl(var(--card))"
                     stroke="hsl(var(--border))"
                     rx="4"
                   />
                   <text
-                    x={(from.x + to.x) / 2}
-                    y={midY}
+                    x={(from.x + to.x) / 2 + offsetX}
+                    y={midY - 3}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     className="text-xs font-mono fill-foreground font-medium"
@@ -177,14 +215,14 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
                     {wire.gauge}
                   </text>
                   <text
-                    x={(from.x + to.x) / 2}
-                    y={midY + 10}
+                    x={(from.x + to.x) / 2 + offsetX}
+                    y={midY + 8}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     className="text-[9px] font-mono fill-muted-foreground"
                     fontSize="9"
                   >
-                    {wire.current}A
+                    {wire.current}A {wire.polarity === "positive" ? "+" : "-"}
                   </text>
                 </g>
               );
