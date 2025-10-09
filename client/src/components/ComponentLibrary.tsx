@@ -21,6 +21,7 @@ const victronComponents: Component[] = [
   { id: "mppt", name: "MPPT Controller", icon: <Sun className="h-5 w-5" />, category: "victron" },
   { id: "cerbo", name: "Cerbo GX", icon: <Cpu className="h-5 w-5" />, category: "victron" },
   { id: "bmv", name: "BMV Monitor", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "smartshunt", name: "SmartShunt", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "battery", name: "Battery Bank", icon: <Battery className="h-5 w-5" />, category: "victron" },
 ];
 

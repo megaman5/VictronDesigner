@@ -106,24 +106,36 @@ When designing a system:
 2. Include appropriate components: inverter/chargers, MPPT solar controllers, batteries, monitoring devices
 3. Calculate proper wire gauges considering voltage drop (max 3%), ampacity, and safety margins
 4. Consider load requirements, battery capacity, solar charging, and inverter sizing
-5. Place components logically on the canvas with proper spacing
-6. Create wire connections with correct polarity and specifications
+5. Place components logically on the canvas with proper spacing (200-300px apart)
+6. Create wire connections with SPECIFIC TERMINAL IDs - wires MUST connect to named terminals, not just components
 
-Component types available:
-- multiplus: Inverter/Charger (specify power rating in properties)
-- mppt: MPPT Solar Charge Controller (specify max PV voltage and current)
-- cerbo: Cerbo GX monitoring and control device
-- bmv: BMV-712 battery monitor
-- battery: Battery bank (specify voltage and capacity)
-- solar-panel: Solar panels (specify wattage)
-- ac-load: AC loads (specify wattage)
-- dc-load: DC loads (specify wattage)
+Component types and their terminals:
+- multiplus: Terminals: "ac-in", "ac-out", "dc-positive", "dc-negative"
+- mppt: Terminals: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- cerbo: Terminals: "data-1", "data-2", "data-3", "power"
+- bmv: Terminals: "data"
+- smartshunt: Terminals: "negative", "system-minus", "data"
+- battery: Terminals: "negative", "positive"
+- solar-panel: Terminals: "positive", "negative"
+- ac-load: Terminals: "ac-in"
+- dc-load: Terminals: "positive", "negative"
+
+CRITICAL: Each wire object MUST include:
+- fromComponentId: string (component ID)
+- toComponentId: string (component ID)
+- fromTerminal: string (exact terminal ID from list above, e.g., "positive", "batt-positive")
+- toTerminal: string (exact terminal ID from list above)
+- polarity: "positive" | "negative" | "neutral" | "ground"
+- gauge: string (e.g., "10 AWG", "8 AWG")
+- length: number (estimated in feet)
+
+Example wire: { "fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5 }
 
 Respond with a JSON object containing:
-- components: Array of component objects with id, type, name, x, y, properties
-- wires: Array of wire connections with polarity, estimated length
+- components: Array with id, type, name, x, y, properties
+- wires: Array with fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 - description: Brief system description
-- recommendations: Array of installation tips and safety notes`,
+- recommendations: Array of installation tips`,
           },
           {
             role: "user",

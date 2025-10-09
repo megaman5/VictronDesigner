@@ -90,6 +90,16 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
       { id: "negative", type: "negative", label: "-", x: 22, y: 52, color: "hsl(var(--wire-negative))" },
     ],
   },
+  
+  smartshunt: {
+    width: 140,
+    height: 130,
+    terminals: [
+      { id: "negative", type: "negative", label: "BATT-", x: 20, y: 105, color: "hsl(var(--wire-negative))" },
+      { id: "system-minus", type: "negative", label: "SYS-", x: 70, y: 105, color: "hsl(var(--wire-negative))" },
+      { id: "data", type: "ground", label: "VE.Direct", x: 120, y: 105, color: "hsl(var(--muted))" },
+    ],
+  },
 };
 
 // Helper function to get terminal absolute position on canvas
