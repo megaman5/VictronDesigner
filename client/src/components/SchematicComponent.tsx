@@ -152,6 +152,34 @@ export function SchematicComponent({
           </svg>
         );
       
+      case "smartshunt":
+        return (
+          <svg width="140" height="130" viewBox="0 0 140 130">
+            {/* Main blue housing */}
+            <rect x="10" y="15" width="120" height="100" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+            
+            {/* Product label */}
+            <text x="70" y="32" textAnchor="middle" className="fill-white text-xs font-bold">SmartShunt</text>
+            <text x="70" y="45" textAnchor="middle" className="fill-white text-[10px] opacity-90">500A/50mV</text>
+            
+            {/* LED indicator */}
+            <circle cx="70" cy="60" r="5" fill="#00ff00" className="opacity-80" />
+            <text x="70" y="73" textAnchor="middle" className="fill-white text-[8px]">BLUETOOTH</text>
+            
+            {/* Shunt bar representation */}
+            <rect x="20" y="82" width="100" height="18" fill="#1a1a1a" stroke="white" strokeWidth="1" rx="2" />
+            <line x1="30" y1="91" x2="110" y2="91" stroke="hsl(var(--wire-negative))" strokeWidth="3" />
+            
+            {/* Terminal labels */}
+            <text x="20" y="112" textAnchor="start" className="fill-white text-[7px]">BATT-</text>
+            <text x="70" y="112" textAnchor="middle" className="fill-white text-[7px]">SYS-</text>
+            <text x="120" y="112" textAnchor="end" className="fill-white text-[7px]">DATA</text>
+            
+            {/* Victron branding */}
+            <text x="70" y="125" textAnchor="middle" className="fill-white text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+      
       case "battery":
         return (
           <svg width="160" height="110" viewBox="0 0 160 110">
