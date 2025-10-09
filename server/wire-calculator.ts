@@ -85,10 +85,13 @@ export function calculateWireSize(params: {
   let recommendedGauge = "4/0";
   let actualVoltageDrop = 0;
   let voltageDropPercent = 0;
-  let status: "valid" | "warning" | "invalid" = "valid";
+  let status: "valid" | "warning" | "error" = "valid";
   let message = "";
 
-  for (const gauge of WIRE_GAUGES.reverse()) {
+  // Create a reversed copy to avoid mutating the global array
+  const gaugesLargestToSmallest = [...WIRE_GAUGES].reverse();
+  
+  for (const gauge of gaugesLargestToSmallest) {
     const wireData = WIRE_DATA[gauge as keyof typeof WIRE_DATA];
     
     // Calculate voltage drop: VD = 2 × I × R × L / 1000
@@ -130,7 +133,7 @@ export function calculateWireSize(params: {
     const deratedAmpacity = baseAmpacity * tempDeratingFactor * bundlingFactor;
 
     if (actualVoltageDrop > maxVDropVolts || current > deratedAmpacity) {
-      status = "invalid";
+      status = "error";
       if (actualVoltageDrop > maxVDropVolts) {
         message = `Voltage drop (${voltageDropPercent.toFixed(1)}%) exceeds ${maxVoltageDrop}% limit. Run may be too long.`;
       } else {

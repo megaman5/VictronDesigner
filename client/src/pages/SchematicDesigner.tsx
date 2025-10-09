@@ -205,7 +205,7 @@ export default function SchematicDesigner() {
             voltage: wireCalculation.voltage,
             recommendedGauge: wireCalculation.recommendedGauge,
             voltageDrop: wireCalculation.actualVoltageDrop,
-            status: wireCalculation.status === "invalid" ? "error" : wireCalculation.status,
+            status: wireCalculation.status,
           } : undefined}
         />
       </div>

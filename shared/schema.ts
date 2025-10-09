@@ -85,7 +85,7 @@ export interface WireCalculation {
   recommendedGauge: string;
   actualVoltageDrop: number;
   voltageDropPercent: number;
-  status: "valid" | "warning" | "invalid";
+  status: "valid" | "warning" | "error";
   message?: string;
 }
 
