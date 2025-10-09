@@ -2,50 +2,28 @@ import { useState } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
-
-interface CanvasComponent {
-  id: string;
-  name: string;
-  type: string;
-  x: number;
-  y: number;
-}
-
-interface Wire {
-  id: string;
-  from: string;
-  to: string;
-  gauge: string;
-  current: number;
-  polarity: "positive" | "negative" | "ac";
-}
+import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 
 interface SchematicCanvasProps {
-  onComponentSelect?: (component: CanvasComponent) => void;
+  components?: SchematicComponentType[];
+  wires?: Wire[];
+  onComponentsChange?: (components: SchematicComponentType[]) => void;
+  onWiresChange?: (wires: Wire[]) => void;
+  onComponentSelect?: (component: SchematicComponentType) => void;
   onDrop?: (x: number, y: number) => void;
 }
 
-export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasProps) {
+export function SchematicCanvas({ 
+  components = [], 
+  wires = [],
+  onComponentsChange,
+  onWiresChange,
+  onComponentSelect, 
+  onDrop 
+}: SchematicCanvasProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const [components, setComponents] = useState<CanvasComponent[]>([
-    { id: "1", name: "MultiPlus 1200VA", type: "multiplus", x: 150, y: 100 },
-    { id: "2", name: "Battery Bank 400Ah", type: "battery", x: 150, y: 300 },
-    { id: "3", name: "MPPT 100/30", type: "mppt", x: 450, y: 100 },
-    { id: "4", name: "Solar Array", type: "solar-panel", x: 480, y: 250 },
-    { id: "5", name: "Cerbo GX", type: "cerbo", x: 700, y: 100 },
-    { id: "6", name: "BMV-712", type: "bmv", x: 350, y: 300 },
-  ]);
-
-  const [wires] = useState<Wire[]>([
-    { id: "w1", from: "1", to: "2", gauge: "4/0 AWG", current: 100, polarity: "positive" },
-    { id: "w2", from: "2", to: "1", gauge: "4/0 AWG", current: 100, polarity: "negative" },
-    { id: "w3", from: "3", to: "2", gauge: "6 AWG", current: 30, polarity: "positive" },
-    { id: "w4", from: "2", to: "3", gauge: "6 AWG", current: 30, polarity: "negative" },
-    { id: "w5", from: "4", to: "3", gauge: "10 AWG", current: 30, polarity: "positive" },
-  ]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -60,7 +38,7 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
     onDrop?.(x, y);
   };
 
-  const handleComponentClick = (component: CanvasComponent) => {
+  const handleComponentClick = (component: SchematicComponentType) => {
     setSelectedId(component.id);
     onComponentSelect?.(component);
     console.log("Component selected:", component.name);
@@ -71,26 +49,30 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
     if (!comp) return { x: 0, y: 0 };
     
     const widths: Record<string, number> = {
-      multiplus: 160,
-      battery: 140,
+      multiplus: 180,
+      battery: 160,
       mppt: 160,
-      'solar-panel': 110,
-      cerbo: 160,
-      bmv: 120,
+      'solar-panel': 140,
+      cerbo: 180,
+      bmv: 140,
+      'ac-load': 120,
+      'dc-load': 120,
     };
     
     const heights: Record<string, number> = {
-      multiplus: 100,
-      battery: 90,
-      mppt: 110,
-      'solar-panel': 110,
-      cerbo: 100,
-      bmv: 110,
+      multiplus: 140,
+      battery: 110,
+      mppt: 130,
+      'solar-panel': 120,
+      cerbo: 120,
+      bmv: 140,
+      'ac-load': 100,
+      'dc-load': 100,
     };
     
     return { 
-      x: comp.x + (widths[comp.type] || 100) / 2, 
-      y: comp.y + (heights[comp.type] || 80) / 2 
+      x: comp.x + (widths[comp.type] || 120) / 2, 
+      y: comp.y + (heights[comp.type] || 100) / 2 
     };
   };
 
@@ -100,14 +82,18 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
         return "hsl(var(--wire-positive))";
       case "negative":
         return "hsl(var(--wire-negative))";
+      case "neutral":
       case "ac":
         return "hsl(var(--wire-ac-hot))";
+      case "ground":
+        return "hsl(var(--wire-ac-ground))";
       default:
         return "hsl(var(--primary))";
     }
   };
 
-  const getWireThickness = (gauge: string) => {
+  const getWireThickness = (gauge: string | undefined) => {
+    if (!gauge) return 3;
     const awgMatch = gauge.match(/(\d+(?:\/\d+)?)\s*AWG/);
     if (!awgMatch) return 3;
     
@@ -127,34 +113,34 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
 
   return (
     <div className="flex-1 flex flex-col bg-background">
-      <div className="border-b bg-card px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="border-b p-2 flex items-center gap-2 bg-background">
+        <Button
+          variant={showGrid ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowGrid(!showGrid)}
+          data-testid="button-toggle-grid"
+        >
+          <Grid3X3 className="h-4 w-4" />
+        </Button>
+        
+        <div className="flex items-center gap-1">
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => setShowGrid(!showGrid)}
-            data-testid="button-toggle-grid"
-            className="gap-2"
-          >
-            <Grid3X3 className="h-4 w-4" />
-            {showGrid ? "Hide" : "Show"} Grid
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setZoom(Math.max(50, zoom - 10))}
+            onClick={() => setZoom(Math.max(25, zoom - 25))}
+            disabled={zoom <= 25}
             data-testid="button-zoom-out"
           >
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-sm font-mono w-16 text-center">{zoom}%</span>
+          <span className="text-sm font-medium min-w-16 text-center" data-testid="text-zoom-level">
+            {zoom}%
+          </span>
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setZoom(Math.min(200, zoom + 10))}
+            variant="outline"
+            size="sm"
+            onClick={() => setZoom(Math.min(200, zoom + 25))}
+            disabled={zoom >= 200}
             data-testid="button-zoom-in"
           >
             <ZoomIn className="h-4 w-4" />
@@ -162,84 +148,89 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
         </div>
       </div>
 
-      <div
-        className="flex-1 relative overflow-auto"
+      <div 
+        className="flex-1 relative overflow-auto bg-background"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        data-testid="canvas-area"
+        data-testid="canvas-drop-zone"
       >
-        <div
-          className={`absolute inset-0 min-w-[1200px] min-h-[800px]`}
-          style={{
-            backgroundImage: showGrid
-              ? "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)"
-              : "none",
-            backgroundSize: "20px 20px",
-          }}
+        <svg
+          className="absolute inset-0 w-full h-full"
+          style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
         >
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
-            {wires.map((wire) => {
-              const from = getComponentPosition(wire.from);
-              const to = getComponentPosition(wire.to);
-              const midY = (from.y + to.y) / 2;
-              const wireColor = getWireColor(wire.polarity);
-              const wireThickness = getWireThickness(wire.gauge);
-              const offsetX = wire.polarity === "negative" ? 8 : -8;
-              
-              return (
-                <g key={wire.id}>
-                  <path
-                    d={`M ${from.x + offsetX} ${from.y} L ${from.x + offsetX} ${midY} L ${to.x + offsetX} ${midY} L ${to.x + offsetX} ${to.y}`}
-                    stroke={wireColor}
-                    strokeWidth={wireThickness}
-                    fill="none"
-                    className="hover:opacity-80"
-                  />
+          {showGrid && (
+            <defs>
+              <pattern
+                id="grid"
+                width="20"
+                height="20"
+                patternUnits="userSpaceOnUse"
+              >
+                <path
+                  d="M 20 0 L 0 0 0 20"
+                  fill="none"
+                  stroke="hsl(var(--border))"
+                  strokeWidth="0.5"
+                  opacity="0.3"
+                />
+              </pattern>
+            </defs>
+          )}
+          
+          {showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
+
+          {wires.map((wire) => {
+            const from = getComponentPosition(wire.fromComponentId);
+            const to = getComponentPosition(wire.toComponentId);
+            const midX = (from.x + to.x) / 2;
+            const midY = (from.y + to.y) / 2;
+            const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
+            
+            return (
+              <g key={wire.id}>
+                <line
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke={getWireColor(wire.polarity)}
+                  strokeWidth={getWireThickness(wire.gauge)}
+                  strokeLinecap="round"
+                />
+                
+                <g transform={`translate(${midX}, ${midY})`}>
                   <rect
-                    x={(from.x + to.x) / 2 - 35 + offsetX}
-                    y={midY - 14}
+                    x="-35"
+                    y="-12"
                     width="70"
-                    height="28"
-                    fill="hsl(var(--card))"
+                    height="24"
+                    fill="hsl(var(--background))"
                     stroke="hsl(var(--border))"
+                    strokeWidth="1"
                     rx="4"
                   />
                   <text
-                    x={(from.x + to.x) / 2 + offsetX}
-                    y={midY - 3}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    className="text-xs font-mono fill-foreground font-medium"
-                    fontSize="11"
+                    className="fill-foreground text-xs font-semibold"
                   >
-                    {wire.gauge}
-                  </text>
-                  <text
-                    x={(from.x + to.x) / 2 + offsetX}
-                    y={midY + 8}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="text-[9px] font-mono fill-muted-foreground"
-                    fontSize="9"
-                  >
-                    {wire.current}A {wire.polarity === "positive" ? "+" : "-"}
+                    {polaritySymbol} {wire.gauge || "N/A"}
                   </text>
                 </g>
-              );
-            })}
-          </svg>
+              </g>
+            );
+          })}
+        </svg>
 
+        <div className="absolute inset-0 p-4" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}>
           {components.map((component) => (
             <div
               key={component.id}
-              className="absolute"
-              style={{
-                left: component.x,
+              className="absolute cursor-move"
+              style={{ 
+                left: component.x, 
                 top: component.y,
-                transform: `scale(${zoom / 100})`,
-                transformOrigin: "top left",
               }}
-              data-testid={`canvas-component-${component.id}`}
             >
               <SchematicComponent
                 type={component.type}
