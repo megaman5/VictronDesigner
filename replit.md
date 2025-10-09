@@ -2,11 +2,34 @@
 
 ## Overview
 
-This is a professional electrical schematic design tool specifically for Victron energy systems. The application enables users to design solar and power systems through a drag-and-drop interface, with automatic wire sizing calculations based on electrical engineering standards (ABYC/NEC). It features AI-powered system recommendations via OpenAI integration and comprehensive export capabilities for wiring diagrams, shopping lists, and wire labels.
+This is a professional electrical schematic design tool specifically for Victron energy systems. The application enables users to design solar and power systems through a drag-and-drop interface with terminal-based wire connections, automatic wire sizing calculations based on electrical engineering standards (ABYC/NEC), real-time wire preview with orthogonal routing, and grid snapping. It features AI-powered system recommendations via OpenAI integration and comprehensive export capabilities for wiring diagrams, shopping lists, and wire labels.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Recent Changes
+
+### Terminal-Based Wire Connections (Completed)
+- Each component now has defined terminal connection points (positive, negative, ground, AC, PV, data)
+- Visual terminal indicators with color coding (red=positive, black=negative, gray=data)
+- Click terminals to create wire connections instead of component centers
+- Real-time wire preview with orthogonal routing (straight sections, rounded corners)
+- Grid snapping (20px) for clean wire alignment
+- Automatic wire gauge calculation based on connected component specifications
+- Wires store terminal IDs for accurate connection tracking
+
+### AI System Generation (Fixed)
+- Updated AI prompt to generate terminal-specific wire connections
+- AI now includes fromTerminal/toTerminal IDs in all wire objects
+- Proper component spacing (200-300px) for cleaner layouts
+- All wire objects include gauge, length, and polarity information
+
+### SmartShunt Component (Added)
+- New Victron SmartShunt component for current monitoring
+- Three terminals: BATT- (battery negative), SYS- (system negative), VE.Direct (data)
+- Placed in negative path for accurate battery current measurement
+- Available in Victron Components library
 
 ## System Architecture
 
@@ -89,9 +112,14 @@ Preferred communication style: Simple, everyday language.
 ### External Dependencies
 
 **AI Integration**:
-- **OpenAI API** - GPT models for AI-powered system design recommendations
+- **OpenAI API** - GPT-4o mini for AI-powered system design recommendations
 - Configured via `OPENAI_API_KEY` environment variable
-- Used in `/api/ai/system-design` endpoint for natural language system generation
+- Used in `/api/ai-generate-system` endpoint for natural language system generation
+- AI generates complete systems with:
+  - Proper component placement (200-300px spacing)
+  - Terminal-specific wire connections (fromTerminal/toTerminal IDs)
+  - Calculated wire gauges and lengths
+  - ABYC/NEC compliant recommendations
 
 **Database**:
 - **Neon Serverless PostgreSQL** - Cloud-hosted PostgreSQL database
