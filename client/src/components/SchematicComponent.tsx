@@ -20,7 +20,9 @@ export function SchematicComponent({
   const config = TERMINAL_CONFIGS[type];
   
   const handleTerminalClick = (terminal: Terminal, e: React.MouseEvent) => {
+    console.log('Terminal clicked:', terminal.id, 'on component type:', type);
     e.stopPropagation();
+    e.preventDefault();
     onTerminalClick?.(terminal, e);
   };
   
@@ -279,7 +281,7 @@ export function SchematicComponent({
             width={config.width} 
             height={config.height}
             viewBox={`0 0 ${config.width} ${config.height}`}
-            style={{ overflow: 'visible' }}
+            style={{ overflow: 'visible', zIndex: 10 }}
           >
             {config.terminals.map((terminal) => {
               const isHighlighted = highlightedTerminals.includes(terminal.id);
@@ -289,14 +291,16 @@ export function SchematicComponent({
                   <circle
                     cx={terminal.x}
                     cy={terminal.y}
-                    r={isHighlighted ? 8 : 6}
+                    r={isHighlighted ? 10 : 7}
                     fill={terminal.color}
                     stroke="white"
                     strokeWidth={isHighlighted ? 3 : 2}
-                    className="pointer-events-auto cursor-crosshair hover-elevate"
-                    opacity={isHighlighted ? 1 : 0.9}
+                    className="pointer-events-auto cursor-crosshair"
+                    style={{ pointerEvents: 'auto' }}
+                    opacity={isHighlighted ? 1 : 0.95}
                     onClick={(e) => handleTerminalClick(terminal, e as any)}
-                    data-testid={`terminal-${terminal.id}`}
+                    onPointerDown={(e) => handleTerminalClick(terminal, e as any)}
+                    data-testid={`terminal-${type}-${terminal.id}`}
                   />
                   
                   {/* Pulsing ring when highlighted */}
