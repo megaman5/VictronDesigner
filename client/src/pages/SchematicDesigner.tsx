@@ -17,6 +17,9 @@ export default function SchematicDesigner() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
+  const [draggedComponentType, setDraggedComponentType] = useState<string | null>(null);
+  const [wireConnectionMode, setWireConnectionMode] = useState(false);
+  const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   
   // Local state for editing
   const [components, setComponents] = useState<SchematicComponent[]>([]);
@@ -133,6 +136,66 @@ export default function SchematicDesigner() {
     }
   };
 
+  const handleComponentDrop = (x: number, y: number) => {
+    if (!draggedComponentType) return;
+    
+    const newComponent: SchematicComponent = {
+      id: `comp-${Date.now()}`,
+      type: draggedComponentType,
+      name: draggedComponentType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      x,
+      y,
+      properties: {},
+    };
+    
+    setComponents(prev => [...prev, newComponent]);
+    setDraggedComponentType(null);
+  };
+
+  const handleComponentMove = (componentId: string, deltaX: number, deltaY: number) => {
+    setComponents(prev => prev.map(comp => 
+      comp.id === componentId 
+        ? { ...comp, x: comp.x + deltaX, y: comp.y + deltaY }
+        : comp
+    ));
+  };
+
+  const handleComponentDelete = (componentId: string) => {
+    setComponents(prev => prev.filter(c => c.id !== componentId));
+    setWires(prev => prev.filter(w => w.fromComponentId !== componentId && w.toComponentId !== componentId));
+    if (selectedComponent?.id === componentId) {
+      setSelectedComponent(null);
+    }
+  };
+
+  const handleWireConnectionClick = (componentId: string) => {
+    if (!wireConnectionMode) return;
+
+    if (!wireStartComponent) {
+      setWireStartComponent(componentId);
+    } else {
+      if (wireStartComponent !== componentId) {
+        const newWire: Wire = {
+          id: `wire-${Date.now()}`,
+          fromComponentId: wireStartComponent,
+          toComponentId: componentId,
+          fromTerminal: "output",
+          toTerminal: "input",
+          polarity: "positive",
+          length: 10,
+          gauge: "10 AWG",
+        };
+        setWires(prev => [...prev, newWire]);
+      }
+      setWireStartComponent(null);
+      setWireConnectionMode(false);
+    }
+  };
+
+  const handleWireDelete = (wireId: string) => {
+    setWires(prev => prev.filter(w => w.id !== wireId));
+  };
+
   const handleExport = async (options: { wiringDiagram: boolean; shoppingList: boolean; wireLabels: boolean; format: string }) => {
     if (!currentSchematicId) {
       toast({
@@ -175,11 +238,13 @@ export default function SchematicDesigner() {
         onExport={() => setExportDialogOpen(true)}
         onSave={() => saveMutation.mutate()}
         onOpen={() => console.log("Open project")}
+        onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
+        wireMode={wireConnectionMode}
       />
 
       <div className="flex-1 flex overflow-hidden">
         <ComponentLibrary
-          onDragStart={(comp) => console.log("Dragging:", comp.name)}
+          onDragStart={(comp) => setDraggedComponentType(comp.id)}
           onAddCustom={() => console.log("Add custom")}
         />
 
@@ -189,7 +254,13 @@ export default function SchematicDesigner() {
           onComponentsChange={setComponents}
           onWiresChange={setWires}
           onComponentSelect={handleComponentSelect}
-          onDrop={(x, y) => console.log("Dropped at:", x, y)}
+          onDrop={handleComponentDrop}
+          onComponentMove={handleComponentMove}
+          onComponentDelete={handleComponentDelete}
+          onWireConnectionClick={handleWireConnectionClick}
+          onWireDelete={handleWireDelete}
+          wireConnectionMode={wireConnectionMode}
+          wireStartComponent={wireStartComponent}
         />
 
         <PropertiesPanel

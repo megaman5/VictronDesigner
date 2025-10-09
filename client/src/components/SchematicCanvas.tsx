@@ -11,6 +11,12 @@ interface SchematicCanvasProps {
   onWiresChange?: (wires: Wire[]) => void;
   onComponentSelect?: (component: SchematicComponentType) => void;
   onDrop?: (x: number, y: number) => void;
+  onComponentMove?: (componentId: string, deltaX: number, deltaY: number) => void;
+  onComponentDelete?: (componentId: string) => void;
+  onWireConnectionClick?: (componentId: string) => void;
+  onWireDelete?: (wireId: string) => void;
+  wireConnectionMode?: boolean;
+  wireStartComponent?: string | null;
 }
 
 export function SchematicCanvas({ 
@@ -19,11 +25,20 @@ export function SchematicCanvas({
   onComponentsChange,
   onWiresChange,
   onComponentSelect, 
-  onDrop 
+  onDrop,
+  onComponentMove,
+  onComponentDelete,
+  onWireConnectionClick,
+  onWireDelete,
+  wireConnectionMode = false,
+  wireStartComponent = null,
 }: SchematicCanvasProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -32,16 +47,73 @@ export function SchematicCanvas({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    console.log("Component dropped at:", x, y);
-    onDrop?.(x, y);
+    const dropX = (e.clientX - rect.left) / (zoom / 100);
+    const dropY = (e.clientY - rect.top) / (zoom / 100);
+    
+    if (draggedComponentId) {
+      // Component being repositioned - account for cursor offset
+      const newX = dropX - dragOffset.x;
+      const newY = dropY - dragOffset.y;
+      const deltaX = newX - dragStartPos.x;
+      const deltaY = newY - dragStartPos.y;
+      onComponentMove?.(draggedComponentId, deltaX, deltaY);
+      setDraggedComponentId(null);
+    } else {
+      // New component from library
+      onDrop?.(dropX, dropY);
+    }
   };
 
-  const handleComponentClick = (component: SchematicComponentType) => {
+  const handleComponentClick = (component: SchematicComponentType, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setSelectedId(component.id);
-    onComponentSelect?.(component);
-    console.log("Component selected:", component.name);
+    
+    if (wireConnectionMode) {
+      onWireConnectionClick?.(component.id);
+    } else {
+      onComponentSelect?.(component);
+    }
+  };
+
+  const handleComponentDragStart = (component: SchematicComponentType, e: React.DragEvent) => {
+    e.stopPropagation();
+    setDraggedComponentId(component.id);
+    setDragStartPos({ x: component.x, y: component.y });
+    
+    // Calculate where on the component the user grabbed it
+    // rect is already in screen coordinates (scaled), so we need to convert back to canvas coordinates
+    const rect = e.currentTarget.getBoundingClientRect();
+    const canvasEl = (e.currentTarget.parentElement?.parentElement as HTMLElement);
+    const canvasRect = canvasEl?.getBoundingClientRect();
+    
+    if (canvasRect) {
+      // Get the grab point relative to canvas in screen coordinates
+      const screenOffsetX = e.clientX - canvasRect.left;
+      const screenOffsetY = e.clientY - canvasRect.top;
+      
+      // Convert to canvas coordinates (unscaled)
+      const canvasOffsetX = screenOffsetX / (zoom / 100);
+      const canvasOffsetY = screenOffsetY / (zoom / 100);
+      
+      // Calculate offset from component's top-left
+      setDragOffset({ 
+        x: canvasOffsetX - component.x, 
+        y: canvasOffsetY - component.y 
+      });
+    }
+  };
+
+  const handleWireClick = (wireId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm("Delete this wire?")) {
+      onWireDelete?.(wireId);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+      onComponentDelete?.(selectedId);
+    }
   };
 
   const getComponentPosition = (id: string) => {
@@ -152,6 +224,8 @@ export function SchematicCanvas({
         className="flex-1 relative overflow-auto bg-background"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
         data-testid="canvas-drop-zone"
       >
         <svg
@@ -187,7 +261,12 @@ export function SchematicCanvas({
             const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
             
             return (
-              <g key={wire.id}>
+              <g 
+                key={wire.id}
+                className="cursor-pointer hover:opacity-80"
+                onClick={(e) => handleWireClick(wire.id, e as any)}
+                data-testid={`wire-${wire.id}`}
+              >
                 <line
                   x1={from.x}
                   y1={from.y}
@@ -226,17 +305,22 @@ export function SchematicCanvas({
           {components.map((component) => (
             <div
               key={component.id}
-              className="absolute cursor-move"
+              draggable
+              onDragStart={(e) => handleComponentDragStart(component, e)}
+              className={`absolute cursor-move ${
+                wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
+              }`}
               style={{ 
                 left: component.x, 
                 top: component.y,
               }}
+              data-testid={`canvas-component-${component.id}`}
             >
               <SchematicComponent
                 type={component.type}
                 name={component.name}
                 selected={selectedId === component.id}
-                onClick={() => handleComponentClick(component)}
+                onClick={(e) => handleComponentClick(component, e)}
               />
             </div>
           ))}

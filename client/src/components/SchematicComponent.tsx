@@ -2,7 +2,7 @@ interface SchematicComponentProps {
   type: string;
   name: string;
   selected?: boolean;
-  onClick?: () => void;
+  onClick?: (e?: React.MouseEvent) => void;
 }
 
 export function SchematicComponent({ type, name, selected, onClick }: SchematicComponentProps) {
