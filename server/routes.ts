@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest } from "@shared/schema";
 import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
+import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -136,6 +137,66 @@ Respond with a JSON object containing:
       res.json(response);
     } catch (error: any) {
       console.error("AI generation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Export endpoints
+  app.get("/api/export/shopping-list/:id", async (req, res) => {
+    try {
+      const schematic = await storage.getSchematic(req.params.id);
+      if (!schematic) {
+        return res.status(404).json({ error: "Schematic not found" });
+      }
+      const items = generateShoppingList(schematic);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/export/shopping-list-csv/:id", async (req, res) => {
+    try {
+      const schematic = await storage.getSchematic(req.params.id);
+      if (!schematic) {
+        return res.status(404).json({ error: "Schematic not found" });
+      }
+      const items = generateShoppingList(schematic);
+      const csv = generateCSV(items);
+      
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-shopping-list.csv"`);
+      res.send(csv);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/export/wire-labels/:id", async (req, res) => {
+    try {
+      const schematic = await storage.getSchematic(req.params.id);
+      if (!schematic) {
+        return res.status(404).json({ error: "Schematic not found" });
+      }
+      const labels = generateWireLabels(schematic);
+      res.json(labels);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/export/system-report/:id", async (req, res) => {
+    try {
+      const schematic = await storage.getSchematic(req.params.id);
+      if (!schematic) {
+        return res.status(404).json({ error: "Schematic not found" });
+      }
+      const report = generateSystemReport(schematic);
+      
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-report.txt"`);
+      res.send(report);
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
