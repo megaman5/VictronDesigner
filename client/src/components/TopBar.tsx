@@ -1,4 +1,4 @@
-import { Zap, Save, FolderOpen, Download, Sparkles } from "lucide-react";
+import { Zap, Save, FolderOpen, Download, Sparkles, Cable } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -14,9 +14,11 @@ interface TopBarProps {
   onExport?: () => void;
   onSave?: () => void;
   onOpen?: () => void;
+  onWireMode?: () => void;
+  wireMode?: boolean;
 }
 
-export function TopBar({ onAIPrompt, onExport, onSave, onOpen }: TopBarProps) {
+export function TopBar({ onAIPrompt, onExport, onSave, onOpen, onWireMode, wireMode = false }: TopBarProps) {
   return (
     <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
       <div className="flex items-center gap-3">
@@ -36,6 +38,17 @@ export function TopBar({ onAIPrompt, onExport, onSave, onOpen }: TopBarProps) {
         >
           <Sparkles className="h-4 w-4" />
           AI Design
+        </Button>
+
+        <Button
+          variant={wireMode ? "default" : "outline"}
+          size="sm"
+          onClick={onWireMode}
+          data-testid="button-wire-mode"
+          className="gap-2"
+        >
+          <Cable className="h-4 w-4" />
+          {wireMode ? "Connecting..." : "Add Wire"}
         </Button>
 
         <Button
