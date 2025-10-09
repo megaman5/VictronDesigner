@@ -1,0 +1,120 @@
+# Victron Schematic Designer
+
+## Overview
+
+This is a professional electrical schematic design tool specifically for Victron energy systems. The application enables users to design solar and power systems through a drag-and-drop interface, with automatic wire sizing calculations based on electrical engineering standards (ABYC/NEC). It features AI-powered system recommendations via OpenAI integration and comprehensive export capabilities for wiring diagrams, shopping lists, and wire labels.
+
+## User Preferences
+
+Preferred communication style: Simple, everyday language.
+
+## System Architecture
+
+### Frontend Architecture
+
+**Framework**: React with TypeScript using Vite as the build tool
+
+**Routing**: Wouter for client-side routing (lightweight React Router alternative)
+
+**State Management**: 
+- TanStack Query (React Query) for server state management and caching
+- Local React state for UI interactions and component editing
+
+**UI Component System**:
+- Radix UI primitives for accessible, unstyled components
+- Shadcn/ui component library (New York variant) with Tailwind CSS
+- Custom theming system with light/dark mode support via context provider
+- Material Design 3 principles adapted for technical/engineering interfaces
+
+**Design System**:
+- Typography: Inter (primary), JetBrains Mono (monospace for technical specs)
+- Color scheme focused on Victron brand blue (210° 100% 45%) with functional colors for electrical components (red/positive, black/negative, green/ground)
+- Spatial efficiency and information density prioritized for professional tools
+
+**Key UI Features**:
+- Drag-and-drop canvas for component placement
+- Real-time wire calculation display
+- Component library panel with Victron-specific and generic electrical components
+- Properties panel with tabbed interface for settings and calculations
+- Export dialog for generating documentation
+
+### Backend Architecture
+
+**Server**: Express.js with TypeScript running on Node.js
+
+**API Design**: RESTful endpoints with JSON payloads
+- `/api/schematics` - CRUD operations for schematic management
+- `/api/wire-calculate` - Real-time wire sizing calculations
+- `/api/ai/system-design` - AI-powered system recommendations
+- `/api/export/*` - Document generation endpoints
+
+**Data Models**:
+- `Schematic` - Main project container with metadata, system voltage, components array, and wires array
+- `SchematicComponent` - Individual components with type, position, and properties
+- `Wire` - Connection data with start/end points and electrical properties
+- `User` - Basic user authentication structure
+
+**Business Logic**:
+- Wire calculation engine implementing ABYC/NEC standards with temperature derating
+- Ampacity tables for wire gauges from 18 AWG to 4/0 AWG
+- Voltage drop calculations based on wire length, current, and resistance
+- Shopping list aggregation from component specifications
+- System report generation combining diagrams, parts lists, and wire labels
+
+**Export Utilities**:
+- CSV generation for shopping lists
+- Wire label formatting for installation
+- System report compilation
+
+### Data Storage
+
+**Primary Database**: PostgreSQL accessed via Neon serverless driver
+
+**ORM**: Drizzle ORM with Zod schema validation
+
+**Schema Structure**:
+- `users` table - User authentication
+- `schematics` table - Stores complete schematic designs with JSONB columns for components and wires arrays
+
+**Development Storage**: In-memory storage implementation (`MemStorage`) for development/testing without database dependency
+
+**Migration Strategy**: Drizzle Kit for schema migrations in `./migrations` directory
+
+### Authentication & Session Management
+
+**Session Storage**: PostgreSQL-backed sessions using `connect-pg-simple`
+
+**Current Implementation**: Basic user schema defined, authentication endpoints prepared but not fully implemented in routes
+
+### External Dependencies
+
+**AI Integration**:
+- **OpenAI API** - GPT models for AI-powered system design recommendations
+- Configured via `OPENAI_API_KEY` environment variable
+- Used in `/api/ai/system-design` endpoint for natural language system generation
+
+**Database**:
+- **Neon Serverless PostgreSQL** - Cloud-hosted PostgreSQL database
+- Connection via `@neondatabase/serverless` driver
+- Configured through `DATABASE_URL` environment variable
+
+**Development Tools**:
+- **Replit Development Plugins** - Cartographer for code navigation, dev banner, runtime error overlay (development only)
+
+**Font Services**:
+- **Google Fonts** - Inter and JetBrains Mono font families loaded via CDN
+
+**UI Component Libraries**:
+- **Radix UI** - 25+ primitive component packages for accessible UI foundation
+- **Embla Carousel** - Carousel/slider functionality
+- **cmdk** - Command palette interface
+- **Lucide React** - Icon library
+
+**Form Management**:
+- **React Hook Form** - Form state and validation
+- **@hookform/resolvers** - Zod integration for schema validation
+
+**Utility Libraries**:
+- **class-variance-authority** - Type-safe variant styling
+- **clsx & tailwind-merge** - Conditional className management
+- **date-fns** - Date manipulation and formatting
