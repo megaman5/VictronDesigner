@@ -1,11 +1,29 @@
+import { TERMINAL_CONFIGS, Terminal } from "@/lib/terminal-config";
+
 interface SchematicComponentProps {
   type: string;
   name: string;
   selected?: boolean;
   onClick?: (e?: React.MouseEvent) => void;
+  onTerminalClick?: (terminal: Terminal, e: React.MouseEvent) => void;
+  highlightedTerminals?: string[]; // Terminal IDs to highlight
 }
 
-export function SchematicComponent({ type, name, selected, onClick }: SchematicComponentProps) {
+export function SchematicComponent({ 
+  type, 
+  name, 
+  selected, 
+  onClick, 
+  onTerminalClick,
+  highlightedTerminals = []
+}: SchematicComponentProps) {
+  const config = TERMINAL_CONFIGS[type];
+  
+  const handleTerminalClick = (terminal: Terminal, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onTerminalClick?.(terminal, e);
+  };
+  
   const renderShape = () => {
     switch (type) {
       case "multiplus":
@@ -251,8 +269,68 @@ export function SchematicComponent({ type, name, selected, onClick }: SchematicC
       }`}
       onClick={onClick}
     >
-      <div className="hover-elevate active-elevate-2 rounded-md">
+      <div className="hover-elevate active-elevate-2 rounded-md relative">
         {renderShape()}
+        
+        {/* Terminal connection points overlay */}
+        {config && (
+          <svg 
+            className="absolute top-0 left-0 pointer-events-none" 
+            width={config.width} 
+            height={config.height}
+            viewBox={`0 0 ${config.width} ${config.height}`}
+            style={{ overflow: 'visible' }}
+          >
+            {config.terminals.map((terminal) => {
+              const isHighlighted = highlightedTerminals.includes(terminal.id);
+              return (
+                <g key={terminal.id}>
+                  {/* Terminal connection point */}
+                  <circle
+                    cx={terminal.x}
+                    cy={terminal.y}
+                    r={isHighlighted ? 8 : 6}
+                    fill={terminal.color}
+                    stroke="white"
+                    strokeWidth={isHighlighted ? 3 : 2}
+                    className="pointer-events-auto cursor-crosshair hover-elevate"
+                    opacity={isHighlighted ? 1 : 0.9}
+                    onClick={(e) => handleTerminalClick(terminal, e as any)}
+                    data-testid={`terminal-${terminal.id}`}
+                  />
+                  
+                  {/* Pulsing ring when highlighted */}
+                  {isHighlighted && (
+                    <circle
+                      cx={terminal.x}
+                      cy={terminal.y}
+                      r={12}
+                      fill="none"
+                      stroke={terminal.color}
+                      strokeWidth={2}
+                      opacity={0.6}
+                      className="pointer-events-none"
+                    >
+                      <animate
+                        attributeName="r"
+                        values="8;14;8"
+                        dur="1.5s"
+                        repeatCount="indefinite"
+                      />
+                      <animate
+                        attributeName="opacity"
+                        values="0.8;0.2;0.8"
+                        dur="1.5s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        )}
+        
         <div className="text-xs font-medium text-center mt-1 px-2 truncate">
           {name}
         </div>
