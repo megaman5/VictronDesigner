@@ -168,28 +168,69 @@ export default function SchematicDesigner() {
     }
   };
 
-  const handleWireConnectionClick = (componentId: string) => {
-    if (!wireConnectionMode) return;
-
-    if (!wireStartComponent) {
-      setWireStartComponent(componentId);
-    } else {
-      if (wireStartComponent !== componentId) {
-        const newWire: Wire = {
-          id: `wire-${Date.now()}`,
-          fromComponentId: wireStartComponent,
-          toComponentId: componentId,
-          fromTerminal: "output",
-          toTerminal: "input",
-          polarity: "positive",
-          length: 10,
-          gauge: "10 AWG",
-        };
-        setWires(prev => [...prev, newWire]);
-      }
-      setWireStartComponent(null);
-      setWireConnectionMode(false);
+  const handleWireConnectionComplete = async (wireData: import("@/components/SchematicCanvas").WireConnectionData) => {
+    // Determine polarity based on terminal types
+    let polarity: "positive" | "negative" | "neutral" | "ground" = "positive";
+    if (wireData.toTerminal.type === "negative" || wireData.fromTerminal.type === "negative") {
+      polarity = "negative";
+    } else if (wireData.toTerminal.type === "ground" || wireData.fromTerminal.type === "ground") {
+      polarity = "ground";
+    } else if (wireData.toTerminal.type === "ac-in" || wireData.toTerminal.type === "ac-out") {
+      polarity = "neutral";
     }
+    
+    // Try to calculate optimal wire gauge based on components
+    let calculatedGauge = "10 AWG"; // Default fallback
+    
+    try {
+      // Get component properties to calculate current requirements
+      const fromComp = components.find(c => c.id === wireData.fromComponentId);
+      const toComp = components.find(c => c.id === wireData.toComponentId);
+      
+      // Estimate current based on component type and properties
+      let estimatedCurrent = 10; // Default 10A
+      if (fromComp?.properties.current) {
+        estimatedCurrent = fromComp.properties.current;
+      } else if (toComp?.properties.current) {
+        estimatedCurrent = toComp.properties.current;
+      } else if (fromComp?.properties.power && fromComp?.properties.voltage) {
+        estimatedCurrent = fromComp.properties.power / fromComp.properties.voltage;
+      }
+      
+      // Call wire calculation API
+      const response = await apiRequest("POST", "/api/calculate-wire", {
+        current: estimatedCurrent,
+        length: wireData.length,
+        voltage: 12, // Default to 12V, could be from schematic settings
+        temperatureC: 30,
+        conductorMaterial: "copper",
+        insulationType: "75C",
+        bundlingFactor: 0.8,
+        maxVoltageDrop: 3,
+      });
+      
+      const calculation = await response.json();
+      if (calculation.recommendedGauge) {
+        calculatedGauge = calculation.recommendedGauge;
+      }
+    } catch (error) {
+      console.error("Wire calculation failed, using default gauge:", error);
+    }
+    
+    const newWire: Wire = {
+      id: `wire-${Date.now()}`,
+      fromComponentId: wireData.fromComponentId,
+      toComponentId: wireData.toComponentId,
+      fromTerminal: wireData.fromTerminal.id,
+      toTerminal: wireData.toTerminal.id,
+      polarity,
+      length: wireData.length,
+      gauge: calculatedGauge,
+    };
+    
+    setWires(prev => [...prev, newWire]);
+    setWireStartComponent(null);
+    setWireConnectionMode(false);
   };
 
   const handleWireDelete = (wireId: string) => {
@@ -257,7 +298,7 @@ export default function SchematicDesigner() {
           onDrop={handleComponentDrop}
           onComponentMove={handleComponentMove}
           onComponentDelete={handleComponentDelete}
-          onWireConnectionClick={handleWireConnectionClick}
+          onWireConnectionComplete={handleWireConnectionComplete}
           onWireDelete={handleWireDelete}
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}

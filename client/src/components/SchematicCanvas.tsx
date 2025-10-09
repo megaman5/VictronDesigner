@@ -1,8 +1,18 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
+import { Terminal, getTerminalPosition } from "@/lib/terminal-config";
+import { snapPointToGrid, calculateOrthogonalPath, calculateWireLength } from "@/lib/wire-routing";
+
+export interface WireConnectionData {
+  fromComponentId: string;
+  fromTerminal: Terminal;
+  toComponentId: string;
+  toTerminal: Terminal;
+  length: number;
+}
 
 interface SchematicCanvasProps {
   components?: SchematicComponentType[];
@@ -13,7 +23,7 @@ interface SchematicCanvasProps {
   onDrop?: (x: number, y: number) => void;
   onComponentMove?: (componentId: string, deltaX: number, deltaY: number) => void;
   onComponentDelete?: (componentId: string) => void;
-  onWireConnectionClick?: (componentId: string) => void;
+  onWireConnectionComplete?: (wireData: WireConnectionData) => void;
   onWireDelete?: (wireId: string) => void;
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
@@ -28,7 +38,7 @@ export function SchematicCanvas({
   onDrop,
   onComponentMove,
   onComponentDelete,
-  onWireConnectionClick,
+  onWireConnectionComplete,
   onWireDelete,
   wireConnectionMode = false,
   wireStartComponent = null,
@@ -39,6 +49,16 @@ export function SchematicCanvas({
   const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  
+  // Wire connection state with terminal tracking
+  const [wireStart, setWireStart] = useState<{
+    componentId: string;
+    terminal: Terminal;
+    position: { x: number; y: number };
+  } | null>(null);
+  const [wirePreviewEnd, setWirePreviewEnd] = useState<{ x: number; y: number } | null>(null);
+  
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -68,10 +88,62 @@ export function SchematicCanvas({
     e?.stopPropagation();
     setSelectedId(component.id);
     
-    if (wireConnectionMode) {
-      onWireConnectionClick?.(component.id);
-    } else {
+    if (!wireConnectionMode) {
       onComponentSelect?.(component);
+    }
+  };
+  
+  const handleTerminalClick = (component: SchematicComponentType, terminal: Terminal, e: React.MouseEvent) => {
+    if (!wireConnectionMode) return;
+    
+    const terminalPos = getTerminalPosition(component.x, component.y, component.type, terminal.id);
+    if (!terminalPos) return;
+    
+    if (!wireStart) {
+      // First click - start wire connection
+      setWireStart({
+        componentId: component.id,
+        terminal,
+        position: terminalPos,
+      });
+      setWirePreviewEnd(terminalPos); // Initialize preview at same position
+    } else {
+      // Second click - complete wire connection
+      if (wireStart.componentId !== component.id) {
+        // Calculate wire length based on distance
+        const wireLength = calculateWireLength(
+          wireStart.position.x,
+          wireStart.position.y,
+          terminalPos.x,
+          terminalPos.y
+        );
+        
+        // Pass terminal information back to parent for wire creation
+        onWireConnectionComplete?.({
+          fromComponentId: wireStart.componentId,
+          fromTerminal: wireStart.terminal,
+          toComponentId: component.id,
+          toTerminal: terminal,
+          length: wireLength,
+        });
+      }
+      
+      // Reset wire connection state
+      setWireStart(null);
+      setWirePreviewEnd(null);
+    }
+  };
+  
+  // Handle mouse move to show wire preview
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (wireStart && wireConnectionMode && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / (zoom / 100);
+      const y = (e.clientY - rect.top) / (zoom / 100);
+      
+      // Snap to grid for cleaner routing
+      const snapped = snapPointToGrid(x, y);
+      setWirePreviewEnd(snapped);
     }
   };
 
@@ -221,10 +293,12 @@ export function SchematicCanvas({
       </div>
 
       <div 
+        ref={canvasRef}
         className="flex-1 relative overflow-auto bg-background"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onKeyDown={handleKeyDown}
+        onMouseMove={handleCanvasMouseMove}
         tabIndex={0}
         data-testid="canvas-drop-zone"
       >
@@ -254,10 +328,31 @@ export function SchematicCanvas({
           {showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
           {wires.map((wire) => {
-            const from = getComponentPosition(wire.fromComponentId);
-            const to = getComponentPosition(wire.toComponentId);
-            const midX = (from.x + to.x) / 2;
-            const midY = (from.y + to.y) / 2;
+            // Get terminal positions instead of component centers
+            const fromComp = components.find(c => c.id === wire.fromComponentId);
+            const toComp = components.find(c => c.id === wire.toComponentId);
+            
+            if (!fromComp || !toComp) return null;
+            
+            // Try to get terminal positions, fall back to component centers
+            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
+            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
+            
+            // If either terminal position is null, use component centers as fallback
+            if (!fromPos) {
+              const from = getComponentPosition(wire.fromComponentId);
+              fromPos = { x: from.x, y: from.y };
+            }
+            if (!toPos) {
+              const to = getComponentPosition(wire.toComponentId);
+              toPos = { x: to.x, y: to.y };
+            }
+            
+            // Calculate orthogonal path
+            const path = calculateOrthogonalPath(fromPos.x, fromPos.y, toPos.x, toPos.y, 15);
+            
+            const midX = (fromPos.x + toPos.x) / 2;
+            const midY = (fromPos.y + toPos.y) / 2;
             const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
             
             return (
@@ -267,14 +362,13 @@ export function SchematicCanvas({
                 onClick={(e) => handleWireClick(wire.id, e as any)}
                 data-testid={`wire-${wire.id}`}
               >
-                <line
-                  x1={from.x}
-                  y1={from.y}
-                  x2={to.x}
-                  y2={to.y}
+                <path
+                  d={path}
                   stroke={getWireColor(wire.polarity)}
                   strokeWidth={getWireThickness(wire.gauge)}
                   strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
                 />
                 
                 <g transform={`translate(${midX}, ${midY})`}>
@@ -299,31 +393,63 @@ export function SchematicCanvas({
               </g>
             );
           })}
+          
+          {/* Wire preview when dragging */}
+          {wireStart && wirePreviewEnd && (
+            <path
+              d={calculateOrthogonalPath(
+                wireStart.position.x,
+                wireStart.position.y,
+                wirePreviewEnd.x,
+                wirePreviewEnd.y,
+                15
+              )}
+              stroke={wireStart.terminal.color}
+              strokeWidth={4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="8 4"
+              opacity={0.6}
+              fill="none"
+              className="pointer-events-none"
+              data-testid="wire-preview"
+            />
+          )}
         </svg>
 
         <div className="absolute inset-0 p-4" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}>
-          {components.map((component) => (
-            <div
-              key={component.id}
-              draggable
-              onDragStart={(e) => handleComponentDragStart(component, e)}
-              className={`absolute cursor-move ${
-                wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
-              }`}
-              style={{ 
-                left: component.x, 
-                top: component.y,
-              }}
-              data-testid={`canvas-component-${component.id}`}
-            >
-              <SchematicComponent
-                type={component.type}
-                name={component.name}
-                selected={selectedId === component.id}
-                onClick={(e) => handleComponentClick(component, e)}
-              />
-            </div>
-          ))}
+          {components.map((component) => {
+            // Determine which terminals to highlight
+            const highlightedTerminals: string[] = [];
+            if (wireStart && wireStart.componentId === component.id) {
+              highlightedTerminals.push(wireStart.terminal.id);
+            }
+            
+            return (
+              <div
+                key={component.id}
+                draggable
+                onDragStart={(e) => handleComponentDragStart(component, e)}
+                className={`absolute cursor-move ${
+                  wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
+                }`}
+                style={{ 
+                  left: component.x, 
+                  top: component.y,
+                }}
+                data-testid={`canvas-component-${component.id}`}
+              >
+                <SchematicComponent
+                  type={component.type}
+                  name={component.name}
+                  selected={selectedId === component.id}
+                  onClick={(e) => handleComponentClick(component, e)}
+                  onTerminalClick={(terminal, e) => handleTerminalClick(component, terminal, e)}
+                  highlightedTerminals={highlightedTerminals}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
