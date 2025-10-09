@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { SchematicComponent } from "./SchematicComponent";
 
 interface CanvasComponent {
   id: string;
@@ -9,7 +9,6 @@ interface CanvasComponent {
   type: string;
   x: number;
   y: number;
-  icon: string;
 }
 
 interface Wire {
@@ -31,14 +30,18 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [components, setComponents] = useState<CanvasComponent[]>([
-    { id: "1", name: "MultiPlus 1200", type: "multiplus", x: 200, y: 150, icon: "⚡" },
-    { id: "2", name: "Battery Bank", type: "battery", x: 200, y: 350, icon: "🔋" },
-    { id: "3", name: "MPPT 100/30", type: "mppt", x: 500, y: 150, icon: "☀️" },
+    { id: "1", name: "MultiPlus 1200VA", type: "multiplus", x: 150, y: 100 },
+    { id: "2", name: "Battery Bank 400Ah", type: "battery", x: 150, y: 300 },
+    { id: "3", name: "MPPT 100/30", type: "mppt", x: 450, y: 100 },
+    { id: "4", name: "Solar Array", type: "solar-panel", x: 480, y: 250 },
+    { id: "5", name: "Cerbo GX", type: "cerbo", x: 700, y: 100 },
+    { id: "6", name: "BMV-712", type: "bmv", x: 350, y: 300 },
   ]);
 
   const [wires] = useState<Wire[]>([
     { id: "w1", from: "1", to: "2", gauge: "4 AWG", current: 100 },
     { id: "w2", from: "3", to: "2", gauge: "6 AWG", current: 30 },
+    { id: "w3", from: "4", to: "3", gauge: "10 AWG", current: 30 },
   ]);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -62,7 +65,30 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
 
   const getComponentPosition = (id: string) => {
     const comp = components.find((c) => c.id === id);
-    return comp ? { x: comp.x, y: comp.y } : { x: 0, y: 0 };
+    if (!comp) return { x: 0, y: 0 };
+    
+    const widths: Record<string, number> = {
+      multiplus: 140,
+      battery: 120,
+      mppt: 140,
+      'solar-panel': 100,
+      cerbo: 140,
+      bmv: 100,
+    };
+    
+    const heights: Record<string, number> = {
+      multiplus: 80,
+      battery: 80,
+      mppt: 100,
+      'solar-panel': 100,
+      cerbo: 90,
+      bmv: 100,
+    };
+    
+    return { 
+      x: comp.x + (widths[comp.type] || 100) / 2, 
+      y: comp.y + (heights[comp.type] || 80) / 2 
+    };
   };
 
   return (
@@ -109,7 +135,7 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
         data-testid="canvas-area"
       >
         <div
-          className={`absolute inset-0 ${showGrid ? "bg-grid-pattern" : ""}`}
+          className={`absolute inset-0 min-w-[1200px] min-h-[800px]`}
           style={{
             backgroundImage: showGrid
               ? "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)"
@@ -121,31 +147,44 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
             {wires.map((wire) => {
               const from = getComponentPosition(wire.from);
               const to = getComponentPosition(wire.to);
+              const midY = (from.y + to.y) / 2;
               return (
                 <g key={wire.id}>
                   <path
-                    d={`M ${from.x + 60} ${from.y + 30} L ${from.x + 60} ${(from.y + to.y) / 2} L ${to.x + 60} ${(from.y + to.y) / 2} L ${to.x + 60} ${to.y + 30}`}
+                    d={`M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`}
                     stroke="hsl(var(--primary))"
-                    strokeWidth="3"
+                    strokeWidth="2"
                     fill="none"
                     className="hover:stroke-primary/80"
                   />
-                  <circle
-                    cx={(from.x + to.x) / 2 + 60}
-                    cy={(from.y + to.y) / 2}
-                    r="20"
+                  <rect
+                    x={(from.x + to.x) / 2 - 30}
+                    y={midY - 12}
+                    width="60"
+                    height="24"
                     fill="hsl(var(--card))"
                     stroke="hsl(var(--border))"
+                    rx="4"
                   />
                   <text
-                    x={(from.x + to.x) / 2 + 60}
-                    y={(from.y + to.y) / 2}
+                    x={(from.x + to.x) / 2}
+                    y={midY}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    className="text-xs font-mono fill-foreground"
+                    className="text-xs font-mono fill-foreground font-medium"
                     fontSize="11"
                   >
                     {wire.gauge}
+                  </text>
+                  <text
+                    x={(from.x + to.x) / 2}
+                    y={midY + 10}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="text-[9px] font-mono fill-muted-foreground"
+                    fontSize="9"
+                  >
+                    {wire.current}A
                   </text>
                 </g>
               );
@@ -155,28 +194,21 @@ export function SchematicCanvas({ onComponentSelect, onDrop }: SchematicCanvasPr
           {components.map((component) => (
             <div
               key={component.id}
-              className={`absolute cursor-pointer transition-all ${
-                selectedId === component.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
-              }`}
+              className="absolute"
               style={{
                 left: component.x,
                 top: component.y,
                 transform: `scale(${zoom / 100})`,
                 transformOrigin: "top left",
               }}
-              onClick={() => handleComponentClick(component)}
               data-testid={`canvas-component-${component.id}`}
             >
-              <div className="bg-card border border-card-border rounded-md p-4 w-32 hover-elevate active-elevate-2">
-                <div className="text-3xl text-center mb-2">{component.icon}</div>
-                <div className="text-xs font-medium text-center truncate">
-                  {component.name}
-                </div>
-                <div className="flex gap-1 mt-2">
-                  <div className="w-2 h-2 rounded-full bg-chart-2" />
-                  <div className="w-2 h-2 rounded-full bg-destructive" />
-                </div>
-              </div>
+              <SchematicComponent
+                type={component.type}
+                name={component.name}
+                selected={selectedId === component.id}
+                onClick={() => handleComponentClick(component)}
+              />
             </div>
           ))}
         </div>
