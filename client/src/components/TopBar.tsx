@@ -11,6 +11,7 @@ import {
 
 interface TopBarProps {
   onAIPrompt?: () => void;
+  onAIWire?: () => void;
   onExport?: () => void;
   onSave?: () => void;
   onOpen?: () => void;
@@ -18,7 +19,7 @@ interface TopBarProps {
   wireMode?: boolean;
 }
 
-export function TopBar({ onAIPrompt, onExport, onSave, onOpen, onWireMode, wireMode = false }: TopBarProps) {
+export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, wireMode = false }: TopBarProps) {
   return (
     <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
       <div className="flex items-center gap-3">
@@ -38,6 +39,17 @@ export function TopBar({ onAIPrompt, onExport, onSave, onOpen, onWireMode, wireM
         >
           <Sparkles className="h-4 w-4" />
           AI Design
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onAIWire}
+          data-testid="button-ai-wire"
+          className="gap-2"
+        >
+          <Sparkles className="h-4 w-4" />
+          AI Wire
         </Button>
 
         <Button

@@ -110,6 +110,43 @@ export default function SchematicDesigner() {
     },
   });
 
+  // AI wire generation mutation
+  const aiWireMutation = useMutation({
+    mutationFn: async () => {
+      if (components.length === 0) {
+        throw new Error("Please add components to the canvas first");
+      }
+      
+      const res = await apiRequest("POST", "/api/ai-wire-components", {
+        components,
+        systemVoltage,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      console.log("AI Generated Wires:", data);
+      
+      // Generate unique IDs for the new wires
+      const newWires = (data.wires || []).map((wire: any) => ({
+        ...wire,
+        id: `wire-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      }));
+      
+      setWires(newWires);
+      toast({
+        title: "Wiring Generated",
+        description: data.description || "AI has wired your components",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate wiring",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Wire calculation
   const calculateWire = async (wire: Wire) => {
     try {
@@ -280,6 +317,7 @@ export default function SchematicDesigner() {
     <div className="h-screen flex flex-col bg-background">
       <TopBar
         onAIPrompt={() => setAiDialogOpen(true)}
+        onAIWire={() => aiWireMutation.mutate()}
         onExport={() => setExportDialogOpen(true)}
         onSave={() => saveMutation.mutate()}
         onOpen={() => console.log("Open project")}

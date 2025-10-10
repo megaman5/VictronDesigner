@@ -303,7 +303,9 @@ export function SchematicCanvas({
         data-testid="canvas-drop-zone"
       >
         <svg
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0"
+          width="2400"
+          height="1600"
           style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
         >
           {showGrid && (
