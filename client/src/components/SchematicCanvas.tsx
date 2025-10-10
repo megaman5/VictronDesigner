@@ -284,6 +284,9 @@ export function SchematicCanvas({
       setSelectedId(null); // Clear component selection
       setSelectedIds([]); // Clear multi-selection
       onWireSelect?.(wire);
+      
+      // Focus the canvas to enable keyboard events
+      canvasRef.current?.focus();
     }
   };
 
@@ -527,9 +530,10 @@ export function SchematicCanvas({
                   strokeLinejoin="round"
                   fill="none"
                   opacity={isSelected ? 1 : 0.9}
+                  style={{ pointerEvents: 'stroke' }}
                 />
                 
-                <g transform={`translate(${labelX}, ${labelY})`}>
+                <g transform={`translate(${labelX}, ${labelY})`} className="pointer-events-none">
                   <rect
                     x="-35"
                     y="-12"
@@ -592,7 +596,7 @@ export function SchematicCanvas({
           )}
         </svg>
 
-        <div className="absolute inset-0 p-4" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}>
+        <div className="absolute inset-0 p-4 pointer-events-none" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}>
           {components.map((component) => {
             // Determine which terminals to highlight
             const highlightedTerminals: string[] = [];
