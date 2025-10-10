@@ -10,6 +10,19 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### Latest Session Improvements (Current)
+1. **AI Loading Animation**: Added visual feedback during system generation with animated progress indicator
+2. **Bus Bar Components**: Added busbar-positive and busbar-negative with 6 terminals each for multi-wire connections
+   - Professional SVG rendering with copper/black styling
+   - Terminals: pos-1 to pos-6, neg-1 to neg-6
+3. **SmartShunt Wiring Rules**: AI now follows electrical best practices
+   - SmartShunt placed in negative path between battery and loads for accurate current monitoring
+   - Recommends bus bars for systems with 3+ connections
+4. **Wire Routing Improvements**: Implemented alternating offset pattern for visual wire separation
+   - Offsets: +1, -1, +2, -2, +3, -3... provide clear visual distinction
+   - Midpoint jog routing maintains orthogonal paths
+   - Note: Some convergence near terminals is unavoidable with orthogonal routing to same point
+
 ### Terminal-Based Wire Connections (Completed)
 - Each component now has defined terminal connection points (positive, negative, ground, AC, PV, data)
 - Visual terminal indicators with color coding (red=positive, black=negative, gray=data)
