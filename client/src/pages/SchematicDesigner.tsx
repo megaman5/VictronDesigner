@@ -89,6 +89,10 @@ export default function SchematicDesigner() {
       return res.json();
     },
     onSuccess: (data) => {
+      console.log("AI Generated System:", data);
+      console.log("Components:", data.components);
+      console.log("Wires:", data.wires);
+      
       setComponents(data.components || []);
       setWires(data.wires || []);
       toast({

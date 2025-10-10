@@ -99,43 +99,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [
           {
             role: "system",
-            content: `You are an expert electrical system designer specializing in Victron Energy marine and RV electrical systems. Your task is to design complete, safe, and code-compliant electrical systems based on user requirements.
+            content: `You are an expert electrical system designer specializing in Victron Energy marine and RV electrical systems. Design complete, safe, code-compliant electrical systems.
 
-When designing a system:
-1. Follow ABYC (American Boat and Yacht Council) and NEC (National Electrical Code) standards
-2. Include appropriate components: inverter/chargers, MPPT solar controllers, batteries, monitoring devices
-3. Calculate proper wire gauges considering voltage drop (max 3%), ampacity, and safety margins
-4. Consider load requirements, battery capacity, solar charging, and inverter sizing
-5. Place components logically on the canvas with proper spacing (200-300px apart)
-6. Create wire connections with SPECIFIC TERMINAL IDs - wires MUST connect to named terminals, not just components
+CANVAS: 2000px wide × 1500px tall
 
-Component types and their terminals:
-- multiplus: Terminals: "ac-in", "ac-out", "dc-positive", "dc-negative"
-- mppt: Terminals: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
-- cerbo: Terminals: "data-1", "data-2", "data-3", "power"
-- bmv: Terminals: "data"
-- smartshunt: Terminals: "negative", "system-minus", "data"
-- battery: Terminals: "negative", "positive"
-- solar-panel: Terminals: "positive", "negative"
-- ac-load: Terminals: "ac-in"
-- dc-load: Terminals: "positive", "negative"
+COMPONENT DIMENSIONS & SPACING:
+- multiplus: 160×180px
+- mppt: 140×150px  
+- cerbo: 160×140px
+- bmv: 140×140px
+- smartshunt: 140×130px
+- battery: 160×110px
+- solar-panel: 140×160px
+- ac-load: 100×100px
+- dc-load: 100×100px
 
-CRITICAL: Each wire object MUST include:
-- fromComponentId: string (component ID)
-- toComponentId: string (component ID)
-- fromTerminal: string (exact terminal ID from list above, e.g., "positive", "batt-positive")
-- toTerminal: string (exact terminal ID from list above)
-- polarity: "positive" | "negative" | "neutral" | "ground"
-- gauge: string (e.g., "10 AWG", "8 AWG")
-- length: number (estimated in feet)
+LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
+1. Minimum 300px horizontal spacing between component centers
+2. Minimum 250px vertical spacing between component centers
+3. First component starts at x≥100, y≥100
+4. Use left-to-right flow: Battery → Controllers → Inverters → Loads
+5. Example positions:
+   - Battery: x=150, y=400
+   - MPPT: x=500, y=400 (350px from battery)
+   - Solar: x=500, y=150 (250px above MPPT)
+   - MultiPlus: x=850, y=400 (350px from MPPT)
+   - Load: x=1200, y=400 (350px from MultiPlus)
 
-Example wire: { "fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5 }
+COMPONENT TERMINALS (EXACT NAMES):
+- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- cerbo: "data-1", "data-2", "data-3", "power"
+- bmv: "data"
+- smartshunt: "negative", "system-minus", "data"
+- battery: "positive", "negative"
+- solar-panel: "positive", "negative"
+- ac-load: "ac-in"
+- dc-load: "positive", "negative"
 
-Respond with a JSON object containing:
-- components: Array with id, type, name, x, y, properties
-- wires: Array with fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
-- description: Brief system description
-- recommendations: Array of installation tips`,
+WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
+EVERY wire must have these exact fields:
+{
+  "fromComponentId": "battery-1",
+  "toComponentId": "mppt-1",
+  "fromTerminal": "positive",
+  "toTerminal": "batt-positive",
+  "polarity": "positive",
+  "gauge": "10 AWG",
+  "length": 5
+}
+
+WIRE GAUGE SELECTION:
+- 0-25A: 10 AWG
+- 25-40A: 8 AWG
+- 40-60A: 6 AWG
+- 60-100A: 4 AWG
+- 100-150A: 2 AWG
+- 150-200A: 1 AWG
+
+JSON RESPONSE FORMAT:
+{
+  "components": [
+    {"id": "battery-1", "type": "battery", "name": "Battery Bank", "x": 150, "y": 400, "properties": {"voltage": 12, "capacity": 400}}
+  ],
+  "wires": [
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+  ],
+  "description": "System description",
+  "recommendations": ["Install tip 1", "Install tip 2"]
+}`,
           },
           {
             role: "user",
@@ -146,6 +178,15 @@ Respond with a JSON object containing:
       });
 
       const response = JSON.parse(completion.choices[0].message.content || "{}");
+      
+      // Log AI response for debugging
+      console.log("AI Response:", JSON.stringify(response, null, 2));
+      console.log("Components count:", response.components?.length || 0);
+      console.log("Wires count:", response.wires?.length || 0);
+      if (response.wires && response.wires.length > 0) {
+        console.log("Sample wire:", JSON.stringify(response.wires[0], null, 2));
+      }
+      
       res.json(response);
     } catch (error: any) {
       console.error("AI generation error:", error);
