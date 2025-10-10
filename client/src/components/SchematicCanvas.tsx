@@ -3,8 +3,8 @@ import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
-import { Terminal, getTerminalPosition } from "@/lib/terminal-config";
-import { snapPointToGrid, calculateOrthogonalPath, calculateWireLength } from "@/lib/wire-routing";
+import { Terminal, getTerminalPosition, getTerminalOrientation } from "@/lib/terminal-config";
+import { snapPointToGrid, calculateOrthogonalPath, calculateOrthogonalPathWithOrientation, calculateWireLength } from "@/lib/wire-routing";
 
 export interface WireConnectionData {
   fromComponentId: string;
@@ -452,6 +452,10 @@ export function SchematicCanvas({
             let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
             let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
             
+            // Get terminal orientations
+            const fromOrientation = getTerminalOrientation(fromComp.type, wire.fromTerminal);
+            const toOrientation = getTerminalOrientation(toComp.type, wire.toTerminal);
+            
             // If either terminal position is null, use component centers as fallback
             if (!fromPos) {
               const from = getComponentPosition(wire.fromComponentId);
@@ -468,11 +472,28 @@ export function SchematicCanvas({
             const offsetMagnitude = Math.floor(wireIndex / 2) + 1;
             const wireOffset = (wireIndex % 2 === 0) ? offsetMagnitude : -offsetMagnitude;
             
-            // Calculate orthogonal path with offset
-            const path = calculateOrthogonalPath(fromPos.x, fromPos.y, toPos.x, toPos.y, 15, wireOffset);
+            // Calculate orthogonal path with terminal orientations
+            let path: string;
+            let labelX: number;
+            let labelY: number;
             
-            const midX = (fromPos.x + toPos.x) / 2;
-            const midY = (fromPos.y + toPos.y) / 2;
+            if (fromOrientation && toOrientation) {
+              const result = calculateOrthogonalPathWithOrientation(
+                fromPos.x, fromPos.y, 
+                toPos.x, toPos.y,
+                fromOrientation, toOrientation,
+                wireOffset, 15
+              );
+              path = result.path;
+              labelX = result.labelX;
+              labelY = result.labelY;
+            } else {
+              // Fallback to old routing if orientations not available
+              path = calculateOrthogonalPath(fromPos.x, fromPos.y, toPos.x, toPos.y, 15, wireOffset);
+              labelX = (fromPos.x + toPos.x) / 2;
+              labelY = (fromPos.y + toPos.y) / 2;
+            }
+            
             const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
             
             return (
@@ -491,7 +512,7 @@ export function SchematicCanvas({
                   fill="none"
                 />
                 
-                <g transform={`translate(${midX}, ${midY})`}>
+                <g transform={`translate(${labelX}, ${labelY})`}>
                   <rect
                     x="-35"
                     y="-12"

@@ -1,4 +1,5 @@
 // Grid snapping utilities and orthogonal wire routing
+import type { TerminalOrientation } from './terminal-config';
 
 export const GRID_SIZE = 20;
 
@@ -17,6 +18,131 @@ export function snapPointToGrid(x: number, y: number, gridSize: number = GRID_SI
     x: snapToGrid(x, gridSize),
     y: snapToGrid(y, gridSize),
   };
+}
+
+/**
+ * Calculate orthogonal path with terminal orientations
+ * Returns path string and label position
+ */
+export function calculateOrthogonalPathWithOrientation(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  startOrientation: TerminalOrientation,
+  endOrientation: TerminalOrientation,
+  wireOffset: number = 0,
+  cornerRadius: number = 15
+): { path: string; labelX: number; labelY: number } {
+  // Snap points to grid
+  const start = snapPointToGrid(x1, y1);
+  const end = snapPointToGrid(x2, y2);
+  
+  const offsetAmount = wireOffset * GRID_SIZE;
+  
+  // Minimum exit distance from terminals
+  const MIN_EXIT = GRID_SIZE * 3; // 60px minimum exit
+  
+  // Calculate exit points based on terminal orientation
+  let exitPoint = { ...start };
+  switch (startOrientation) {
+    case "left":
+      exitPoint.x = start.x - MIN_EXIT;
+      exitPoint.y = start.y + offsetAmount;
+      break;
+    case "right":
+      exitPoint.x = start.x + MIN_EXIT;
+      exitPoint.y = start.y + offsetAmount;
+      break;
+    case "top":
+      exitPoint.x = start.x + offsetAmount;
+      exitPoint.y = start.y - MIN_EXIT;
+      break;
+    case "bottom":
+      exitPoint.x = start.x + offsetAmount;
+      exitPoint.y = start.y + MIN_EXIT;
+      break;
+  }
+  
+  // Calculate entry points based on terminal orientation
+  let entryPoint = { ...end };
+  switch (endOrientation) {
+    case "left":
+      entryPoint.x = end.x - MIN_EXIT;
+      entryPoint.y = end.y + offsetAmount;
+      break;
+    case "right":
+      entryPoint.x = end.x + MIN_EXIT;
+      entryPoint.y = end.y + offsetAmount;
+      break;
+    case "top":
+      entryPoint.x = end.x + offsetAmount;
+      entryPoint.y = end.y - MIN_EXIT;
+      break;
+    case "bottom":
+      entryPoint.x = end.x + offsetAmount;
+      entryPoint.y = end.y + MIN_EXIT;
+      break;
+  }
+  
+  // Build path points
+  const points: Array<{x: number, y: number}> = [start];
+  
+  // Add exit segment
+  points.push(exitPoint);
+  
+  // Add middle segment(s) to connect exit to entry
+  // Route horizontally then vertically or vice versa based on positions
+  if (Math.abs(exitPoint.x - entryPoint.x) > Math.abs(exitPoint.y - entryPoint.y)) {
+    // Horizontal routing dominant
+    if (exitPoint.y !== entryPoint.y) {
+      points.push({ x: entryPoint.x, y: exitPoint.y });
+    }
+  } else {
+    // Vertical routing dominant
+    if (exitPoint.x !== entryPoint.x) {
+      points.push({ x: exitPoint.x, y: entryPoint.y });
+    }
+  }
+  
+  // Add entry segment
+  if (points[points.length - 1].x !== entryPoint.x || points[points.length - 1].y !== entryPoint.y) {
+    points.push(entryPoint);
+  }
+  
+  // Add final destination
+  points.push(end);
+  
+  // Create path
+  const path = createPathWithCorners(points, cornerRadius);
+  
+  // Calculate label position - use midpoint of the longest straight segment
+  let labelX = (start.x + end.x) / 2;
+  let labelY = (start.y + end.y) / 2;
+  
+  if (points.length >= 3) {
+    // Find longest segment for label placement
+    let maxLength = 0;
+    let bestMidX = labelX;
+    let bestMidY = labelY;
+    
+    for (let i = 1; i < points.length; i++) {
+      const p1 = points[i - 1];
+      const p2 = points[i];
+      const length = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+      
+      if (length > maxLength) {
+        maxLength = length;
+        bestMidX = (p1.x + p2.x) / 2;
+        bestMidY = (p1.y + p2.y) / 2;
+      }
+    }
+    
+    labelX = bestMidX;
+    labelY = bestMidY;
+  }
+  
+  return { path, labelX, labelY };
 }
 
 /**
