@@ -20,6 +20,7 @@ interface SchematicCanvasProps {
   onComponentsChange?: (components: SchematicComponentType[]) => void;
   onWiresChange?: (wires: Wire[]) => void;
   onComponentSelect?: (component: SchematicComponentType) => void;
+  onWireSelect?: (wire: Wire) => void;
   onDrop?: (x: number, y: number) => void;
   onComponentMove?: (componentId: string, deltaX: number, deltaY: number) => void;
   onComponentDelete?: (componentId: string) => void;
@@ -34,7 +35,8 @@ export function SchematicCanvas({
   wires = [],
   onComponentsChange,
   onWiresChange,
-  onComponentSelect, 
+  onComponentSelect,
+  onWireSelect,
   onDrop,
   onComponentMove,
   onComponentDelete,
@@ -46,6 +48,7 @@ export function SchematicCanvas({
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
   const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -97,6 +100,7 @@ export function SchematicCanvas({
     e?.stopPropagation();
     setSelectedId(component.id);
     setSelectedIds([component.id]); // Clear multi-selection when clicking single component
+    setSelectedWireId(null); // Clear wire selection
     
     if (!wireConnectionMode) {
       onComponentSelect?.(component);
@@ -274,17 +278,28 @@ export function SchematicCanvas({
 
   const handleWireClick = (wireId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm("Delete this wire?")) {
-      onWireDelete?.(wireId);
+    const wire = wires.find(w => w.id === wireId);
+    if (wire) {
+      setSelectedWireId(wireId);
+      setSelectedId(null); // Clear component selection
+      setSelectedIds([]); // Clear multi-selection
+      onWireSelect?.(wire);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
+    if (e.key === "Delete" || e.key === "Backspace") {
+      // Delete selected wire
+      if (selectedWireId) {
+        onWireDelete?.(selectedWireId);
+        setSelectedWireId(null);
+      }
       // Delete all selected components
-      selectedIds.forEach(id => onComponentDelete?.(id));
-      setSelectedIds([]);
-      setSelectedId(null);
+      else if (selectedIds.length > 0) {
+        selectedIds.forEach(id => onComponentDelete?.(id));
+        setSelectedIds([]);
+        setSelectedId(null);
+      }
     }
   };
 
@@ -495,6 +510,7 @@ export function SchematicCanvas({
             }
             
             const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
+            const isSelected = selectedWireId === wire.id;
             
             return (
               <g 
@@ -505,11 +521,12 @@ export function SchematicCanvas({
               >
                 <path
                   d={path}
-                  stroke={getWireColor(wire.polarity)}
-                  strokeWidth={getWireThickness(wire.gauge)}
+                  stroke={isSelected ? "hsl(var(--primary))" : getWireColor(wire.polarity)}
+                  strokeWidth={isSelected ? getWireThickness(wire.gauge) + 2 : getWireThickness(wire.gauge)}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   fill="none"
+                  opacity={isSelected ? 1 : 0.9}
                 />
                 
                 <g transform={`translate(${labelX}, ${labelY})`}>
@@ -519,8 +536,8 @@ export function SchematicCanvas({
                     width="70"
                     height="24"
                     fill="hsl(var(--background))"
-                    stroke="hsl(var(--border))"
-                    strokeWidth="1"
+                    stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
+                    strokeWidth={isSelected ? 2 : 1}
                     rx="4"
                   />
                   <text
@@ -588,7 +605,7 @@ export function SchematicCanvas({
                 key={component.id}
                 draggable
                 onDragStart={(e) => handleComponentDragStart(component, e)}
-                className={`absolute cursor-move ${
+                className={`absolute cursor-move pointer-events-none ${
                   wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
                 }`}
                 style={{ 
