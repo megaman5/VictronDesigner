@@ -350,6 +350,7 @@ export default function SchematicDesigner() {
 
         <PropertiesPanel
           selectedComponent={selectedComponent ? {
+            id: selectedComponent.id,
             name: selectedComponent.name,
             voltage: selectedComponent.properties?.voltage,
             current: selectedComponent.properties?.current,
