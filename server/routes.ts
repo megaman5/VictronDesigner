@@ -211,6 +211,102 @@ JSON RESPONSE FORMAT:
     }
   });
 
+  // AI wire generation for existing components
+  app.post("/api/ai-wire-components", async (req, res) => {
+    try {
+      const { components, systemVoltage = 12 } = req.body;
+      
+      if (!components || !Array.isArray(components) || components.length === 0) {
+        return res.status(400).json({ error: "Components array is required" });
+      }
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert Victron electrical system designer. Your task is to create ONLY the wire connections for a set of components that a user has already placed on a canvas.
+
+COMPONENT TERMINALS (EXACT NAMES):
+- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- cerbo: "data-1", "data-2", "data-3", "power"
+- bmv: "data"
+- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
+- battery: "positive", "negative"
+- solar-panel: "positive", "negative"
+- ac-load: "ac-in"
+- dc-load: "positive", "negative"
+- busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+
+WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
+EVERY wire must have these exact fields:
+{
+  "fromComponentId": "battery-1",
+  "toComponentId": "mppt-1",
+  "fromTerminal": "positive",
+  "toTerminal": "batt-positive",
+  "polarity": "positive",
+  "gauge": "10 AWG",
+  "length": 5
+}
+
+CRITICAL WIRING RULES:
+1. SmartShunt MUST be in negative path between battery and ALL loads
+   - Battery negative → SmartShunt "negative" terminal
+   - SmartShunt "system-minus" → All loads' negative terminals
+   - This ensures ALL current flows through the shunt for accurate monitoring
+2. Use bus bars when connecting 3+ devices to simplify wiring
+3. Main battery cables (battery to inverter): Use largest gauge
+4. Never mix polarities on same bus bar
+5. Solar panels connect to MPPT PV terminals, MPPT battery terminals connect to battery
+6. Inverters connect to battery or main bus bars
+7. AC loads connect to inverter AC output
+8. DC loads connect to battery/bus bars after SmartShunt on negative side
+9. Data connections: BMV/SmartShunt to Cerbo via data terminals
+
+WIRE GAUGE SELECTION:
+- 0-25A: 10 AWG
+- 25-40A: 8 AWG
+- 40-60A: 6 AWG
+- 60-100A: 4 AWG
+- 100-150A: 2 AWG
+- 150-200A: 1 AWG
+
+Calculate wire length based on component positions (use Euclidean distance / 100 as rough estimate).
+
+JSON RESPONSE FORMAT:
+{
+  "wires": [
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+  ],
+  "description": "Brief description of the wiring strategy",
+  "recommendations": ["Wiring tip 1", "Wiring tip 2"]
+}`,
+          },
+          {
+            role: "user",
+            content: `Create wiring connections for these ${systemVoltage}V components: ${JSON.stringify(components)}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const response = JSON.parse(completion.choices[0].message.content || "{}");
+      
+      console.log("AI Wire Generation Response:", JSON.stringify(response, null, 2));
+      console.log("Generated wires count:", response.wires?.length || 0);
+      
+      res.json(response);
+    } catch (error: any) {
+      console.error("AI wire generation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Export endpoints
   app.get("/api/export/shopping-list/:id", async (req, res) => {
     try {
