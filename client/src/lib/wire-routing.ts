@@ -41,35 +41,39 @@ export function calculateOrthogonalPath(
   // Apply wire offset for parallel wire separation
   const offsetAmount = wireOffset * GRID_SIZE;
   
-  // For straight lines, maintain offset in parallel segment then return to axis near terminal
-  if (dx === 0) {
-    // Vertical line - run parallel with offset, return to axis near end
+  // For straight lines, maintain unique lane until final grid unit before terminal
+  if (dx === 0 || dy === 0) {
     if (offsetAmount === 0) {
       return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
     }
-    const signY = dy > 0 ? 1 : -1;
-    const nearEnd = end.y - (signY * GRID_SIZE); // One grid unit before terminal
-    return `M ${start.x} ${start.y} 
-            L ${start.x} ${start.y + (signY * GRID_SIZE)}
-            L ${start.x + offsetAmount} ${start.y + (signY * GRID_SIZE)}
-            L ${start.x + offsetAmount} ${nearEnd}
-            L ${end.x} ${nearEnd}
-            L ${end.x} ${end.y}`;
-  }
-  
-  if (dy === 0) {
-    // Horizontal line - run parallel with offset, return to axis near end
-    if (offsetAmount === 0) {
-      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+    
+    if (dx === 0) {
+      // Vertical line - maintain offset with clamped jog distance
+      const signY = dy > 0 ? 1 : -1;
+      const availableDistance = Math.abs(dy) - GRID_SIZE; // Leave room for final segment
+      // Simple offset in middle, no complex jog calculation
+      const offsetX = start.x + offsetAmount;
+      // Jog at midpoint for balanced visual appearance
+      const midY = start.y + dy / 2;
+      return `M ${start.x} ${start.y} 
+              L ${start.x} ${midY}
+              L ${offsetX} ${midY}
+              L ${offsetX} ${end.y}
+              L ${end.x} ${end.y}`;
+    } else {
+      // Horizontal line - maintain offset with clamped jog distance
+      const signX = dx > 0 ? 1 : -1;
+      const availableDistance = Math.abs(dx) - GRID_SIZE; // Leave room for final segment
+      // Simple offset in middle, no complex jog calculation
+      const offsetY = start.y + offsetAmount;
+      // Jog at midpoint for balanced visual appearance
+      const midX = start.x + dx / 2;
+      return `M ${start.x} ${start.y} 
+              L ${midX} ${start.y}
+              L ${midX} ${offsetY}
+              L ${end.x} ${offsetY}
+              L ${end.x} ${end.y}`;
     }
-    const signX = dx > 0 ? 1 : -1;
-    const nearEnd = end.x - (signX * GRID_SIZE); // One grid unit before terminal
-    return `M ${start.x} ${start.y} 
-            L ${start.x + (signX * GRID_SIZE)} ${start.y}
-            L ${start.x + (signX * GRID_SIZE)} ${start.y + offsetAmount}
-            L ${nearEnd} ${start.y + offsetAmount}
-            L ${nearEnd} ${end.y}
-            L ${end.x} ${end.y}`;
   }
   
   // Determine routing direction based on distance
