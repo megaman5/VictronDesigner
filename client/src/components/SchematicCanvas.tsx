@@ -334,7 +334,17 @@ export function SchematicCanvas({
             const fromComp = components.find(c => c.id === wire.fromComponentId);
             const toComp = components.find(c => c.id === wire.toComponentId);
             
-            if (!fromComp || !toComp) return null;
+            if (!fromComp || !toComp) {
+              console.warn('Wire skipped - missing component:', { 
+                wireId: wire.id, 
+                fromId: wire.fromComponentId, 
+                toId: wire.toComponentId,
+                foundFrom: !!fromComp,
+                foundTo: !!toComp,
+                availableComponentIds: components.map(c => c.id)
+              });
+              return null;
+            }
             
             // Try to get terminal positions, fall back to component centers
             let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
