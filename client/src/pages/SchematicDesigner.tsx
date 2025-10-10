@@ -127,10 +127,12 @@ export default function SchematicDesigner() {
       console.log("AI Generated Wires:", data);
       
       // Generate unique IDs for the new wires
-      const newWires = (data.wires || []).map((wire: any) => ({
+      const newWires = (data.wires || []).map((wire: any, index: number) => ({
         ...wire,
-        id: `wire-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
       }));
+      
+      console.log("Setting wires with IDs:", newWires.map((w: Wire) => ({ id: w.id, from: w.fromComponentId, to: w.toComponentId })));
       
       setWires(newWires);
       toast({
