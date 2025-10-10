@@ -416,10 +416,6 @@ export function SchematicComponent({
             })}
           </svg>
         )}
-        
-        <div className="text-xs font-medium text-center mt-1 px-2 truncate">
-          {name}
-        </div>
       </div>
     </div>
   );
