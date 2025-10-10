@@ -281,8 +281,11 @@ export function SchematicCanvas({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
-      onComponentDelete?.(selectedId);
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
+      // Delete all selected components
+      selectedIds.forEach(id => onComponentDelete?.(id));
+      setSelectedIds([]);
+      setSelectedId(null);
     }
   };
 

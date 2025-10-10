@@ -17,6 +17,7 @@ interface WireCalculation {
 
 interface PropertiesPanelProps {
   selectedComponent?: {
+    id: string;
     name: string;
     voltage?: number;
     current?: number;
@@ -47,7 +48,7 @@ export function PropertiesPanel({ selectedComponent, wireCalculation }: Properti
         <ScrollArea className="flex-1">
           <TabsContent value="properties" className="p-4 space-y-4 mt-0">
             {selectedComponent ? (
-              <>
+              <div key={selectedComponent.id}>
                 <div className="space-y-2">
                   <Label>Component Name</Label>
                   <Input
@@ -87,7 +88,7 @@ export function PropertiesPanel({ selectedComponent, wireCalculation }: Properti
                     />
                   </div>
                 </div>
-              </>
+              </div>
             ) : (
               <div className="text-center text-muted-foreground py-8">
                 <Settings className="h-12 w-12 mx-auto mb-3 opacity-20" />
