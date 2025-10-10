@@ -40,10 +40,10 @@ export function calculateOrthogonalPathWithOrientation(
   
   const offsetAmount = wireOffset * GRID_SIZE;
   
-  // Minimum exit distance from terminals
-  const MIN_EXIT = GRID_SIZE * 3; // 60px minimum exit
+  // Minimum exit distance from terminals (shorter for better routing)
+  const MIN_EXIT = GRID_SIZE * 2; // 40px minimum exit (reduced from 60px)
   
-  // Calculate exit points based on terminal orientation
+  // Calculate exit points based on terminal orientation (always respect physical constraints)
   let exitPoint = { ...start };
   switch (startOrientation) {
     case "left":
@@ -64,7 +64,7 @@ export function calculateOrthogonalPathWithOrientation(
       break;
   }
   
-  // Calculate entry points based on terminal orientation
+  // Calculate entry points based on terminal orientation (always respect physical constraints)
   let entryPoint = { ...end };
   switch (endOrientation) {
     case "left":
