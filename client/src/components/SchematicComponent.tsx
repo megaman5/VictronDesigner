@@ -348,7 +348,7 @@ export function SchematicComponent({
 
   return (
     <div
-      className={`cursor-pointer transition-all ${
+      className={`cursor-pointer transition-all pointer-events-auto ${
         selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
       }`}
       onClick={onClick}

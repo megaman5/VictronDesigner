@@ -23,10 +23,20 @@ interface PropertiesPanelProps {
     current?: number;
     power?: number;
   };
+  selectedWire?: {
+    id: string;
+    fromComponentId: string;
+    toComponentId: string;
+    fromTerminal: string;
+    toTerminal: string;
+    polarity: string;
+    gauge?: string;
+    length: number;
+  };
   wireCalculation?: WireCalculation;
 }
 
-export function PropertiesPanel({ selectedComponent, wireCalculation }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation }: PropertiesPanelProps) {
   return (
     <div className="w-80 border-l bg-card flex flex-col h-full">
       <div className="p-4 border-b">
@@ -47,7 +57,60 @@ export function PropertiesPanel({ selectedComponent, wireCalculation }: Properti
 
         <ScrollArea className="flex-1">
           <TabsContent value="properties" className="p-4 space-y-4 mt-0">
-            {selectedComponent ? (
+            {selectedWire ? (
+              <div key={selectedWire.id}>
+                <div className="space-y-2">
+                  <Label>Wire Connection</Label>
+                  <div className="text-sm text-muted-foreground p-2 bg-muted rounded-md">
+                    {selectedWire.fromComponentId} → {selectedWire.toComponentId}
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium">Wire Details</h3>
+                  <div className="space-y-2">
+                    <Label>Polarity</Label>
+                    <Badge variant={selectedWire.polarity === "positive" ? "default" : "secondary"}>
+                      {selectedWire.polarity.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Wire Gauge</Label>
+                    <Input
+                      defaultValue={selectedWire.gauge || "N/A"}
+                      data-testid="input-wire-gauge"
+                      readOnly
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Length (ft)</Label>
+                    <Input
+                      type="number"
+                      defaultValue={selectedWire.length}
+                      data-testid="input-wire-length"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>From Terminal</Label>
+                    <Input
+                      defaultValue={selectedWire.fromTerminal}
+                      data-testid="input-from-terminal"
+                      readOnly
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>To Terminal</Label>
+                    <Input
+                      defaultValue={selectedWire.toTerminal}
+                      data-testid="input-to-terminal"
+                      readOnly
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : selectedComponent ? (
               <div key={selectedComponent.id}>
                 <div className="space-y-2">
                   <Label>Component Name</Label>

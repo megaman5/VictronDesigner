@@ -16,6 +16,7 @@ export default function SchematicDesigner() {
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
+  const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
   const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
   const [draggedComponentType, setDraggedComponentType] = useState<string | null>(null);
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
@@ -166,6 +167,7 @@ export default function SchematicDesigner() {
 
   const handleComponentSelect = (comp: SchematicComponent) => {
     setSelectedComponent(comp);
+    setSelectedWire(null); // Clear wire selection
     
     // Find wires connected to this component
     const connectedWires = wires.filter(
@@ -177,6 +179,12 @@ export default function SchematicDesigner() {
     } else {
       setWireCalculation(undefined);
     }
+  };
+
+  const handleWireSelect = (wire: Wire) => {
+    setSelectedWire(wire);
+    setSelectedComponent(null); // Clear component selection
+    calculateWire(wire);
   };
 
   const handleComponentDrop = (x: number, y: number) => {
@@ -339,6 +347,7 @@ export default function SchematicDesigner() {
           onComponentsChange={setComponents}
           onWiresChange={setWires}
           onComponentSelect={handleComponentSelect}
+          onWireSelect={handleWireSelect}
           onDrop={handleComponentDrop}
           onComponentMove={handleComponentMove}
           onComponentDelete={handleComponentDelete}
@@ -355,6 +364,16 @@ export default function SchematicDesigner() {
             voltage: selectedComponent.properties?.voltage,
             current: selectedComponent.properties?.current,
             power: selectedComponent.properties?.power,
+          } : undefined}
+          selectedWire={selectedWire ? {
+            id: selectedWire.id,
+            fromComponentId: selectedWire.fromComponentId,
+            toComponentId: selectedWire.toComponentId,
+            fromTerminal: selectedWire.fromTerminal,
+            toTerminal: selectedWire.toTerminal,
+            polarity: selectedWire.polarity,
+            gauge: selectedWire.gauge,
+            length: selectedWire.length,
           } : undefined}
           wireCalculation={wireCalculation ? {
             current: wireCalculation.current,
