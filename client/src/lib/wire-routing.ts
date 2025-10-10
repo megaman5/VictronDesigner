@@ -91,17 +91,47 @@ export function calculateOrthogonalPathWithOrientation(
   // Add exit segment
   points.push(exitPoint);
   
-  // Add middle segment(s) to connect exit to entry
-  // Route horizontally then vertically or vice versa based on positions
-  if (Math.abs(exitPoint.x - entryPoint.x) > Math.abs(exitPoint.y - entryPoint.y)) {
-    // Horizontal routing dominant
-    if (exitPoint.y !== entryPoint.y) {
-      points.push({ x: entryPoint.x, y: exitPoint.y });
-    }
-  } else {
-    // Vertical routing dominant
+  // Improved middle segment routing that maintains offset throughout
+  // Determine which orientations we're dealing with
+  const isStartVertical = startOrientation === "top" || startOrientation === "bottom";
+  const isEndVertical = endOrientation === "top" || endOrientation === "bottom";
+  
+  // Calculate middle routing based on terminal orientations
+  if (isStartVertical && isEndVertical) {
+    // Both terminals are vertical (top/bottom) - maintain X offset in vertical segments
+    const midY = (exitPoint.y + entryPoint.y) / 2;
+    
     if (exitPoint.x !== entryPoint.x) {
-      points.push({ x: exitPoint.x, y: entryPoint.y });
+      // Need horizontal segment to transition between different X positions
+      points.push({ x: exitPoint.x, y: midY });
+      points.push({ x: entryPoint.x, y: midY });
+    }
+    // Else: X positions are the same, vertical segment directly connects exit to entry
+    
+  } else if (!isStartVertical && !isEndVertical) {
+    // Both terminals are horizontal (left/right) - maintain Y offset in horizontal segments
+    const midX = (exitPoint.x + entryPoint.x) / 2;
+    
+    if (exitPoint.y !== entryPoint.y) {
+      // Need vertical segment to transition between different Y positions
+      points.push({ x: midX, y: exitPoint.y });
+      points.push({ x: midX, y: entryPoint.y });
+    }
+    // Else: Y positions are the same, horizontal segment directly connects exit to entry
+    
+  } else {
+    // Mixed orientations (one vertical, one horizontal)
+    // Use the standard routing that prioritizes based on distance
+    if (Math.abs(exitPoint.x - entryPoint.x) > Math.abs(exitPoint.y - entryPoint.y)) {
+      // Horizontal routing dominant
+      if (exitPoint.y !== entryPoint.y) {
+        points.push({ x: entryPoint.x, y: exitPoint.y });
+      }
+    } else {
+      // Vertical routing dominant
+      if (exitPoint.x !== entryPoint.x) {
+        points.push({ x: exitPoint.x, y: entryPoint.y });
+      }
     }
   }
   
