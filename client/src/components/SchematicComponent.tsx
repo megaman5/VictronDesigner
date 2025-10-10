@@ -180,6 +180,60 @@ export function SchematicComponent({
           </svg>
         );
       
+      case "busbar-positive":
+        return (
+          <svg width="200" height="60" viewBox="0 0 200 60">
+            {/* Main copper bus bar */}
+            <rect x="10" y="20" width="180" height="20" fill="#b87333" stroke="#8b5a2b" strokeWidth="2" rx="2" />
+            
+            {/* Metallic shine effect */}
+            <rect x="12" y="22" width="176" height="4" fill="#d4a574" opacity="0.5" />
+            
+            {/* Mounting holes */}
+            <circle cx="20" cy="30" r="3" fill="#2a2a2a" />
+            <circle cx="180" cy="30" r="3" fill="#2a2a2a" />
+            
+            {/* Connection screws */}
+            {[25, 55, 85, 115, 145, 175].map((x, i) => (
+              <g key={i}>
+                <circle cx={x} cy="30" r="5" fill="#4a4a4a" stroke="#2a2a2a" strokeWidth="1" />
+                <line x1={x-2} y1={30} x2={x+2} y2={30} stroke="#6a6a6a" strokeWidth="1" />
+              </g>
+            ))}
+            
+            {/* Label */}
+            <text x="100" y="12" textAnchor="middle" className="fill-foreground text-[10px] font-bold">POSITIVE BUS BAR</text>
+            <text x="100" y="54" textAnchor="middle" className="fill-destructive text-[9px] font-semibold">+ DC</text>
+          </svg>
+        );
+      
+      case "busbar-negative":
+        return (
+          <svg width="200" height="60" viewBox="0 0 200 60">
+            {/* Main copper bus bar */}
+            <rect x="10" y="20" width="180" height="20" fill="#2a2a2a" stroke="#1a1a1a" strokeWidth="2" rx="2" />
+            
+            {/* Metallic shine effect */}
+            <rect x="12" y="22" width="176" height="4" fill="#4a4a4a" opacity="0.5" />
+            
+            {/* Mounting holes */}
+            <circle cx="20" cy="30" r="3" fill="#0a0a0a" />
+            <circle cx="180" cy="30" r="3" fill="#0a0a0a" />
+            
+            {/* Connection screws */}
+            {[25, 55, 85, 115, 145, 175].map((x, i) => (
+              <g key={i}>
+                <circle cx={x} cy="30" r="5" fill="#4a4a4a" stroke="#2a2a2a" strokeWidth="1" />
+                <line x1={x-2} y1={30} x2={x+2} y2={30} stroke="#6a6a6a" strokeWidth="1" />
+              </g>
+            ))}
+            
+            {/* Label */}
+            <text x="100" y="12" textAnchor="middle" className="fill-foreground text-[10px] font-bold">NEGATIVE BUS BAR</text>
+            <text x="100" y="54" textAnchor="middle" className="fill-foreground text-[9px] font-semibold">- DC</text>
+          </svg>
+        );
+      
       case "battery":
         return (
           <svg width="160" height="110" viewBox="0 0 160 110">

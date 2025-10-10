@@ -29,6 +29,8 @@ const genericComponents: Component[] = [
   { id: "solar-panel", name: "Solar Panel", icon: <Sun className="h-5 w-5" />, category: "generic" },
   { id: "ac-load", name: "AC Load", icon: <Gauge className="h-5 w-5" />, category: "generic" },
   { id: "dc-load", name: "DC Load", icon: <Cable className="h-5 w-5" />, category: "generic" },
+  { id: "busbar-positive", name: "Positive Bus Bar", icon: <Cable className="h-5 w-5" />, category: "generic" },
+  { id: "busbar-negative", name: "Negative Bus Bar", icon: <Cable className="h-5 w-5" />, category: "generic" },
 ];
 
 interface ComponentLibraryProps {

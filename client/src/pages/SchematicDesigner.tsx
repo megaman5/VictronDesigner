@@ -330,6 +330,7 @@ export default function SchematicDesigner() {
         open={aiDialogOpen}
         onOpenChange={setAiDialogOpen}
         onGenerate={(prompt) => aiGenerateMutation.mutate(prompt)}
+        isGenerating={aiGenerateMutation.isPending}
       />
 
       <ExportDialog

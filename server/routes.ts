@@ -113,29 +113,37 @@ COMPONENT DIMENSIONS & SPACING:
 - solar-panel: 140×160px
 - ac-load: 100×100px
 - dc-load: 100×100px
+- busbar-positive: 200×60px
+- busbar-negative: 200×60px
 
 LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
 1. Minimum 300px horizontal spacing between component centers
 2. Minimum 250px vertical spacing between component centers
 3. First component starts at x≥100, y≥100
 4. Use left-to-right flow: Battery → Controllers → Inverters → Loads
-5. Example positions:
+5. Bus bars can centralize multiple connections (use when 3+ loads)
+6. Example positions:
    - Battery: x=150, y=400
    - MPPT: x=500, y=400 (350px from battery)
    - Solar: x=500, y=150 (250px above MPPT)
    - MultiPlus: x=850, y=400 (350px from MPPT)
-   - Load: x=1200, y=400 (350px from MultiPlus)
+   - SmartShunt (if used): x=150, y=550 (below battery)
+   - Positive Bus: x=900, y=200 (above loads)
+   - Negative Bus: x=900, y=600 (below loads)
+   - Loads: x=1100-1400, y=300-500 (stacked vertically)
 
 COMPONENT TERMINALS (EXACT NAMES):
 - multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "data-1", "data-2", "data-3", "power"
 - bmv: "data"
-- smartshunt: "negative", "system-minus", "data"
+- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
 - ac-load: "ac-in"
 - dc-load: "positive", "negative"
+- busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 
 WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
 EVERY wire must have these exact fields:
@@ -148,6 +156,15 @@ EVERY wire must have these exact fields:
   "gauge": "10 AWG",
   "length": 5
 }
+
+CRITICAL WIRING RULES:
+1. SmartShunt MUST be in negative path between battery and ALL loads
+   - Battery negative → SmartShunt "negative" terminal
+   - SmartShunt "system-minus" → All loads' negative terminals
+   - This ensures ALL current flows through the shunt for accurate monitoring
+2. Use bus bars when connecting 3+ devices to simplify wiring
+3. Main battery cables (battery to inverter): Use largest gauge
+4. Never mix polarities on same bus bar
 
 WIRE GAUGE SELECTION:
 - 0-25A: 10 AWG

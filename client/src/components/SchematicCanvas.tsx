@@ -327,7 +327,7 @@ export function SchematicCanvas({
           
           {showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
-          {wires.map((wire) => {
+          {wires.map((wire, wireIndex) => {
             // Get terminal positions instead of component centers
             const fromComp = components.find(c => c.id === wire.fromComponentId);
             const toComp = components.find(c => c.id === wire.toComponentId);
@@ -348,8 +348,14 @@ export function SchematicCanvas({
               toPos = { x: to.x, y: to.y };
             }
             
-            // Calculate orthogonal path
-            const path = calculateOrthogonalPath(fromPos.x, fromPos.y, toPos.x, toPos.y, 15);
+            // Calculate wire offset to prevent overlaps
+            // Alternate between positive and negative offsets: +1, -1, +2, -2, +3, -3...
+            // This spreads wires in both directions for better visual distribution
+            const offsetMagnitude = Math.floor(wireIndex / 2) + 1;
+            const wireOffset = (wireIndex % 2 === 0) ? offsetMagnitude : -offsetMagnitude;
+            
+            // Calculate orthogonal path with offset
+            const path = calculateOrthogonalPath(fromPos.x, fromPos.y, toPos.x, toPos.y, 15, wireOffset);
             
             const midX = (fromPos.x + toPos.x) / 2;
             const midY = (fromPos.y + toPos.y) / 2;

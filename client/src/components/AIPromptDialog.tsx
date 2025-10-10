@@ -15,23 +15,16 @@ interface AIPromptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onGenerate?: (prompt: string) => void;
+  isGenerating?: boolean;
 }
 
-export function AIPromptDialog({ open, onOpenChange, onGenerate }: AIPromptDialogProps) {
+export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = false }: AIPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleGenerate = async () => {
+  const handleGenerate = () => {
     if (!prompt.trim()) return;
-    
-    setIsGenerating(true);
     console.log("Generating system from prompt:", prompt);
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    setIsGenerating(false);
     onGenerate?.(prompt);
-    onOpenChange(false);
     setPrompt("");
   };
 
@@ -54,64 +47,77 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate }: AIPromptDialo
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="prompt">System Requirements</Label>
-            <Textarea
-              id="prompt"
-              placeholder="Example: Design a 5kW solar system for an RV with 12V battery bank, MPPT controller, and shore power connection..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="min-h-32 resize-none"
-              data-testid="input-ai-prompt"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm text-muted-foreground">Example Prompts</Label>
-            <div className="space-y-2">
-              {examplePrompts.map((example, i) => (
-                <button
-                  key={i}
-                  onClick={() => setPrompt(example)}
-                  className="w-full text-left text-sm p-2 rounded-md border bg-background hover-elevate active-elevate-2 transition-colors"
-                  data-testid={`example-prompt-${i}`}
-                >
-                  {example}
-                </button>
-              ))}
+        {isGenerating ? (
+          <div className="space-y-6 py-12" data-testid="ai-generating-state">
+            <div className="flex justify-center">
+              <div className="relative">
+                <Sparkles className="h-16 w-16 text-primary animate-pulse" />
+                <Loader2 className="h-16 w-16 text-primary animate-spin absolute inset-0" />
+              </div>
+            </div>
+            <div className="text-center space-y-2">
+              <p className="text-lg font-medium">Designing your electrical system...</p>
+              <p className="text-sm text-muted-foreground">
+                AI is calculating component placement, wire sizing, and safety requirements
+              </p>
+            </div>
+            <div className="flex justify-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
           </div>
+        ) : (
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="prompt">System Requirements</Label>
+              <Textarea
+                id="prompt"
+                placeholder="Example: Design a 5kW solar system for an RV with 12V battery bank, MPPT controller, and shore power connection..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="min-h-32 resize-none"
+                data-testid="input-ai-prompt"
+              />
+            </div>
 
-          <div className="flex justify-end gap-2 pt-4">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isGenerating}
-              data-testid="button-cancel-ai"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isGenerating}
-              data-testid="button-generate-ai"
-              className="gap-2"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Generate System
-                </>
-              )}
-            </Button>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Example Prompts</Label>
+              <div className="space-y-2">
+                {examplePrompts.map((example, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setPrompt(example)}
+                    className="w-full text-left text-sm p-2 rounded-md border bg-background hover-elevate active-elevate-2 transition-colors"
+                    data-testid={`example-prompt-${i}`}
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isGenerating}
+                data-testid="button-cancel-ai"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating}
+                data-testid="button-generate-ai"
+                className="gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Generate System
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );

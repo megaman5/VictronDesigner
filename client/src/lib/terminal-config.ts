@@ -100,6 +100,32 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
       { id: "data", type: "ground", label: "VE.Direct", x: 120, y: 105, color: "hsl(var(--muted))" },
     ],
   },
+  
+  "busbar-positive": {
+    width: 200,
+    height: 60,
+    terminals: [
+      { id: "pos-1", type: "positive", label: "1", x: 25, y: 30, color: "hsl(var(--wire-positive))" },
+      { id: "pos-2", type: "positive", label: "2", x: 55, y: 30, color: "hsl(var(--wire-positive))" },
+      { id: "pos-3", type: "positive", label: "3", x: 85, y: 30, color: "hsl(var(--wire-positive))" },
+      { id: "pos-4", type: "positive", label: "4", x: 115, y: 30, color: "hsl(var(--wire-positive))" },
+      { id: "pos-5", type: "positive", label: "5", x: 145, y: 30, color: "hsl(var(--wire-positive))" },
+      { id: "pos-6", type: "positive", label: "6", x: 175, y: 30, color: "hsl(var(--wire-positive))" },
+    ],
+  },
+  
+  "busbar-negative": {
+    width: 200,
+    height: 60,
+    terminals: [
+      { id: "neg-1", type: "negative", label: "1", x: 25, y: 30, color: "hsl(var(--wire-negative))" },
+      { id: "neg-2", type: "negative", label: "2", x: 55, y: 30, color: "hsl(var(--wire-negative))" },
+      { id: "neg-3", type: "negative", label: "3", x: 85, y: 30, color: "hsl(var(--wire-negative))" },
+      { id: "neg-4", type: "negative", label: "4", x: 115, y: 30, color: "hsl(var(--wire-negative))" },
+      { id: "neg-5", type: "negative", label: "5", x: 145, y: 30, color: "hsl(var(--wire-negative))" },
+      { id: "neg-6", type: "negative", label: "6", x: 175, y: 30, color: "hsl(var(--wire-negative))" },
+    ],
+  },
 };
 
 // Helper function to get terminal absolute position on canvas
