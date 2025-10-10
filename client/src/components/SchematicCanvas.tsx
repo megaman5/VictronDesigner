@@ -50,6 +50,15 @@ export function SchematicCanvas({
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
+  // Selection box state
+  const [selectionBox, setSelectionBox] = useState<{
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  
   // Wire connection state with terminal tracking
   const [wireStart, setWireStart] = useState<{
     componentId: string;
@@ -87,6 +96,7 @@ export function SchematicCanvas({
   const handleComponentClick = (component: SchematicComponentType, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setSelectedId(component.id);
+    setSelectedIds([component.id]); // Clear multi-selection when clicking single component
     
     if (!wireConnectionMode) {
       onComponentSelect?.(component);
@@ -134,7 +144,7 @@ export function SchematicCanvas({
     }
   };
   
-  // Handle mouse move to show wire preview
+  // Handle mouse move to show wire preview or update selection box
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
     if (wireStart && wireConnectionMode && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
@@ -144,6 +154,94 @@ export function SchematicCanvas({
       // Snap to grid for cleaner routing
       const snapped = snapPointToGrid(x, y);
       setWirePreviewEnd(snapped);
+    }
+    
+    // Update selection box if dragging
+    if (selectionBox && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / (zoom / 100);
+      const y = (e.clientY - rect.top) / (zoom / 100);
+      
+      setSelectionBox({
+        ...selectionBox,
+        endX: x,
+        endY: y,
+      });
+    }
+  };
+  
+  // Start selection box on mouse down
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    // Don't start selection if clicking on a component or terminal
+    const target = e.target as HTMLElement;
+    const isComponent = target.closest('[data-testid^="canvas-component-"]');
+    const isTerminal = target.closest('.terminal-indicator');
+    
+    if (!isComponent && !isTerminal && !wireConnectionMode && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / (zoom / 100);
+      const y = (e.clientY - rect.top) / (zoom / 100);
+      
+      setSelectionBox({
+        startX: x,
+        startY: y,
+        endX: x,
+        endY: y,
+      });
+    }
+  };
+  
+  // Complete selection box on mouse up
+  const handleCanvasMouseUp = (e: React.MouseEvent) => {
+    if (selectionBox) {
+      // Check which components intersect with the selection box
+      const box = {
+        left: Math.min(selectionBox.startX, selectionBox.endX),
+        right: Math.max(selectionBox.startX, selectionBox.endX),
+        top: Math.min(selectionBox.startY, selectionBox.endY),
+        bottom: Math.max(selectionBox.startY, selectionBox.endY),
+      };
+      
+      // Component dimensions for intersection detection
+      const componentDimensions: Record<string, { width: number; height: number }> = {
+        multiplus: { width: 180, height: 140 },
+        battery: { width: 160, height: 110 },
+        mppt: { width: 160, height: 130 },
+        'solar-panel': { width: 140, height: 120 },
+        cerbo: { width: 180, height: 120 },
+        bmv: { width: 140, height: 140 },
+        smartshunt: { width: 140, height: 140 },
+        'ac-load': { width: 120, height: 100 },
+        'dc-load': { width: 120, height: 100 },
+        'busbar-positive': { width: 140, height: 60 },
+        'busbar-negative': { width: 140, height: 60 },
+      };
+      
+      const selected = components.filter(comp => {
+        const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
+        const compLeft = comp.x;
+        const compRight = comp.x + dims.width;
+        const compTop = comp.y;
+        const compBottom = comp.y + dims.height;
+        
+        // Check if component intersects with selection box
+        return !(compRight < box.left || 
+                 compLeft > box.right || 
+                 compBottom < box.top || 
+                 compTop > box.bottom);
+      });
+      
+      setSelectedIds(selected.map(c => c.id));
+      
+      // Also set the first selected component as the primary selection for properties panel
+      if (selected.length > 0) {
+        setSelectedId(selected[0].id);
+        onComponentSelect?.(selected[0]);
+      } else {
+        setSelectedId(null);
+      }
+      
+      setSelectionBox(null);
     }
   };
 
@@ -299,6 +397,8 @@ export function SchematicCanvas({
         onDrop={handleDrop}
         onKeyDown={handleKeyDown}
         onMouseMove={handleCanvasMouseMove}
+        onMouseDown={handleCanvasMouseDown}
+        onMouseUp={handleCanvasMouseUp}
         tabIndex={0}
         data-testid="canvas-drop-zone"
       >
@@ -412,6 +512,23 @@ export function SchematicCanvas({
             );
           })}
           
+          {/* Selection box when dragging */}
+          {selectionBox && (
+            <rect
+              x={Math.min(selectionBox.startX, selectionBox.endX)}
+              y={Math.min(selectionBox.startY, selectionBox.endY)}
+              width={Math.abs(selectionBox.endX - selectionBox.startX)}
+              height={Math.abs(selectionBox.endY - selectionBox.startY)}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.1}
+              stroke="hsl(var(--primary))"
+              strokeWidth={2}
+              strokeDasharray="5 5"
+              className="pointer-events-none"
+              data-testid="selection-box"
+            />
+          )}
+          
           {/* Wire preview when dragging */}
           {wireStart && wirePreviewEnd && (
             <path
@@ -460,7 +577,7 @@ export function SchematicCanvas({
                 <SchematicComponent
                   type={component.type}
                   name={component.name}
-                  selected={selectedId === component.id}
+                  selected={selectedIds.includes(component.id)}
                   onClick={(e) => handleComponentClick(component, e)}
                   onTerminalClick={(terminal, e) => handleTerminalClick(component, terminal, e)}
                   highlightedTerminals={highlightedTerminals}
