@@ -485,10 +485,20 @@ export function SchematicCanvas({
             }
             
             // Calculate wire offset to prevent overlaps
-            // Alternate between positive and negative offsets: +1, -1, +2, -2, +3, -3...
-            // This spreads wires in both directions for better visual distribution
-            const offsetMagnitude = Math.floor(wireIndex / 2) + 1;
-            const wireOffset = (wireIndex % 2 === 0) ? offsetMagnitude : -offsetMagnitude;
+            // Group wires by connection pair (same components, regardless of direction)
+            const connectionKey = [wire.fromComponentId, wire.toComponentId].sort().join('-');
+            const parallelWires = wires.filter(w => {
+              const wKey = [w.fromComponentId, w.toComponentId].sort().join('-');
+              return wKey === connectionKey;
+            });
+            const indexInGroup = parallelWires.findIndex(w => w.id === wire.id);
+            
+            // Calculate offset: distribute wires evenly around center
+            // For n wires: if n=1 offset=0, if n=2 offsets=[-1,1], if n=3 offsets=[-1,0,1], etc.
+            const groupSize = parallelWires.length;
+            const wireOffset = groupSize === 1 
+              ? 0 
+              : (indexInGroup - (groupSize - 1) / 2) * 1.5; // 1.5 spacing for better separation
             
             // Calculate orthogonal path with terminal orientations
             let path: string;
