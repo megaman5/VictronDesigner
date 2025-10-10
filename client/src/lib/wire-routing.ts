@@ -20,7 +20,7 @@ export function snapPointToGrid(x: number, y: number, gridSize: number = GRID_SI
 }
 
 /**
- * Calculate orthogonal path between two points with rounded corners
+ * Calculate orthogonal path between two points with rounded corners and collision avoidance
  * Returns an SVG path string for drawing
  */
 export function calculateOrthogonalPath(
@@ -28,7 +28,8 @@ export function calculateOrthogonalPath(
   y1: number,
   x2: number,
   y2: number,
-  cornerRadius: number = 10
+  cornerRadius: number = 15,
+  wireOffset: number = 0 // Offset for parallel wires to prevent overlap
 ): string {
   // Snap points to grid
   const start = snapPointToGrid(x1, y1);
@@ -37,74 +38,105 @@ export function calculateOrthogonalPath(
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   
-  // If points are aligned horizontally or vertically, draw a straight line
-  if (dx === 0 || dy === 0) {
-    return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+  // Apply wire offset for parallel wire separation
+  const offsetAmount = wireOffset * GRID_SIZE;
+  
+  // For straight lines, maintain offset in parallel segment then return to axis near terminal
+  if (dx === 0) {
+    // Vertical line - run parallel with offset, return to axis near end
+    if (offsetAmount === 0) {
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+    }
+    const signY = dy > 0 ? 1 : -1;
+    const nearEnd = end.y - (signY * GRID_SIZE); // One grid unit before terminal
+    return `M ${start.x} ${start.y} 
+            L ${start.x} ${start.y + (signY * GRID_SIZE)}
+            L ${start.x + offsetAmount} ${start.y + (signY * GRID_SIZE)}
+            L ${start.x + offsetAmount} ${nearEnd}
+            L ${end.x} ${nearEnd}
+            L ${end.x} ${end.y}`;
   }
   
-  // Calculate mid-point for the orthogonal turn
-  const midX = start.x + dx / 2;
-  const midY = start.y + dy / 2;
+  if (dy === 0) {
+    // Horizontal line - run parallel with offset, return to axis near end
+    if (offsetAmount === 0) {
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+    }
+    const signX = dx > 0 ? 1 : -1;
+    const nearEnd = end.x - (signX * GRID_SIZE); // One grid unit before terminal
+    return `M ${start.x} ${start.y} 
+            L ${start.x + (signX * GRID_SIZE)} ${start.y}
+            L ${start.x + (signX * GRID_SIZE)} ${start.y + offsetAmount}
+            L ${nearEnd} ${start.y + offsetAmount}
+            L ${nearEnd} ${end.y}
+            L ${end.x} ${end.y}`;
+  }
   
-  // Determine the routing direction (horizontal first vs vertical first)
-  // For now, use horizontal-first routing
+  // Determine routing direction based on distance
   const useHorizontalFirst = Math.abs(dx) >= Math.abs(dy);
   
+  // Use 5-segment routing with offset in middle to avoid overlaps while keeping endpoints connected
   if (useHorizontalFirst) {
-    // Route: start -> horizontal -> vertical -> end
-    const turnX = end.x;
-    const turnY = start.y;
+    // Route: start -> horizontal -> vertical (with offset) -> horizontal -> end
+    const midX = start.x + dx / 2;
+    const midY = start.y + dy / 2 + offsetAmount;
     
-    // Calculate actual corner radius (limited by path length)
     const maxRadius = Math.min(
       cornerRadius,
-      Math.abs(dx) / 2,
-      Math.abs(dy) / 2
+      Math.abs(dx) / 6,
+      Math.abs(dy) / 6
     );
     
     if (maxRadius < 2) {
-      // Too small for rounded corners, use sharp turns
-      return `M ${start.x} ${start.y} L ${turnX} ${turnY} L ${end.x} ${end.y}`;
+      return `M ${start.x} ${start.y} 
+              L ${midX} ${start.y} 
+              L ${midX} ${midY}
+              L ${midX} ${end.y}
+              L ${end.x} ${end.y}`;
     }
     
-    // Determine corner direction
-    const cornerSignX = dx > 0 ? 1 : -1;
-    const cornerSignY = dy > 0 ? 1 : -1;
+    const signX = dx > 0 ? 1 : -1;
+    const signY1 = (midY - start.y) > 0 ? 1 : -1;
+    const signY2 = (end.y - midY) > 0 ? 1 : -1;
     
-    // Calculate corner points
-    const cornerStartX = turnX - (maxRadius * cornerSignX);
-    const cornerEndY = turnY + (maxRadius * cornerSignY);
-    
-    // Build path with rounded corner
     return `M ${start.x} ${start.y} 
-            L ${cornerStartX} ${turnY} 
-            Q ${turnX} ${turnY} ${turnX} ${cornerEndY}
+            L ${midX - maxRadius * signX} ${start.y} 
+            Q ${midX} ${start.y} ${midX} ${start.y + maxRadius * signY1}
+            L ${midX} ${midY - maxRadius * signY2}
+            Q ${midX} ${midY} ${midX + maxRadius * signX} ${midY}
+            L ${end.x - maxRadius * signX} ${midY}
+            Q ${end.x} ${midY} ${end.x} ${midY + maxRadius * signY2}
             L ${end.x} ${end.y}`;
   } else {
-    // Route: start -> vertical -> horizontal -> end
-    const turnX = start.x;
-    const turnY = end.y;
+    // Route: start -> vertical -> horizontal (with offset) -> vertical -> end  
+    const midX = start.x + dx / 2 + offsetAmount;
+    const midY = start.y + dy / 2;
     
-    // Calculate actual corner radius
     const maxRadius = Math.min(
       cornerRadius,
-      Math.abs(dx) / 2,
-      Math.abs(dy) / 2
+      Math.abs(dy) / 6,
+      Math.abs(dx) / 6
     );
     
     if (maxRadius < 2) {
-      return `M ${start.x} ${start.y} L ${turnX} ${turnY} L ${end.x} ${end.y}`;
+      return `M ${start.x} ${start.y} 
+              L ${start.x} ${midY} 
+              L ${midX} ${midY}
+              L ${end.x} ${midY}
+              L ${end.x} ${end.y}`;
     }
     
-    const cornerSignX = dx > 0 ? 1 : -1;
-    const cornerSignY = dy > 0 ? 1 : -1;
-    
-    const cornerEndX = turnX + (maxRadius * cornerSignX);
-    const cornerStartY = turnY - (maxRadius * cornerSignY);
+    const signY = dy > 0 ? 1 : -1;
+    const signX1 = (midX - start.x) > 0 ? 1 : -1;
+    const signX2 = (end.x - midX) > 0 ? 1 : -1;
     
     return `M ${start.x} ${start.y} 
-            L ${turnX} ${cornerStartY} 
-            Q ${turnX} ${turnY} ${cornerEndX} ${turnY}
+            L ${start.x} ${midY - maxRadius * signY}
+            Q ${start.x} ${midY} ${start.x + maxRadius * signX1} ${midY}
+            L ${midX - maxRadius * signX2} ${midY}
+            Q ${midX} ${midY} ${midX} ${midY + maxRadius * signY}
+            L ${midX} ${end.y - maxRadius * signY}
+            Q ${midX} ${end.y} ${midX + maxRadius * signX2} ${end.y}
             L ${end.x} ${end.y}`;
   }
 }
