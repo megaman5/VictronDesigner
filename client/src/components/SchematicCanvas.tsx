@@ -224,7 +224,6 @@ export function SchematicCanvas({
         const compTop = comp.y;
         const compBottom = comp.y + dims.height;
         
-        // Check if component intersects with selection box
         return !(compRight < box.left || 
                  compLeft > box.right || 
                  compBottom < box.top || 

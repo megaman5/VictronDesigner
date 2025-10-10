@@ -37,6 +37,9 @@ Preferred communication style: Simple, everyday language.
    - All components intersecting the box are selected with blue ring highlight
    - Clicking single component clears multi-selection
    - Supports properties panel inspection of first selected component
+   - **Bug Fixes**:
+     - Fixed delete key to remove ALL selected components (was only deleting one)
+     - Fixed properties panel to update when clicking different components (added component ID as key to force re-render)
 
 ### Terminal-Based Wire Connections (Completed)
 - Each component now has defined terminal connection points (positive, negative, ground, AC, PV, data)
