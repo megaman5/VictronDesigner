@@ -22,6 +22,12 @@ Preferred communication style: Simple, everyday language.
    - Offsets: +1, -1, +2, -2, +3, -3... provide clear visual distinction
    - Midpoint jog routing maintains orthogonal paths
    - Note: Some convergence near terminals is unavoidable with orthogonal routing to same point
+5. **Mobile Wire Visibility Fix**: Fixed issue where wires weren't visible on mobile devices
+   - SVG now has explicit dimensions (2400x1600) ensuring wires render correctly across all screen sizes
+6. **AI Wire Generation**: New feature to automatically wire manually-placed components
+   - "AI Wire" button generates intelligent connections for user-placed components
+   - Follows same electrical rules as full AI system generation
+   - Perfect for users who want to layout components manually but need help with proper wiring
 
 ### Terminal-Based Wire Connections (Completed)
 - Each component now has defined terminal connection points (positive, negative, ground, AC, PV, data)
