@@ -494,11 +494,11 @@ export function SchematicCanvas({
             const indexInGroup = parallelWires.findIndex(w => w.id === wire.id);
             
             // Calculate offset: distribute wires evenly around center
-            // For n wires: if n=1 offset=0, if n=2 offsets=[-1,1], if n=3 offsets=[-1,0,1], etc.
+            // For n wires: if n=1 offset=0, if n=2 offsets=[-1.5,1.5], if n=3 offsets=[-3,0,3], etc.
             const groupSize = parallelWires.length;
             const wireOffset = groupSize === 1 
               ? 0 
-              : (indexInGroup - (groupSize - 1) / 2) * 1.5; // 1.5 spacing for better separation
+              : (indexInGroup - (groupSize - 1) / 2) * 3.0; // 3.0 spacing for better separation (60px at GRID_SIZE=20)
             
             // Calculate orthogonal path with terminal orientations
             let path: string;
