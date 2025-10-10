@@ -31,6 +31,12 @@ Preferred communication style: Simple, everyday language.
    - Follows same electrical rules as full AI system generation
    - Perfect for users who want to layout components manually but need help with proper wiring
    - Fixed wire rendering bug with unique ID generation using index-seeded tokens
+7. **Selection Box Multi-Select**: Drag-to-select multiple components on canvas
+   - Click and drag on empty canvas to create selection box
+   - Visual selection box with dashed border and semi-transparent fill
+   - All components intersecting the box are selected with blue ring highlight
+   - Clicking single component clears multi-selection
+   - Supports properties panel inspection of first selected component
 
 ### Terminal-Based Wire Connections (Completed)
 - Each component now has defined terminal connection points (positive, negative, ground, AC, PV, data)
