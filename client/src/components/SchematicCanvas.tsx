@@ -529,7 +529,7 @@ export function SchematicCanvas({
               <g 
                 key={wire.id}
                 className="cursor-pointer hover:opacity-80"
-                onClick={(e) => handleWireClick(wire.id, e as any)}
+                onClick={(e) => handleWireClick(wire.id, e)}
                 data-testid={`wire-${wire.id}`}
               >
                 <path
