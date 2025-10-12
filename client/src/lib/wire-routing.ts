@@ -43,7 +43,8 @@ export function calculateOrthogonalPathWithOrientation(
   // Minimum exit distance from terminals (shorter for better routing)
   const MIN_EXIT = GRID_SIZE * 2; // 40px minimum exit (reduced from 60px)
   
-  // Calculate exit points based on terminal orientation (always respect physical constraints)
+  // Calculate exit points with smart direction logic
+  // For top/bottom orientations, choose direction based on destination
   let exitPoint = { ...start };
   switch (startOrientation) {
     case "left":
@@ -55,16 +56,23 @@ export function calculateOrthogonalPathWithOrientation(
       exitPoint.y = start.y + offsetAmount;
       break;
     case "top":
-      exitPoint.x = start.x + offsetAmount;
-      exitPoint.y = start.y - MIN_EXIT;
-      break;
     case "bottom":
+      // For vertical orientations, always route toward the destination
       exitPoint.x = start.x + offsetAmount;
-      exitPoint.y = start.y + MIN_EXIT;
+      if (end.y > start.y) {
+        // Destination is below - exit downward
+        exitPoint.y = start.y + MIN_EXIT;
+      } else if (end.y < start.y) {
+        // Destination is above - exit upward
+        exitPoint.y = start.y - MIN_EXIT;
+      } else {
+        // Same Y level - use default for orientation
+        exitPoint.y = startOrientation === "top" ? start.y - MIN_EXIT : start.y + MIN_EXIT;
+      }
       break;
   }
   
-  // Calculate entry points based on terminal orientation (always respect physical constraints)
+  // Calculate entry points with smart direction logic
   let entryPoint = { ...end };
   switch (endOrientation) {
     case "left":
@@ -76,12 +84,19 @@ export function calculateOrthogonalPathWithOrientation(
       entryPoint.y = end.y + offsetAmount;
       break;
     case "top":
-      entryPoint.x = end.x + offsetAmount;
-      entryPoint.y = end.y - MIN_EXIT;
-      break;
     case "bottom":
+      // For vertical orientations, always enter from the source direction
       entryPoint.x = end.x + offsetAmount;
-      entryPoint.y = end.y + MIN_EXIT;
+      if (start.y > end.y) {
+        // Source is below - enter from below
+        entryPoint.y = end.y + MIN_EXIT;
+      } else if (start.y < end.y) {
+        // Source is above - enter from above
+        entryPoint.y = end.y - MIN_EXIT;
+      } else {
+        // Same Y level - use default for orientation
+        entryPoint.y = endOrientation === "top" ? end.y - MIN_EXIT : end.y + MIN_EXIT;
+      }
       break;
   }
   
