@@ -95,7 +95,14 @@ export default function SchematicDesigner() {
       console.log("Wires:", data.wires);
       
       setComponents(data.components || []);
-      setWires(data.wires || []);
+      
+      // Generate unique IDs for the wires
+      const wiresWithIds = (data.wires || []).map((wire: any, index: number) => ({
+        ...wire,
+        id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+      }));
+      
+      setWires(wiresWithIds);
       toast({
         title: "System Generated",
         description: data.description || "AI has generated your electrical system",

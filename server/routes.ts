@@ -162,9 +162,14 @@ CRITICAL WIRING RULES:
    - Battery negative → SmartShunt "negative" terminal
    - SmartShunt "system-minus" → All loads' negative terminals
    - This ensures ALL current flows through the shunt for accurate monitoring
-2. Use bus bars when connecting 3+ devices to simplify wiring
-3. Main battery cables (battery to inverter): Use largest gauge
-4. Never mix polarities on same bus bar
+2. Use SEPARATE bus bars for DC and AC circuits when both are present:
+   - DC Bus Bars (12V/24V): Connect DC loads (dc-load) to dedicated DC positive/negative busbars
+   - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
+   - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
+   - Never connect DC and AC loads to the same bus bar
+3. Use bus bars when connecting 3+ devices of the same type to simplify wiring
+4. Main battery cables (battery to inverter): Use largest gauge
+5. Never mix polarities on same bus bar
 
 WIRE GAUGE SELECTION:
 - 0-25A: 10 AWG
@@ -259,9 +264,14 @@ CRITICAL WIRING RULES:
    - Battery negative → SmartShunt "negative" terminal
    - SmartShunt "system-minus" → All loads' negative terminals
    - This ensures ALL current flows through the shunt for accurate monitoring
-2. Use bus bars when connecting 3+ devices to simplify wiring
-3. Main battery cables (battery to inverter): Use largest gauge
-4. Never mix polarities on same bus bar
+2. Use SEPARATE bus bars for DC and AC circuits when both are present:
+   - DC Bus Bars (12V/24V): Connect DC loads (dc-load) to dedicated DC positive/negative busbars
+   - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
+   - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
+   - Never connect DC and AC loads to the same bus bar
+3. Use bus bars when connecting 3+ devices of the same type to simplify wiring
+4. Main battery cables (battery to inverter): Use largest gauge
+5. Never mix polarities on same bus bar
 5. Solar panels connect to MPPT PV terminals, MPPT battery terminals connect to battery
 6. Inverters connect to battery or main bus bars
 7. AC loads connect to inverter AC output
