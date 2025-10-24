@@ -1,10 +1,53 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateOrthogonalPath, calculateOrthogonalPathWithOrientation, calculateWireLength } from "@/lib/wire-routing";
+
+const CONNECTION_LANE_SPACING = 3.0; // 3 grid units (60px) between parallel connections
+const TERMINAL_LANE_SPACING = 3.0; // 3 grid units (60px) between wires sharing a terminal
+
+function getLaneOffset(index: number, groupSize: number, spacing: number): number {
+  if (groupSize <= 1) return 0;
+  return (index - (groupSize - 1) / 2) * spacing;
+}
+
+function createOffsetMap(
+  wires: Wire[],
+  groupKey: (wire: Wire) => string,
+  spacing: number,
+  sortKey?: (wire: Wire) => string
+): Map<string, number> {
+  const groups = new Map<string, Wire[]>();
+
+  for (const wire of wires) {
+    const key = groupKey(wire);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(wire);
+  }
+
+  const offsets = new Map<string, number>();
+
+  groups.forEach(group => {
+    const ordered = [...group];
+
+    if (sortKey) {
+      ordered.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+    } else {
+      ordered.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    ordered.forEach((wire, index) => {
+      offsets.set(wire.id, getLaneOffset(index, ordered.length, spacing));
+    });
+  });
+
+  return offsets;
+}
 
 export interface WireConnectionData {
   fromComponentId: string;
@@ -30,8 +73,8 @@ interface SchematicCanvasProps {
   wireStartComponent?: string | null;
 }
 
-export function SchematicCanvas({ 
-  components = [], 
+export function SchematicCanvas({
+  components = [],
   wires = [],
   onComponentsChange,
   onWiresChange,
@@ -69,8 +112,48 @@ export function SchematicCanvas({
     position: { x: number; y: number };
   } | null>(null);
   const [wirePreviewEnd, setWirePreviewEnd] = useState<{ x: number; y: number } | null>(null);
-  
+
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  const startOffsetMap = useMemo(
+    () =>
+      createOffsetMap(
+        wires,
+        (wire) => `${wire.fromComponentId}:${wire.fromTerminal}`,
+        TERMINAL_LANE_SPACING,
+        (wire) => `${wire.toComponentId}:${wire.toTerminal}`
+      ),
+    [wires]
+  );
+
+  const endOffsetMap = useMemo(
+    () =>
+      createOffsetMap(
+        wires,
+        (wire) => `${wire.toComponentId}:${wire.toTerminal}`,
+        TERMINAL_LANE_SPACING,
+        (wire) => `${wire.fromComponentId}:${wire.fromTerminal}`
+      ),
+    [wires]
+  );
+
+  const connectionOffsetMap = useMemo(
+    () =>
+      createOffsetMap(
+        wires,
+        (wire) => {
+          const componentPair = [wire.fromComponentId, wire.toComponentId].sort().join("|");
+          return componentPair;
+        },
+        CONNECTION_LANE_SPACING,
+        (wire) => {
+          const terminals = [wire.fromTerminal, wire.toTerminal].sort().join("|");
+          const componentPair = [wire.fromComponentId, wire.toComponentId].sort().join("|");
+          return `${componentPair}|${terminals}|${wire.id}`;
+        }
+      ),
+    [wires]
+  );
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -484,21 +567,11 @@ export function SchematicCanvas({
               toPos = { x: to.x, y: to.y };
             }
             
-            // Calculate wire offset to prevent overlaps
-            // Group wires by connection pair (same components, regardless of direction)
-            const connectionKey = [wire.fromComponentId, wire.toComponentId].sort().join('-');
-            const parallelWires = wires.filter(w => {
-              const wKey = [w.fromComponentId, w.toComponentId].sort().join('-');
-              return wKey === connectionKey;
-            });
-            const indexInGroup = parallelWires.findIndex(w => w.id === wire.id);
-            
-            // Calculate offset: distribute wires evenly around center
-            // For n wires: if n=1 offset=0, if n=2 offsets=[-1.5,1.5], if n=3 offsets=[-3,0,3], etc.
-            const groupSize = parallelWires.length;
-            const wireOffset = groupSize === 1 
-              ? 0 
-              : (indexInGroup - (groupSize - 1) / 2) * 3.0; // 3.0 spacing for better separation (60px at GRID_SIZE=20)
+            // Calculate composite lane offset to prevent overlaps from shared terminals or connections
+            const startOffset = startOffsetMap.get(wire.id) ?? 0;
+            const endOffset = endOffsetMap.get(wire.id) ?? 0;
+            const connectionOffset = connectionOffsetMap.get(wire.id) ?? 0;
+            const wireOffset = startOffset + endOffset + connectionOffset;
             
             // Calculate orthogonal path with terminal orientations
             let path: string;
