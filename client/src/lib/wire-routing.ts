@@ -217,17 +217,9 @@ export function calculateOrthogonalPath(
   // Calculate offset amount based on lane
   const offsetAmount = wireOffset * GRID_SIZE;
   
-  // Minimum distance required for offset routing (need space for exit + offset lane + entry)
-  const minDistanceForOffset = GRID_SIZE * 6; // 120px minimum
-  
-  // If distance is too small, use simple routing
-  if (Math.abs(dx) < minDistanceForOffset && Math.abs(dy) < minDistanceForOffset) {
-    return simpleOrthogonalPath(start.x, start.y, end.x, end.y, cornerRadius);
-  }
-  
   // Determine primary routing direction
   const isHorizontalDominant = Math.abs(dx) >= Math.abs(dy);
-  
+
   // Use early offset strategy: apply offset immediately from source
   // This keeps wires separated throughout their entire path
   
