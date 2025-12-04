@@ -180,7 +180,14 @@ export default function SchematicDesigner() {
               setAiDialogOpen(false);
               setIterationProgress(null);
             } else if (currentEventType === "error") {
-              throw new Error(data.error || "Generation failed");
+              console.error("AI generation error:", data.error);
+              toast({
+                title: "AI Generation Failed",
+                description: data.error || "Failed to generate a valid design. Please try again with a simpler prompt.",
+                variant: "destructive",
+              });
+              setAiDialogOpen(false);
+              setIterationProgress(null);
             }
 
             currentEventType = "";

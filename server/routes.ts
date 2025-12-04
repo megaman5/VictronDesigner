@@ -780,6 +780,17 @@ Respond with valid JSON only:
       }
 
       // Return best design after max iterations
+      if (!bestDesign || !bestDesign.components || bestDesign.components.length === 0) {
+        console.log('[SSE] All iterations failed - no valid design generated');
+        sendEvent('error', {
+          error: 'Failed to generate a valid design after all iterations. All attempts had validation errors.',
+          iterationHistory,
+          finalIteration: maxIterations
+        });
+        res.end();
+        return;
+      }
+
       sendEvent('complete', {
         ...bestDesign,
         iterationHistory,
