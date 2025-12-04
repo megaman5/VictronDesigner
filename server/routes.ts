@@ -22,12 +22,15 @@ function extractJSON(content: string): string {
   }
 
   // Try to find a JSON object (starts with { and ends with })
-  const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
-  if (jsonObjectMatch) {
-    return jsonObjectMatch[0].trim();
+  // Look for the first { and last } to get the outermost object
+  const firstBrace = content.indexOf('{');
+  const lastBrace = content.lastIndexOf('}');
+
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return content.substring(firstBrace, lastBrace + 1).trim();
   }
 
-  // If no patterns found, return trimmed content
+  // If no JSON found, return trimmed content (will likely fail parsing)
   return content.trim();
 }
 
