@@ -719,6 +719,14 @@ Respond with valid JSON only:
           systemVoltage
         );
 
+        // Generate visual feedback (optional, for debugging)
+        let visualFeedback = null;
+        try {
+          visualFeedback = await renderSchematicToPNG(response.components, response.wires);
+        } catch (err) {
+          console.log("Visual feedback generation skipped:", err);
+        }
+
         // Track this iteration
         iterationHistory.push({
           iteration: iteration + 1,
@@ -732,7 +740,8 @@ Respond with valid JSON only:
           bestScore = validation.score;
           bestDesign = {
             ...response,
-            validation
+            validation,
+            visualFeedback
           };
         }
 
