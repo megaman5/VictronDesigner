@@ -40,9 +40,10 @@
   --victron-blue-light: 210 100% 55%;
   --wire-positive: 0 70% 50%;
   --wire-negative: 0 0% 15%;
-  --wire-ac-hot: 0 70% 50%;
+  --wire-ac-hot: 0 0% 20%;
   --wire-neutral: 210 5% 85%;
   --wire-ground: 142 71% 45%;
+  --wire-ac-ground: 142 71% 45%;
 
   --sidebar-accent: 210 8% 88%;
 
@@ -166,9 +167,10 @@
   --victron-blue-light: 210 100% 65%;
   --wire-positive: 0 70% 55%;
   --wire-negative: 0 0% 85%;
-  --wire-ac-hot: 0 70% 55%;
+  --wire-ac-hot: 0 0% 75%;
   --wire-neutral: 210 5% 75%;
   --wire-ground: 142 71% 55%;
+  --wire-ac-ground: 142 71% 55%;
 
   --sidebar-accent: 210 8% 16%;
 

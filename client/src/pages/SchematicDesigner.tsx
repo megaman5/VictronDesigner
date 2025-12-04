@@ -101,6 +101,7 @@ export default function SchematicDesigner() {
     setIterationProgress(null);
 
     try {
+      const isIterating = components.length > 0;
       const response = await fetch("/api/ai-generate-system-stream", {
         method: "POST",
         headers: {
@@ -111,6 +112,11 @@ export default function SchematicDesigner() {
           systemVoltage,
           minQualityScore: 70,
           maxIterations: 5,
+          // Include existing design context when iterating
+          existingDesign: isIterating ? {
+            components,
+            wires,
+          } : undefined,
         }),
       });
 
@@ -475,6 +481,7 @@ export default function SchematicDesigner() {
         onOpen={() => console.log("Open project")}
         onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
         wireMode={wireConnectionMode}
+        hasComponents={components.length > 0}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -573,6 +580,8 @@ export default function SchematicDesigner() {
         onGenerate={(prompt) => handleAIGenerateWithStreaming(prompt)}
         isGenerating={isAiGenerating}
         iterationProgress={iterationProgress}
+        isIterating={components.length > 0}
+        existingComponentsCount={components.length}
       />
 
       <ExportDialog

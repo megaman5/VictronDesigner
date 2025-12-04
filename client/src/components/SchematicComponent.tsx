@@ -398,7 +398,7 @@ export function SchematicComponent({
         );
       case "ac-panel":
         return (
-          <g>
+          <svg width="180" height="220" viewBox="0 0 180 220">
             <rect x="0" y="0" width="180" height="220" rx="4" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="2" />
             <rect x="0" y="0" width="180" height="30" rx="4" fill="hsl(var(--muted))" />
             <text x="90" y="20" textAnchor="middle" className="fill-foreground text-xs font-bold">AC DISTRIBUTION</text>
@@ -415,11 +415,11 @@ export function SchematicComponent({
             {/* Main Input Area */}
             <rect x="10" y="180" width="160" height="30" rx="2" fill="hsl(var(--muted))" opacity="0.3" />
             <text x="90" y="198" textAnchor="middle" className="fill-muted-foreground text-[10px]">MAIN INPUT</text>
-          </g>
+          </svg>
         );
       case "dc-panel":
         return (
-          <g>
+          <svg width="160" height="240" viewBox="0 0 160 240">
             <rect x="0" y="0" width="160" height="240" rx="4" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="2" />
             <rect x="0" y="0" width="160" height="30" rx="4" fill="hsl(var(--muted))" />
             <text x="80" y="20" textAnchor="middle" className="fill-foreground text-xs font-bold">DC DISTRIBUTION</text>
@@ -435,7 +435,8 @@ export function SchematicComponent({
 
             {/* Main Input Area */}
             <rect x="10" y="210" width="140" height="20" rx="2" fill="hsl(var(--muted))" opacity="0.3" />
-          </g>
+            <text x="80" y="223" textAnchor="middle" className="fill-muted-foreground text-[10px]">MAIN INPUT</text>
+          </svg>
         );
       default:
         return (

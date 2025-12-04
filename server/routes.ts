@@ -196,6 +196,8 @@ COMPONENT DIMENSIONS & SPACING:
 - fuse: 80×60px
 - switch: 80×80px
 - breaker-panel: 160×200px
+- ac-panel: 180×220px
+- dc-panel: 160×240px
 
 LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
 1. Minimum 300px horizontal spacing between component centers
@@ -233,22 +235,34 @@ EVERY wire must have these exact fields:
 }
 
 CRITICAL WIRING RULES:
-1. SmartShunt MUST be in negative path between battery and ALL loads
+1. BATTERY FUSE (SAFETY BEST PRACTICE):
+   - NEW battery installations should include a fuse on the POSITIVE terminal
+   - Flow: Battery "positive" → Fuse "in", Fuse "out" → Rest of system
+   - Place fuse 100px from battery (e.g., if battery at x=150, fuse at x=250)
+   - If modifying existing designs without fuses, you may proceed without adding fuses
+   - Example: Battery "positive" → Fuse "in", Fuse "out" → Busbar pos-1
+2. SmartShunt MUST be in negative path between battery and ALL loads
    - Battery negative → SmartShunt "negative" terminal
    - SmartShunt "system-minus" → All loads' negative terminals
    - This ensures ALL current flows through the shunt for accurate monitoring
-2. Use SEPARATE bus bars for DC and AC circuits when both are present:
+3. Use SEPARATE bus bars for DC and AC circuits when both are present:
    - DC Bus Bars (12V/24V): Connect DC loads (dc-load) to dedicated DC positive/negative busbars
    - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
-3. Use bus bars when connecting 3+ devices of the same type to simplify wiring
-4. Main battery cables (battery to inverter): Use largest gauge (4/0 AWG or 2/0 AWG)
-5. Never mix polarities on same bus bar
-6. MultiPlus Connections:
+4. Use bus bars when connecting 3+ devices of the same type to simplify wiring
+5. Main battery cables (battery to inverter): Use largest gauge (4/0 AWG or 2/0 AWG)
+6. Never mix polarities on same bus bar
+7. MultiPlus Connections:
    - AC IN: Connect to Shore Power or Grid (Hot/Neutral/Ground)
    - AC OUT: Connect to AC Distribution Panel (Hot/Neutral/Ground)
-   - DC: Connect to Battery Bank (via Fuse/Switch)
+   - DC: Connect to Battery Bank (MUST go through battery fuse first)
+8. AC Load Connections (MANDATORY - ALL THREE WIRES):
+   - EVERY ac-load MUST have THREE wire connections: hot, neutral, AND ground
+   - Hot wire: From inverter "ac-out-hot" or panel "load-X-hot" to ac-load "hot"
+   - Neutral wire: From inverter "ac-out-neutral" or panel "load-X-neutral" to ac-load "neutral"
+   - Ground wire: From inverter "ac-out-ground" or panel "load-X-ground" to ac-load "ground"
+   - Example: Inverter AC OUT → AC Load requires 3 wires (hot, neutral, ground)
 
 DEVICE KNOWLEDGE BASE (STRICTLY FOLLOW THESE RULES):
 ${Object.values(DEVICE_DEFINITIONS).map(d => `
@@ -331,12 +345,15 @@ COMPONENT TERMINALS (EXACT NAMES):
 - smartshunt: "negative" (battery side), "system-minus" (system side), "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
-- ac-load: "ac-in"
+- ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
-- ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground"
-- dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg"
+- fuse: "in", "out"
+- switch: "in", "out"
+- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
+- ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
+- dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
 
 WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
 EVERY wire must have these exact fields:
@@ -351,20 +368,31 @@ EVERY wire must have these exact fields:
 }
 
 CRITICAL WIRING RULES:
-1. SmartShunt MUST be in negative path between battery and ALL loads
+1. BATTERY FUSE (SAFETY BEST PRACTICE):
+   - NEW battery installations should include a fuse on the POSITIVE terminal
+   - Flow: Battery "positive" → Fuse "in", Fuse "out" → Rest of system
+   - Place fuse 100px from battery (e.g., if battery at x=150, fuse at x=250)
+   - If modifying existing designs without fuses, you may proceed without adding fuses
+   - Example: Battery "positive" → Fuse "in", Fuse "out" → Busbar pos-1
+2. SmartShunt MUST be in negative path between battery and ALL loads
    - Battery negative → SmartShunt "negative" terminal
    - SmartShunt "system-minus" → All loads' negative terminals
    - This ensures ALL current flows through the shunt for accurate monitoring
-2. Use SEPARATE bus bars for DC and AC circuits when both are present:
+3. Use SEPARATE bus bars for DC and AC circuits when both are present:
    - DC Bus Bars (12V/24V): Connect DC loads (dc-load) to dedicated DC positive/negative busbars
    - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
-3. Use bus bars when connecting 3+ devices of the same type to simplify wiring
+4. Use bus bars when connecting 3+ devices of the same type to simplify wiring
    - DISTRIBUTE connections across bus bar terminals (e.g., pos-1, pos-2, pos-3)
    - Do NOT connect all wires to the same terminal (e.g., do not put everything on pos-1)
-8. DC loads connect to battery/bus bars after SmartShunt on negative side
-9. Data connections: BMV/SmartShunt to Cerbo via data terminals
+5. DC loads connect to battery/bus bars after SmartShunt on negative side
+6. Data connections: BMV/SmartShunt to Cerbo via data terminals
+7. AC Load Connections (MANDATORY - ALL THREE WIRES):
+   - EVERY ac-load MUST have THREE wire connections: hot, neutral, AND ground
+   - Hot wire: From inverter "ac-out-hot" or panel "load-X-hot" to ac-load "hot"
+   - Neutral wire: From inverter "ac-out-neutral" or panel "load-X-neutral" to ac-load "neutral"
+   - Ground wire: From inverter "ac-out-ground" or panel "load-X-ground" to ac-load "ground"
 
 DEVICE KNOWLEDGE BASE (STRICTLY FOLLOW THESE RULES):
 ${Object.values(DEVICE_DEFINITIONS).map(d => `
@@ -462,6 +490,11 @@ COMPONENT DIMENSIONS (width × height):
 - dc-load: 120×100px
 - busbar-positive: 200×60px
 - busbar-negative: 200×60px
+- fuse: 80×60px
+- switch: 80×80px
+- breaker-panel: 160×200px
+- ac-panel: 180×220px
+- dc-panel: 160×240px
 
 LAYOUT RULES:
 1. Components must NOT overlap - check dimensions above
@@ -480,10 +513,15 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
-- ac-load: "ac-in"
+- ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+- fuse: "in", "out"
+- switch: "in", "out"
+- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
+- ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
+- dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
 
 ⚠️ EXAMPLES OF CORRECT vs WRONG TERMINAL IDs:
 ✅ CORRECT: "ac-out-hot" (multiplus AC output)
@@ -500,11 +538,12 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 ❌ WRONG: {"id": "load-1", "type": "ac-load", "name": undefined, ...}
 
 CRITICAL WIRING RULES:
-1. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
-2. Use bus bars when 3+ connections needed (separate bars for positive/negative)
-3. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
-4. Use EXACT terminal IDs from list above (copy them character-by-character)
-5. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
+1. BATTERY FUSE (BEST PRACTICE): For NEW systems, include fuse: Battery "positive" → Fuse "in", Fuse "out" → system (100px from battery). If modifying existing design, may skip if already wired.
+2. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
+3. Use bus bars when 3+ connections needed (separate bars for positive/negative)
+4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
+5. Use EXACT terminal IDs from list above (copy them character-by-character)
+6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -516,7 +555,13 @@ VALIDATION CHECKLIST:
 ✓ Logical component layout
 
 ${feedbackContext}
+${existingDesign ? `
+⚠️ ITERATION MODE: Modifying existing design with ${existingDesign.components?.length || 0} components and ${existingDesign.wires?.length || 0} wires.
+BASE DESIGN: ${JSON.stringify({ components: existingDesign.components, wires: existingDesign.wires })}
+MODIFY based on user request. Keep existing component IDs. Return COMPLETE design with ALL components and wires.
+` : ''}
 
+⚠️ CRITICAL: Respond with ONLY valid JSON. NO explanations. NO text outside the JSON structure:
 Respond with valid JSON only:
 {
   "components": [...],
@@ -624,7 +669,8 @@ Respond with valid JSON only:
         prompt,
         systemVoltage = 12,
         minQualityScore = 70,
-        maxIterations = 5
+        maxIterations = 5,
+        existingDesign // Optional: { components, wires } for iteration mode
       } = req.body;
 
       if (!prompt) {
@@ -682,6 +728,11 @@ COMPONENT DIMENSIONS (width × height):
 - dc-load: 120×100px
 - busbar-positive: 200×60px
 - busbar-negative: 200×60px
+- fuse: 80×60px
+- switch: 80×80px
+- breaker-panel: 160×200px
+- ac-panel: 180×220px
+- dc-panel: 160×240px
 
 LAYOUT RULES:
 1. Components must NOT overlap - check dimensions above
@@ -700,10 +751,15 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
-- ac-load: "ac-in"
+- ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+- fuse: "in", "out"
+- switch: "in", "out"
+- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
+- ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
+- dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
 
 ⚠️ EXAMPLES OF CORRECT vs WRONG TERMINAL IDs:
 ✅ CORRECT: "ac-out-hot" (multiplus AC output)
@@ -720,11 +776,12 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 ❌ WRONG: {"id": "load-1", "type": "ac-load", "name": undefined, ...}
 
 CRITICAL WIRING RULES:
-1. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
-2. Use bus bars when 3+ connections needed (separate bars for positive/negative)
-3. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
-4. Use EXACT terminal IDs from list above (copy them character-by-character)
-5. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
+1. BATTERY FUSE (BEST PRACTICE): For NEW systems, include fuse: Battery "positive" → Fuse "in", Fuse "out" → system (100px from battery). If modifying existing design, may skip if already wired.
+2. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
+3. Use bus bars when 3+ connections needed (separate bars for positive/negative)
+4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
+5. Use EXACT terminal IDs from list above (copy them character-by-character)
+6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -736,7 +793,13 @@ VALIDATION CHECKLIST:
 ✓ Logical component layout
 
 ${feedbackContext}
+${existingDesign ? `
+⚠️ ITERATION MODE: Modifying existing design with ${existingDesign.components?.length || 0} components and ${existingDesign.wires?.length || 0} wires.
+BASE DESIGN: ${JSON.stringify({ components: existingDesign.components, wires: existingDesign.wires })}
+MODIFY based on user request. Keep existing component IDs. Return COMPLETE design with ALL components and wires.
+` : ''}
 
+⚠️ CRITICAL: Respond with ONLY valid JSON. NO explanations. NO text outside the JSON structure:
 Respond with valid JSON only:
 {
   "components": [...],
