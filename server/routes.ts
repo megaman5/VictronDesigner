@@ -499,7 +499,6 @@ Respond with valid JSON only:
             { role: "system", content: systemMessage },
             { role: "user", content: userMessage }
           ],
-          temperature: 0.7,
           max_completion_tokens: 4000,
         });
 
@@ -692,7 +691,6 @@ Respond with valid JSON only:
             { role: "system", content: systemMessage },
             { role: "user", content: userMessage }
           ],
-          temperature: 0.7,
           max_completion_tokens: 4000,
         });
 
