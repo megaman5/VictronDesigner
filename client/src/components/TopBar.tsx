@@ -1,4 +1,4 @@
-import { Zap, Save, FolderOpen, Download, Sparkles, Cable } from "lucide-react";
+import { Zap, Save, FolderOpen, Download, Sparkles, Cable, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -17,9 +17,21 @@ interface TopBarProps {
   onOpen?: () => void;
   onWireMode?: () => void;
   wireMode?: boolean;
+  onDesignReview?: () => void;
+  designReviewOpen?: boolean;
 }
 
-export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, wireMode = false }: TopBarProps) {
+export function TopBar({
+  onAIPrompt,
+  onAIWire,
+  onExport,
+  onSave,
+  onOpen,
+  onWireMode,
+  wireMode = false,
+  onDesignReview,
+  designReviewOpen = false
+}: TopBarProps) {
   return (
     <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
       <div className="flex items-center gap-3">
@@ -61,6 +73,17 @@ export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireM
         >
           <Cable className="h-4 w-4" />
           {wireMode ? "Connecting..." : "Add Wire"}
+        </Button>
+
+        <Button
+          variant={designReviewOpen ? "default" : "outline"}
+          size="sm"
+          onClick={onDesignReview}
+          data-testid="button-design-review"
+          className="gap-2"
+        >
+          <ClipboardCheck className="h-4 w-4" />
+          {designReviewOpen ? "Hide Review" : "Design Review"}
         </Button>
 
         <Button

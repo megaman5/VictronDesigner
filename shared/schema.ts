@@ -111,3 +111,31 @@ export interface AISystemResponse {
   description: string;
   recommendations: string[];
 }
+
+// Design validation types
+export interface ValidationIssue {
+  severity: "error" | "warning" | "info";
+  category: "electrical" | "wire-sizing" | "layout" | "terminal" | "ai-quality";
+  message: string;
+  componentIds?: string[];
+  wireId?: string;
+  suggestion?: string;
+}
+
+export interface DesignMetrics {
+  componentCount: number;
+  wireCount: number;
+  avgComponentSpacing: number;
+  overlappingComponents: number;
+  invalidTerminalConnections: number;
+  wireGaugeIssues: number;
+  electricalRuleViolations: number;
+  layoutEfficiency: number; // 0-100
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  score: number; // 0-100 quality score
+  issues: ValidationIssue[];
+  metrics: DesignMetrics;
+}
