@@ -28,9 +28,11 @@ interface AIPromptDialogProps {
   onGenerate?: (prompt: string) => void;
   isGenerating?: boolean;
   iterationProgress?: IterationProgress | null;
+  isIterating?: boolean; // True when modifying existing design
+  existingComponentsCount?: number; // Number of components in current design
 }
 
-export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = false, iterationProgress }: AIPromptDialogProps) {
+export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = false, iterationProgress, isIterating = false, existingComponentsCount = 0 }: AIPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
 
   const handleGenerate = () => {
@@ -40,7 +42,11 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = 
     setPrompt("");
   };
 
-  const examplePrompts = [
+  const examplePrompts = isIterating ? [
+    "Add a SmartShunt for battery monitoring",
+    "Replace the MPPT controller with a larger 100/50 model",
+    "Add AC and DC load circuits with proper fusing",
+  ] : [
     "Design a 3kW solar system for an RV with 400Ah battery bank",
     "Create an off-grid home system with 5kW inverter and MPPT controller",
     "Setup a marine power system for a 40ft boat with shore power",
@@ -52,10 +58,13 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            AI System Designer
+            {isIterating ? "AI Design Iteration" : "AI System Designer"}
           </DialogTitle>
           <DialogDescription>
-            Describe your power system requirements and let AI design the schematic for you
+            {isIterating
+              ? `Modify your existing design (${existingComponentsCount} components). Describe what you'd like to add, remove, or change.`
+              : "Describe your power system requirements and let AI design the schematic for you"
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -189,7 +198,7 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = 
                 className="gap-2"
               >
                 <Sparkles className="h-4 w-4" />
-                Generate System
+                {isIterating ? "Iterate Design" : "Generate System"}
               </Button>
             </div>
           </div>

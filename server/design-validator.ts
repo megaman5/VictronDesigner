@@ -491,7 +491,7 @@ export class DesignValidator {
 
       // Define required terminal types for each component category
       const requiresBothPowerTerminals = [
-        'battery', 'dc-load', 'ac-load', 'solar-panel'
+        'battery', 'dc-load', 'solar-panel'
       ];
 
       if (requiresBothPowerTerminals.includes(comp.type)) {
@@ -532,6 +532,58 @@ export class DesignValidator {
             message: `${comp.type} "${comp.name}" is missing negative (-) connection`,
             componentIds: [comp.id],
             suggestion: `Connect negative terminal to ground or negative bus bar. Valid terminals: ${negativeTerminals.map(t => t.id).join(", ")}`,
+          });
+        }
+      }
+
+      // AC loads require hot, neutral, and ground connections
+      if (comp.type === 'ac-load') {
+        const hotTerminals = config.terminals.filter(t => t.id === 'hot');
+        const neutralTerminals = config.terminals.filter(t => t.id === 'neutral');
+        const groundTerminals = config.terminals.filter(t => t.id === 'ground');
+
+        const hasHotConnection = this.wires.some(w =>
+          (w.fromComponentId === comp.id && hotTerminals.some(t => t.id === w.fromTerminal)) ||
+          (w.toComponentId === comp.id && hotTerminals.some(t => t.id === w.toTerminal))
+        );
+
+        const hasNeutralConnection = this.wires.some(w =>
+          (w.fromComponentId === comp.id && neutralTerminals.some(t => t.id === w.fromTerminal)) ||
+          (w.toComponentId === comp.id && neutralTerminals.some(t => t.id === w.toTerminal))
+        );
+
+        const hasGroundConnection = this.wires.some(w =>
+          (w.fromComponentId === comp.id && groundTerminals.some(t => t.id === w.fromTerminal)) ||
+          (w.toComponentId === comp.id && groundTerminals.some(t => t.id === w.toTerminal))
+        );
+
+        if (!hasHotConnection) {
+          this.issues.push({
+            severity: "error",
+            category: "terminal",
+            message: `${comp.type} "${comp.name}" is missing hot (L) connection`,
+            componentIds: [comp.id],
+            suggestion: `Connect hot terminal to AC source. Valid terminals: hot`,
+          });
+        }
+
+        if (!hasNeutralConnection) {
+          this.issues.push({
+            severity: "error",
+            category: "terminal",
+            message: `${comp.type} "${comp.name}" is missing neutral (N) connection`,
+            componentIds: [comp.id],
+            suggestion: `Connect neutral terminal to AC source. Valid terminals: neutral`,
+          });
+        }
+
+        if (!hasGroundConnection) {
+          this.issues.push({
+            severity: "error",
+            category: "terminal",
+            message: `${comp.type} "${comp.name}" is missing ground (G) connection`,
+            componentIds: [comp.id],
+            suggestion: `Connect ground terminal to AC source. Valid terminals: ground`,
           });
         }
       }

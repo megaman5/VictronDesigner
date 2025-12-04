@@ -17,9 +17,10 @@ interface TopBarProps {
   onOpen?: () => void;
   onWireMode?: () => void;
   wireMode?: boolean;
+  hasComponents?: boolean; // Whether canvas has components (for AI Iterate mode)
 }
 
-export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, wireMode = false }: TopBarProps) {
+export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, wireMode = false, hasComponents = false }: TopBarProps) {
   return (
     <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
       <div className="flex items-center gap-3">
@@ -38,7 +39,7 @@ export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireM
           className="gap-2"
         >
           <Sparkles className="h-4 w-4" />
-          AI Design
+          {hasComponents ? "AI Iterate" : "AI Design"}
         </Button>
 
         <Button

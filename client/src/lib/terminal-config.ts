@@ -88,7 +88,9 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     width: 120,
     height: 100,
     terminals: [
-      { id: "ac-in", type: "ac-in", label: "AC", x: 17, y: 52, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "hot", type: "ac-in", label: "L", x: 17, y: 40, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "neutral", type: "ac-in", label: "N", x: 17, y: 55, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "ground", type: "ground", label: "G", x: 17, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
     ],
   },
 
@@ -96,8 +98,8 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     width: 120,
     height: 100,
     terminals: [
-      { id: "positive", type: "positive", label: "+", x: 10, y: 52, color: "hsl(var(--wire-positive))", orientation: "left" },
-      { id: "negative", type: "negative", label: "-", x: 22, y: 52, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "positive", type: "positive", label: "+", x: 10, y: 42, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "negative", type: "negative", label: "-", x: 10, y: 61, color: "hsl(var(--wire-negative))", orientation: "left" },
     ],
   },
 
@@ -174,9 +176,9 @@ export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> 
     width: 180,
     height: 220,
     terminals: [
-      { id: "main-in-hot", type: "ac-in", label: "MAIN L", x: 20, y: 200, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
-      { id: "main-in-neutral", type: "ac-in", label: "MAIN N", x: 90, y: 200, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
-      { id: "main-in-ground", type: "ground", label: "MAIN G", x: 160, y: 200, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+      { id: "main-in-hot", type: "ac-in", label: "MAIN L", x: 20, y: 210, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "main-in-neutral", type: "ac-in", label: "MAIN N", x: 90, y: 210, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "main-in-ground", type: "ground", label: "MAIN G", x: 160, y: 210, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
 
       { id: "load-1-hot", type: "ac-out", label: "L1", x: 160, y: 40, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
       { id: "load-1-neutral", type: "ac-out", label: "N1", x: 160, y: 60, color: "hsl(var(--wire-neutral))", orientation: "right" },

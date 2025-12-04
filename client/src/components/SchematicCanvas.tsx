@@ -303,9 +303,9 @@ export function SchematicCanvas({
     const canvasRect = canvasEl?.getBoundingClientRect();
 
     if (canvasRect) {
-      // Get the grab point relative to canvas in screen coordinates
-      const screenOffsetX = e.clientX - canvasRect.left;
-      const screenOffsetY = e.clientY - canvasRect.top;
+      // Get the grab point relative to canvas in screen coordinates, accounting for scroll
+      const screenOffsetX = e.clientX - canvasRect.left + canvasEl.scrollLeft;
+      const screenOffsetY = e.clientY - canvasRect.top + canvasEl.scrollTop;
 
       // Convert to canvas coordinates (unscaled)
       const canvasOffsetX = screenOffsetX / (zoom / 100);
