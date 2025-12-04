@@ -8,6 +8,7 @@ interface IterationProgressProps {
   maxIterations: number;
   currentScore: number;
   status: string;
+  visualFeedback?: string;
 }
 
 export function IterationProgress({
@@ -15,6 +16,7 @@ export function IterationProgress({
   maxIterations,
   currentScore,
   status,
+  visualFeedback,
 }: IterationProgressProps) {
   const progress = (currentIteration / maxIterations) * 100;
   const isComplete = status.includes("✅") || status.includes("⚠️");
@@ -120,6 +122,23 @@ export function IterationProgress({
                 <p className="text-xs text-muted-foreground">
                   AI is analyzing validation feedback and improving the design...
                 </p>
+              </div>
+            )}
+
+            {/* Visual Feedback */}
+            {visualFeedback && (
+              <div className="pt-2 border-t">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-blue-500" />
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                      Visual Layout Analysis
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    {visualFeedback}
+                  </p>
+                </div>
               </div>
             )}
           </div>

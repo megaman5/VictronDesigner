@@ -483,6 +483,59 @@ export class DesignValidator {
         }
       }
     });
+
+    // Check for missing required connections
+    this.components.forEach(comp => {
+      const config = TERMINAL_CONFIGS[comp.type];
+      if (!config) return;
+
+      // Define required terminal types for each component category
+      const requiresBothPowerTerminals = [
+        'battery', 'dc-load', 'ac-load', 'solar-panel'
+      ];
+
+      if (requiresBothPowerTerminals.includes(comp.type)) {
+        // These components MUST have both positive and negative connections
+        const positiveTerminals = config.terminals.filter(t =>
+          t.type === 'positive' || t.id.includes('positive') || t.id === 'pos'
+        );
+        const negativeTerminals = config.terminals.filter(t =>
+          t.type === 'negative' || t.id.includes('negative') || t.id === 'neg'
+        );
+
+        // Check if positive terminals are connected
+        const hasPositiveConnection = this.wires.some(w =>
+          (w.fromComponentId === comp.id && positiveTerminals.some(t => t.id === w.fromTerminal)) ||
+          (w.toComponentId === comp.id && positiveTerminals.some(t => t.id === w.toTerminal))
+        );
+
+        // Check if negative terminals are connected
+        const hasNegativeConnection = this.wires.some(w =>
+          (w.fromComponentId === comp.id && negativeTerminals.some(t => t.id === w.fromTerminal)) ||
+          (w.toComponentId === comp.id && negativeTerminals.some(t => t.id === w.toTerminal))
+        );
+
+        if (!hasPositiveConnection) {
+          this.issues.push({
+            severity: "error",
+            category: "terminal",
+            message: `${comp.type} "${comp.name}" is missing positive (+) connection`,
+            componentIds: [comp.id],
+            suggestion: `Connect positive terminal to power source or bus bar. Valid terminals: ${positiveTerminals.map(t => t.id).join(", ")}`,
+          });
+        }
+
+        if (!hasNegativeConnection) {
+          this.issues.push({
+            severity: "error",
+            category: "terminal",
+            message: `${comp.type} "${comp.name}" is missing negative (-) connection`,
+            componentIds: [comp.id],
+            suggestion: `Connect negative terminal to ground or negative bus bar. Valid terminals: ${negativeTerminals.map(t => t.id).join(", ")}`,
+          });
+        }
+      }
+    });
   }
 
   /**

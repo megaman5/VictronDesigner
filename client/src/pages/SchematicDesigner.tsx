@@ -89,6 +89,7 @@ export default function SchematicDesigner() {
     maxIterations: number;
     currentScore: number;
     status: string;
+    visualFeedback?: string;
   } | null>(null);
 
   const aiGenerateMutation = useMutation({
@@ -96,18 +97,99 @@ export default function SchematicDesigner() {
       // Show initial status
       setIterationStatus({
         currentIteration: 0,
-        maxIterations: 3,
+        maxIterations: 5,
         currentScore: 0,
         status: "🎨 Generating initial design...",
       });
 
-      const res = await apiRequest("POST", "/api/ai-generate-system-iterative", {
-        prompt,
-        systemVoltage,
-        minQualityScore: 70,
-        maxIterations: 3,
+      // Use fetch with streaming for real-time progress updates
+      const response = await fetch("/api/ai-generate-system-stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          systemVoltage,
+          minQualityScore: 70,
+          maxIterations: 5,
+        }),
       });
-      return res.json();
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalData: any = null;
+
+      if (!reader) {
+        throw new Error("No response body reader available");
+      }
+
+      // Read the stream
+      let currentEventType = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE messages
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            currentEventType = line.substring(6).trim();
+            continue;
+          }
+
+          if (line.startsWith('data:')) {
+            try {
+              const data = JSON.parse(line.substring(5).trim());
+
+              // Handle different event types
+              if (currentEventType === 'iteration-start') {
+              setIterationStatus({
+                currentIteration: data.iteration,
+                maxIterations: data.maxIterations,
+                currentScore: 0,
+                status: data.isVisualImprovement
+                  ? "🎨 Applying visual improvements..."
+                  : `🔄 Iteration ${data.iteration}/${data.maxIterations}...`,
+              });
+            } else if (currentEventType === 'iteration-complete') {
+              setIterationStatus(prev => ({
+                ...prev!,
+                currentScore: data.score,
+                status: `📊 Score: ${data.score}/100 (${data.errorCount} errors, ${data.warningCount} warnings)`,
+                visualFeedback: data.visualFeedback,
+              }));
+            } else if (currentEventType === 'complete') {
+              finalData = data;
+            } else if (currentEventType === 'error') {
+              throw new Error(data.error);
+            }
+
+            // Reset event type after processing
+            currentEventType = '';
+            } catch (error) {
+              console.error("Error parsing SSE message:", line, error);
+            }
+          }
+        }
+      }
+
+      if (!finalData) {
+        throw new Error("No data received from server");
+      }
+
+      return finalData;
     },
     onSuccess: (data) => {
       console.log("AI Generated System:", data);
@@ -129,13 +211,20 @@ export default function SchematicDesigner() {
       const finalScore = data.validation?.score || 0;
       const iterations = data.finalIteration || 1;
 
+      // Get visual feedback from the last iteration with feedback
+      const lastFeedback = data.iterationHistory
+        ?.slice()
+        .reverse()
+        .find((h: any) => h.visualFeedback)?.visualFeedback || data.visualFeedback;
+
       setIterationStatus({
         currentIteration: iterations,
-        maxIterations: 3,
+        maxIterations: 5,
         currentScore: finalScore,
         status: data.achievedQualityThreshold
           ? `✅ Design optimized!`
           : `⚠️ Best effort design`,
+        visualFeedback: lastFeedback,
       });
 
       // Show detailed success message
@@ -401,6 +490,7 @@ export default function SchematicDesigner() {
           maxIterations={iterationStatus.maxIterations}
           currentScore={iterationStatus.currentScore}
           status={iterationStatus.status}
+          visualFeedback={iterationStatus.visualFeedback}
         />
       )}
 
