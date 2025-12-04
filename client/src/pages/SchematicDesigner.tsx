@@ -121,6 +121,7 @@ export default function SchematicDesigner() {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let currentEventType = ""; // Move outside while loop to persist across chunks
 
       if (!reader) {
         throw new Error("No response body");
@@ -133,8 +134,6 @@ export default function SchematicDesigner() {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
-
-        let currentEventType = "";
 
         for (const line of lines) {
           if (line.startsWith("event:")) {
