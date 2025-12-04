@@ -471,12 +471,13 @@ LAYOUT RULES:
 5. Use grid alignment: positions should be multiples of 20px
 6. Stay within canvas bounds with margin: x=100-1800, y=100-1300
 
-TERMINAL IDs BY COMPONENT (use EXACT IDs for wiring):
-- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+⚠️ CRITICAL: USE EXACT TERMINAL IDs - DO NOT ABBREVIATE OR MODIFY ⚠️
+
+TERMINAL IDs BY COMPONENT (copy these EXACTLY):
+- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "data-1", "data-2", "data-3", "power"
-- bmv: "data"
-- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
+- smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
 - ac-load: "ac-in"
@@ -484,12 +485,26 @@ TERMINAL IDs BY COMPONENT (use EXACT IDs for wiring):
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 
+⚠️ EXAMPLES OF CORRECT vs WRONG TERMINAL IDs:
+✅ CORRECT: "ac-out-hot" (multiplus AC output)
+❌ WRONG: "ac-out" (TOO SHORT - validation will FAIL)
+✅ CORRECT: "ac-in-neutral" (multiplus AC input neutral)
+❌ WRONG: "ac-in" (TOO SHORT - validation will FAIL)
+
+⚠️ CRITICAL WIRE GAUGE FORMAT - MUST INCLUDE SPACE:
+✅ CORRECT: "10 AWG", "8 AWG", "2 AWG" (space between number and AWG)
+❌ WRONG: "10AWG", "8AWG", "2AWG" (no space - validation will FAIL)
+
+⚠️ CRITICAL COMPONENT NAMING - MUST BE DESCRIPTIVE:
+✅ CORRECT: {"id": "load-1", "type": "ac-load", "name": "Kitchen Outlets", ...}
+❌ WRONG: {"id": "load-1", "type": "ac-load", "name": undefined, ...}
+
 CRITICAL WIRING RULES:
-1. SmartShunt MUST be in negative path: Battery negative → SmartShunt "negative", SmartShunt "system-minus" → all loads
+1. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
 2. Use bus bars when 3+ connections needed (separate bars for positive/negative)
 3. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
-4. Use EXACT terminal IDs from list above
-5. Calculate wire gauge based on current: 0-25A=10AWG, 25-40A=8AWG, 40-60A=6AWG, 60-100A=4AWG, 100-150A=2AWG, 150-200A=1AWG
+4. Use EXACT terminal IDs from list above (copy them character-by-character)
+5. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -528,7 +543,14 @@ Respond with valid JSON only:
           throw new Error("Empty response from AI");
         }
 
-        const response: AISystemResponse = JSON.parse(extractJSON(content));
+        let response: AISystemResponse;
+        try {
+          const extracted = extractJSON(content);
+          response = JSON.parse(extracted);
+        } catch (err) {
+          console.error(`Failed to parse AI response - AI returned: ${content.substring(0, 500)}...`);
+          throw new Error(`AI returned invalid JSON: ${content.substring(0, 100)}...`);
+        }
 
         // Validate the design
         const validation = validateDesign(
@@ -669,12 +691,13 @@ LAYOUT RULES:
 5. Use grid alignment: positions should be multiples of 20px
 6. Stay within canvas bounds with margin: x=100-1800, y=100-1300
 
-TERMINAL IDs BY COMPONENT (use EXACT IDs for wiring):
-- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+⚠️ CRITICAL: USE EXACT TERMINAL IDs - DO NOT ABBREVIATE OR MODIFY ⚠️
+
+TERMINAL IDs BY COMPONENT (copy these EXACTLY):
+- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "data-1", "data-2", "data-3", "power"
-- bmv: "data"
-- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
+- smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
 - ac-load: "ac-in"
@@ -682,12 +705,26 @@ TERMINAL IDs BY COMPONENT (use EXACT IDs for wiring):
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 
+⚠️ EXAMPLES OF CORRECT vs WRONG TERMINAL IDs:
+✅ CORRECT: "ac-out-hot" (multiplus AC output)
+❌ WRONG: "ac-out" (TOO SHORT - validation will FAIL)
+✅ CORRECT: "ac-in-neutral" (multiplus AC input neutral)
+❌ WRONG: "ac-in" (TOO SHORT - validation will FAIL)
+
+⚠️ CRITICAL WIRE GAUGE FORMAT - MUST INCLUDE SPACE:
+✅ CORRECT: "10 AWG", "8 AWG", "2 AWG" (space between number and AWG)
+❌ WRONG: "10AWG", "8AWG", "2AWG" (no space - validation will FAIL)
+
+⚠️ CRITICAL COMPONENT NAMING - MUST BE DESCRIPTIVE:
+✅ CORRECT: {"id": "load-1", "type": "ac-load", "name": "Kitchen Outlets", ...}
+❌ WRONG: {"id": "load-1", "type": "ac-load", "name": undefined, ...}
+
 CRITICAL WIRING RULES:
-1. SmartShunt MUST be in negative path: Battery negative → SmartShunt "negative", SmartShunt "system-minus" → all loads
+1. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
 2. Use bus bars when 3+ connections needed (separate bars for positive/negative)
 3. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
-4. Use EXACT terminal IDs from list above
-5. Calculate wire gauge based on current: 0-25A=10AWG, 25-40A=8AWG, 40-60A=6AWG, 60-100A=4AWG, 100-150A=2AWG, 150-200A=1AWG
+4. Use EXACT terminal IDs from list above (copy them character-by-character)
+5. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -726,7 +763,14 @@ Respond with valid JSON only:
           throw new Error("Empty response from AI");
         }
 
-        const response: AISystemResponse = JSON.parse(extractJSON(content));
+        let response: AISystemResponse;
+        try {
+          const extracted = extractJSON(content);
+          response = JSON.parse(extracted);
+        } catch (err) {
+          console.error(`Failed to parse AI response - AI returned: ${content.substring(0, 500)}...`);
+          throw new Error(`AI returned invalid JSON: ${content.substring(0, 100)}...`);
+        }
 
         // Validate the design
         const validation = validateDesign(
@@ -750,6 +794,14 @@ Respond with valid JSON only:
           errorCount: validation.issues.filter(i => i.severity === 'error').length,
           warningCount: validation.issues.filter(i => i.severity === 'warning').length
         });
+
+        // Log validation details if score is 0
+        if (validation.score === 0) {
+          console.log(`[SSE] Iteration ${iteration + 1} scored 0 - validation issues:`);
+          validation.issues.forEach(issue => {
+            console.log(`  [${issue.severity}] ${issue.category}: ${issue.message}`);
+          });
+        }
 
         // Update best design if this is better
         if (validation.score > bestScore) {
