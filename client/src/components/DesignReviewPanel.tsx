@@ -183,19 +183,19 @@ export function DesignReviewPanel({
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="space-y-1">
               <div className="text-muted-foreground">Components</div>
-              <div className="font-semibold">{validationResult?.metrics.componentCount}</div>
+              <div className="font-semibold">{validationResult?.metrics?.componentCount}</div>
             </div>
             <div className="space-y-1">
               <div className="text-muted-foreground">Wires</div>
-              <div className="font-semibold">{validationResult?.metrics.wireCount}</div>
+              <div className="font-semibold">{validationResult?.metrics?.wireCount}</div>
             </div>
             <div className="space-y-1">
               <div className="text-muted-foreground">Avg Spacing</div>
-              <div className="font-semibold">{validationResult?.metrics.avgComponentSpacing.toFixed(0)}px</div>
+              <div className="font-semibold">{validationResult?.metrics?.avgComponentSpacing?.toFixed(0) || 'N/A'}px</div>
             </div>
             <div className="space-y-1">
               <div className="text-muted-foreground">Layout Efficiency</div>
-              <div className="font-semibold">{validationResult?.metrics.layoutEfficiency.toFixed(0)}%</div>
+              <div className="font-semibold">{validationResult?.metrics?.layoutEfficiency?.toFixed(0) || 'N/A'}%</div>
             </div>
           </div>
 

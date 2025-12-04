@@ -33,6 +33,14 @@ const genericComponents: Component[] = [
   { id: "busbar-negative", name: "Negative Bus Bar", icon: <Cable className="h-5 w-5" />, category: "generic" },
 ];
 
+const safetyComponents: Component[] = [
+  { id: "fuse", name: "Fuse", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "switch", name: "Battery Switch", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "breaker-panel", name: "Breaker Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
+  { id: "ac-panel", name: "AC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
+  { id: "dc-panel", name: "DC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
+];
+
 interface ComponentLibraryProps {
   onDragStart?: (component: Component) => void;
   onAddCustom?: () => void;
@@ -55,7 +63,7 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
 
       <ScrollArea className="flex-1">
         <div className="p-4">
-          <Accordion type="multiple" defaultValue={["victron", "generic", "custom"]} className="w-full">
+          <Accordion type="multiple" defaultValue={["victron", "generic", "safety", "custom"]} className="w-full">
             <AccordionItem value="victron">
               <AccordionTrigger className="text-sm font-medium">
                 Victron Components
@@ -67,7 +75,7 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
                       key={component.id}
                       draggable
                       onDragStart={() => handleDragStart(component)}
-                      className="flex items-center gap-3 p-3 rounded-md border bg-background hover-elevate active-elevate-2 cursor-move"
+                      className="flex items-center gap-3 p-3 rounded-md border bg-background hover-elevate active-elevate-2 cursor-move select-none"
                       data-testid={`component-${component.id}`}
                     >
                       <div className="text-primary">{component.icon}</div>
@@ -89,7 +97,29 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
                       key={component.id}
                       draggable
                       onDragStart={() => handleDragStart(component)}
-                      className="flex items-center gap-3 p-3 rounded-md border bg-background hover-elevate active-elevate-2 cursor-move"
+                      className="flex items-center gap-3 p-3 rounded-md border bg-background hover-elevate active-elevate-2 cursor-move select-none"
+                      data-testid={`component-${component.id}`}
+                    >
+                      <div className="text-primary">{component.icon}</div>
+                      <span className="text-sm flex-1">{component.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="safety">
+              <AccordionTrigger className="text-sm font-medium">
+                Safety & Distribution
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-2 mt-2">
+                  {safetyComponents.map((component) => (
+                    <div
+                      key={component.id}
+                      draggable
+                      onDragStart={() => handleDragStart(component)}
+                      className="flex items-center gap-3 p-3 rounded-md border bg-background hover-elevate active-elevate-2 cursor-move select-none"
                       data-testid={`component-${component.id}`}
                     >
                       <div className="text-primary">{component.icon}</div>

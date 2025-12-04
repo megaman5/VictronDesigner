@@ -71,6 +71,7 @@ export interface Wire {
   current?: number;
   voltageDrop?: number;
   color?: string;
+  conductorMaterial?: "copper" | "aluminum";
 }
 
 export interface WireCalculation {
@@ -115,27 +116,25 @@ export interface AISystemResponse {
 // Design validation types
 export interface ValidationIssue {
   severity: "error" | "warning" | "info";
-  category: "electrical" | "wire-sizing" | "layout" | "terminal" | "ai-quality";
+  category: string;
   message: string;
   componentIds?: string[];
-  wireId?: string;
+  wireIds?: string[];
   suggestion?: string;
-}
-
-export interface DesignMetrics {
-  componentCount: number;
-  wireCount: number;
-  avgComponentSpacing: number;
-  overlappingComponents: number;
-  invalidTerminalConnections: number;
-  wireGaugeIssues: number;
-  electricalRuleViolations: number;
-  layoutEfficiency: number; // 0-100
 }
 
 export interface ValidationResult {
   valid: boolean;
-  score: number; // 0-100 quality score
+  score: number;
   issues: ValidationIssue[];
-  metrics: DesignMetrics;
+  metrics?: {
+    totalComponents: number;
+    componentCount?: number;
+    totalWires: number;
+    wireCount?: number;
+    totalCurrent: number;
+    estimatedCost: number;
+    avgComponentSpacing?: number;
+    layoutEfficiency?: number;
+  };
 }

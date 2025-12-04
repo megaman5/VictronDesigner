@@ -20,329 +20,368 @@ export function snapPointToGrid(x: number, y: number, gridSize: number = GRID_SI
   };
 }
 
-/**
- * Calculate orthogonal path with terminal orientations
- * Returns path string and label position
- */
-export function calculateOrthogonalPathWithOrientation(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  startOrientation: TerminalOrientation,
-  endOrientation: TerminalOrientation,
-  wireOffset: number = 0,
-  cornerRadius: number = 15
-): { path: string; labelX: number; labelY: number } {
-  // Snap points to grid
-  const start = snapPointToGrid(x1, y1);
-  const end = snapPointToGrid(x2, y2);
-  
-  const offsetAmount = wireOffset * GRID_SIZE;
-  
-  // Minimum exit distance from terminals (shorter for better routing)
-  const MIN_EXIT = GRID_SIZE * 2; // 40px minimum exit (reduced from 60px)
-  
-  // Calculate exit points with smart direction logic
-  // For top/bottom orientations, choose direction based on destination
-  let exitPoint = { ...start };
-  switch (startOrientation) {
-    case "left":
-      exitPoint.x = start.x - MIN_EXIT;
-      exitPoint.y = start.y + offsetAmount;
-      break;
-    case "right":
-      exitPoint.x = start.x + MIN_EXIT;
-      exitPoint.y = start.y + offsetAmount;
-      break;
-    case "top":
-    case "bottom":
-      // For vertical orientations, always route toward the destination
-      exitPoint.x = start.x + offsetAmount;
-      if (end.y > start.y) {
-        // Destination is below - exit downward
-        exitPoint.y = start.y + MIN_EXIT;
-      } else if (end.y < start.y) {
-        // Destination is above - exit upward
-        exitPoint.y = start.y - MIN_EXIT;
-      } else {
-        // Same Y level - use default for orientation
-        exitPoint.y = startOrientation === "top" ? start.y - MIN_EXIT : start.y + MIN_EXIT;
-      }
-      break;
-  }
-  
-  // Calculate entry points with smart direction logic
-  let entryPoint = { ...end };
-  switch (endOrientation) {
-    case "left":
-      entryPoint.x = end.x - MIN_EXIT;
-      entryPoint.y = end.y + offsetAmount;
-      break;
-    case "right":
-      entryPoint.x = end.x + MIN_EXIT;
-      entryPoint.y = end.y + offsetAmount;
-      break;
-    case "top":
-    case "bottom":
-      // For vertical orientations, always enter from the source direction
-      entryPoint.x = end.x + offsetAmount;
-      if (start.y > end.y) {
-        // Source is below - enter from below
-        entryPoint.y = end.y + MIN_EXIT;
-      } else if (start.y < end.y) {
-        // Source is above - enter from above
-        entryPoint.y = end.y - MIN_EXIT;
-      } else {
-        // Same Y level - use default for orientation
-        entryPoint.y = endOrientation === "top" ? end.y - MIN_EXIT : end.y + MIN_EXIT;
-      }
-      break;
-  }
-  
-  // Build path points
-  const points: Array<{x: number, y: number}> = [start];
-  
-  // Add exit segment
-  points.push(exitPoint);
-  
-  // Improved middle segment routing that maintains offset throughout
-  // Determine which orientations we're dealing with
-  const isStartVertical = startOrientation === "top" || startOrientation === "bottom";
-  const isEndVertical = endOrientation === "top" || endOrientation === "bottom";
-  
-  // Calculate middle routing based on terminal orientations
-  if (isStartVertical && isEndVertical) {
-    // Both terminals are vertical (top/bottom) - maintain X offset in vertical segments
-    const midY = (exitPoint.y + entryPoint.y) / 2;
-    
-    if (exitPoint.x !== entryPoint.x) {
-      // Need horizontal segment to transition between different X positions
-      points.push({ x: exitPoint.x, y: midY });
-      points.push({ x: entryPoint.x, y: midY });
-    }
-    // Else: X positions are the same, vertical segment directly connects exit to entry
-    
-  } else if (!isStartVertical && !isEndVertical) {
-    // Both terminals are horizontal (left/right) - maintain Y offset in horizontal segments
-    const midX = (exitPoint.x + entryPoint.x) / 2;
-    
-    if (exitPoint.y !== entryPoint.y) {
-      // Need vertical segment to transition between different Y positions
-      points.push({ x: midX, y: exitPoint.y });
-      points.push({ x: midX, y: entryPoint.y });
-    }
-    // Else: Y positions are the same, horizontal segment directly connects exit to entry
-    
-  } else {
-    // Mixed orientations (one vertical, one horizontal)
-    // Use the standard routing that prioritizes based on distance
-    if (Math.abs(exitPoint.x - entryPoint.x) > Math.abs(exitPoint.y - entryPoint.y)) {
-      // Horizontal routing dominant
-      if (exitPoint.y !== entryPoint.y) {
-        points.push({ x: entryPoint.x, y: exitPoint.y });
-      }
-    } else {
-      // Vertical routing dominant
-      if (exitPoint.x !== entryPoint.x) {
-        points.push({ x: exitPoint.x, y: entryPoint.y });
-      }
-    }
-  }
-  
-  // Add entry segment
-  if (points[points.length - 1].x !== entryPoint.x || points[points.length - 1].y !== entryPoint.y) {
-    points.push(entryPoint);
-  }
-  
-  // Add final destination
-  points.push(end);
-  
-  // Create path
-  const path = createPathWithCorners(points, cornerRadius);
-  
-  // Calculate label position - use midpoint of the longest straight segment
-  let labelX = (start.x + end.x) / 2;
-  let labelY = (start.y + end.y) / 2;
-  
-  if (points.length >= 3) {
-    // Find longest segment for label placement
-    let maxLength = 0;
-    let bestMidX = labelX;
-    let bestMidY = labelY;
-    
-    for (let i = 1; i < points.length; i++) {
-      const p1 = points[i - 1];
-      const p2 = points[i];
-      const length = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-      
-      if (length > maxLength) {
-        maxLength = length;
-        bestMidX = (p1.x + p2.x) / 2;
-        bestMidY = (p1.y + p2.y) / 2;
-      }
-    }
-    
-    labelX = bestMidX;
-    labelY = bestMidY;
-  }
-  
-  return { path, labelX, labelY };
+// A* Node
+interface Node {
+  x: number;
+  y: number;
+  g: number; // Cost from start
+  h: number; // Heuristic to end
+  f: number; // Total cost
+  parent: Node | null;
+}
+
+// Obstacle definition
+export interface Obstacle {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /**
- * Calculate orthogonal path between two points with rounded corners and smart lane-based routing
- * Returns an SVG path string for drawing
+ * Calculate route using A* algorithm
  */
-export function calculateOrthogonalPath(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  cornerRadius: number = 15,
-  wireOffset: number = 0 // Lane offset for parallel wires
-): string {
-  // Snap points to grid
-  const start = snapPointToGrid(x1, y1);
-  const end = snapPointToGrid(x2, y2);
-  
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  
-  // No offset needed for single wires
-  if (wireOffset === 0) {
-    return simpleOrthogonalPath(start.x, start.y, end.x, end.y, cornerRadius);
+export function calculateRoute(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  obstacles: Obstacle[],
+  gridWidth: number = 2400,
+  gridHeight: number = 1600,
+  occupiedNodes: Set<string> = new Set(), // Nodes occupied by other wires
+  startOrientation?: TerminalOrientation,
+  endOrientation?: TerminalOrientation
+): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[] } {
+
+  const start = snapPointToGrid(startX, startY);
+  const end = snapPointToGrid(endX, endY);
+
+  // Grid dimensions in nodes
+  const cols = Math.ceil(gridWidth / GRID_SIZE);
+  const rows = Math.ceil(gridHeight / GRID_SIZE);
+
+  // Helper to get node key
+  const getKey = (x: number, y: number) => `${x},${y}`;
+
+  // Initialize open and closed sets
+  const openSet: Node[] = [];
+  const closedSet = new Set<string>();
+
+  // Start node
+  const startNode: Node = {
+    x: start.x,
+    y: start.y,
+    g: 0,
+    h: heuristic(start, end),
+    f: heuristic(start, end),
+    parent: null
+  };
+  openSet.push(startNode);
+
+  // Obstacle map for fast lookup
+  // We map grid coordinates to obstacle cost
+  // 0 = free, Infinity = blocked, High = discouraged
+  const obstacleMap = new Map<string, number>();
+
+  // Mark obstacles
+  obstacles.forEach(obs => {
+    // Expand obstacle slightly to provide buffer
+    const buffer = GRID_SIZE;
+    const minX = snapToGrid(obs.x - buffer);
+    const maxX = snapToGrid(obs.x + obs.width + buffer);
+    const minY = snapToGrid(obs.y - buffer);
+    const maxY = snapToGrid(obs.y + obs.height + buffer);
+
+    for (let x = minX; x <= maxX; x += GRID_SIZE) {
+      for (let y = minY; y <= maxY; y += GRID_SIZE) {
+        // Don't block start or end points
+        if ((x === start.x && y === start.y) || (x === end.x && y === end.y)) continue;
+        obstacleMap.set(getKey(x, y), Infinity);
+      }
+    }
+  });
+
+  // Helper to unblock a path from a point in a specific direction until it clears obstacles
+  const unblockExitPath = (startNode: { x: number, y: number }, orientation: TerminalOrientation | undefined) => {
+    if (!orientation) return;
+
+    let currentX = startNode.x;
+    let currentY = startNode.y;
+
+    // Unblock the start node itself first
+    obstacleMap.delete(getKey(currentX, currentY));
+
+    // Determine step direction
+    let dx = 0;
+    let dy = 0;
+    switch (orientation) {
+      case 'top': dy = -GRID_SIZE; break;
+      case 'bottom': dy = GRID_SIZE; break;
+      case 'left': dx = -GRID_SIZE; break;
+      case 'right': dx = GRID_SIZE; break;
+    }
+
+    // March forward until we are not in an obstacle (or hit a limit to prevent infinite loops)
+    // We check if the *current* position was in an obstacle. 
+    // Actually, we just need to march a sufficient distance to clear any reasonable component.
+    // Most components are < 200px. 10 steps (200px) should be plenty.
+    // A better approach is to check if we are currently inside any obstacle definition.
+
+    for (let i = 0; i < 20; i++) { // Increased max steps to 20 (400px)
+      currentX += dx;
+      currentY += dy;
+
+      const key = getKey(currentX, currentY);
+
+      // Always unblock the path we are walking
+      if (obstacleMap.has(key)) {
+        obstacleMap.delete(key);
+      }
+
+      // Check if we are still inside ANY obstacle
+      const isInsideObstacle = obstacles.some(obs => {
+        const buffer = GRID_SIZE;
+        return currentX >= obs.x - buffer && currentX <= obs.x + obs.width + buffer &&
+          currentY >= obs.y - buffer && currentY <= obs.y + obs.height + buffer;
+      });
+
+      if (!isInsideObstacle) {
+        // We are out! But let's take one more step to be safe
+        const nextX = currentX + dx;
+        const nextY = currentY + dy;
+        const nextKey = getKey(nextX, nextY);
+        if (obstacleMap.has(nextKey)) obstacleMap.delete(nextKey);
+        break;
+      }
+    }
+  };
+
+  // Apply tunneling for start and end
+  unblockExitPath(start, startOrientation);
+  unblockExitPath(end, endOrientation);
+
+  // Main A* loop
+  while (openSet.length > 0) {
+    // Get node with lowest f score
+    openSet.sort((a, b) => a.f - b.f);
+    const current = openSet.shift()!;
+
+    const currentKey = getKey(current.x, current.y);
+    if (current.x === end.x && current.y === end.y) {
+      return reconstructPath(current);
+    }
+
+    closedSet.add(currentKey);
+
+    // Neighbors (Up, Down, Left, Right)
+    const neighbors = [
+      { x: current.x, y: current.y - GRID_SIZE },
+      { x: current.x, y: current.y + GRID_SIZE },
+      { x: current.x - GRID_SIZE, y: current.y },
+      { x: current.x + GRID_SIZE, y: current.y }
+    ];
+
+    for (const neighbor of neighbors) {
+      const neighborKey = getKey(neighbor.x, neighbor.y);
+
+      // Check bounds
+      if (neighbor.x < 0 || neighbor.x > gridWidth || neighbor.y < 0 || neighbor.y > gridHeight) continue;
+
+      // Check closed set
+      if (closedSet.has(neighborKey)) continue;
+
+      // Calculate cost
+      let cost = current.g + GRID_SIZE;
+
+      // Obstacle penalty
+      const obstacleCost = obstacleMap.get(neighborKey) || 0;
+      if (obstacleCost === Infinity) continue; // Blocked
+
+      // Occupied node penalty (wires crossing)
+      if (occupiedNodes.has(neighborKey)) {
+        cost += GRID_SIZE * 50; // High penalty for crossing other wires
+      }
+
+      // Turn penalty (encourage straight lines)
+      if (current.parent) {
+        const prevDx = current.x - current.parent.x;
+        const prevDy = current.y - current.parent.y;
+        const currDx = neighbor.x - current.x;
+        const currDy = neighbor.y - current.y;
+
+        if (prevDx !== currDx || prevDy !== currDy) {
+          cost += GRID_SIZE * 2; // Penalty for turning
+        }
+      }
+
+      const existingNode = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
+
+      if (!existingNode || cost < existingNode.g) {
+        const h = heuristic(neighbor, end);
+        const newNode: Node = {
+          x: neighbor.x,
+          y: neighbor.y,
+          g: cost,
+          h: h,
+          f: cost + h,
+          parent: current
+        };
+
+        if (!existingNode) {
+          openSet.push(newNode);
+        } else {
+          existingNode.g = cost;
+          existingNode.f = cost + h;
+          existingNode.parent = current;
+        }
+      }
+    }
   }
-  
-  // Calculate offset amount based on lane
-  const offsetAmount = wireOffset * GRID_SIZE;
-  
-  // Minimum distance required for offset routing (need space for exit + offset lane + entry)
-  const minDistanceForOffset = GRID_SIZE * 6; // 120px minimum
-  
-  // If distance is too small, use simple routing
-  if (Math.abs(dx) < minDistanceForOffset && Math.abs(dy) < minDistanceForOffset) {
-    return simpleOrthogonalPath(start.x, start.y, end.x, end.y, cornerRadius);
-  }
-  
-  // Determine primary routing direction
-  const isHorizontalDominant = Math.abs(dx) >= Math.abs(dy);
-  
-  // Use early offset strategy: apply offset immediately from source
-  // This keeps wires separated throughout their entire path
-  
-  if (isHorizontalDominant) {
-    // Horizontal-first routing with vertical offset lane
-    const maxExit = Math.abs(dx) / 3; // Use 1/3 of distance for exit
-    const exitDistance = Math.min(GRID_SIZE * 2, maxExit);
-    const entryDistance = Math.min(GRID_SIZE * 2, maxExit);
-    
-    const x1_exit = start.x + (dx > 0 ? exitDistance : -exitDistance);
-    const y1_offset = start.y + offsetAmount;
-    const x2_entry = end.x - (dx > 0 ? entryDistance : -entryDistance);
-    
-    return createPathWithCorners([
+
+  // Fallback if no path found: Use simple Manhattan routing (L-shape)
+  // This ensures orthogonal lines even if A* fails
+  const midX = (start.x + end.x) / 2;
+
+  // Create an L-shaped path
+  // Try to respect orientation if possible, but keep it simple
+  let points: { x: number, y: number }[] = [];
+
+  if (Math.abs(start.x - end.x) > Math.abs(start.y - end.y)) {
+    // Horizontal dominant
+    points = [
       { x: start.x, y: start.y },
-      { x: x1_exit, y: start.y },
-      { x: x1_exit, y: y1_offset },
-      { x: x2_entry, y: y1_offset },
-      { x: x2_entry, y: end.y },
-      { x: end.x, y: end.y },
-    ], cornerRadius);
-    
+      { x: midX, y: start.y },
+      { x: midX, y: end.y },
+      { x: end.x, y: end.y }
+    ];
   } else {
-    // Vertical-first routing with horizontal offset lane
-    const maxExit = Math.abs(dy) / 3; // Use 1/3 of distance for exit
-    const exitDistance = Math.min(GRID_SIZE * 2, maxExit);
-    const entryDistance = Math.min(GRID_SIZE * 2, maxExit);
-    
-    const y1_exit = start.y + (dy > 0 ? exitDistance : -exitDistance);
-    const x1_offset = start.x + offsetAmount;
-    const y2_entry = end.y - (dy > 0 ? entryDistance : -entryDistance);
-    
-    return createPathWithCorners([
+    // Vertical dominant
+    points = [
       { x: start.x, y: start.y },
-      { x: start.x, y: y1_exit },
-      { x: x1_offset, y: y1_exit },
-      { x: x1_offset, y: y2_entry },
-      { x: end.x, y: y2_entry },
-      { x: end.x, y: end.y },
-    ], cornerRadius);
+      { x: start.x, y: (start.y + end.y) / 2 },
+      { x: end.x, y: (start.y + end.y) / 2 },
+      { x: end.x, y: end.y }
+    ];
   }
+
+  const path = createPathWithCorners(points, 0);
+
+  return {
+    path,
+    labelX: (start.x + end.x) / 2,
+    labelY: (start.y + end.y) / 2,
+    labelRotation: 0,
+    pathNodes: []
+  };
 }
 
-/**
- * Simple orthogonal path without offset (direct routing)
- */
-function simpleOrthogonalPath(x1: number, y1: number, x2: number, y2: number, cornerRadius: number): string {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  
-  // Straight line
-  if (dx === 0 || dy === 0) {
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
+function heuristic(a: { x: number, y: number }, b: { x: number, y: number }): number {
+  // Manhattan distance
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function reconstructPath(endNode: Node): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[] } {
+  const points: { x: number, y: number }[] = [];
+  let current: Node | null = endNode;
+  const pathNodes: string[] = [];
+
+  while (current) {
+    points.unshift({ x: current.x, y: current.y });
+    pathNodes.unshift(`${current.x},${current.y}`);
+    current = current.parent;
   }
-  
-  const useHorizontalFirst = Math.abs(dx) >= Math.abs(dy);
-  
-  if (useHorizontalFirst) {
-    const midX = x1 + dx / 2;
-    return createPathWithCorners([
-      { x: x1, y: y1 },
-      { x: midX, y: y1 },
-      { x: midX, y: y2 },
-      { x: x2, y: y2 },
-    ], cornerRadius);
-  } else {
-    const midY = y1 + dy / 2;
-    return createPathWithCorners([
-      { x: x1, y: y1 },
-      { x: x1, y: midY },
-      { x: x2, y: midY },
-      { x: x2, y: y2 },
-    ], cornerRadius);
+
+  // Simplify path (remove collinear points)
+  const simplifiedPoints: { x: number, y: number }[] = [];
+  if (points.length > 0) simplifiedPoints.push(points[0]);
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+
+    const dx1 = curr.x - prev.x;
+    const dy1 = curr.y - prev.y;
+    const dx2 = next.x - curr.x;
+    const dy2 = next.y - curr.y;
+
+    // If direction changes, keep the point
+    if (dx1 !== dx2 || dy1 !== dy2) {
+      simplifiedPoints.push(curr);
+    }
   }
+
+  if (points.length > 1) simplifiedPoints.push(points[points.length - 1]);
+
+  const path = createPathWithCorners(simplifiedPoints, 0);
+
+  // Calculate label position (midpoint of longest segment)
+  let labelX = points[0].x;
+  let labelY = points[0].y;
+  let labelRotation = 0;
+  let maxLength = 0;
+
+  for (let i = 1; i < simplifiedPoints.length; i++) {
+    const p1 = simplifiedPoints[i - 1];
+    const p2 = simplifiedPoints[i];
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    if (len > maxLength) {
+      maxLength = len;
+      labelX = (p1.x + p2.x) / 2;
+      labelY = (p1.y + p2.y) / 2;
+
+      // Determine rotation
+      if (Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y)) {
+        labelRotation = 0; // Horizontal
+      } else {
+        labelRotation = 90; // Vertical
+      }
+    }
+  }
+
+  return { path, labelX, labelY, labelRotation, pathNodes };
 }
 
 /**
  * Create SVG path with rounded corners through a series of points
  */
-function createPathWithCorners(points: Array<{x: number, y: number}>, cornerRadius: number): string {
+function createPathWithCorners(points: Array<{ x: number, y: number }>, cornerRadius: number): string {
   if (points.length < 2) return '';
-  
+
   let path = `M ${points[0].x} ${points[0].y}`;
-  
+
   for (let i = 1; i < points.length - 1; i++) {
     const prev = points[i - 1];
     const curr = points[i];
     const next = points[i + 1];
-    
+
     const dx1 = curr.x - prev.x;
     const dy1 = curr.y - prev.y;
     const dx2 = next.x - curr.x;
     const dy2 = next.y - curr.y;
-    
+
     const dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
     const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-    
+
     const maxRadius = Math.min(cornerRadius, dist1 / 2, dist2 / 2);
-    
+
     if (maxRadius < 2) {
       path += ` L ${curr.x} ${curr.y}`;
     } else {
       const ratio1 = maxRadius / dist1;
       const ratio2 = maxRadius / dist2;
-      
+
       const beforeX = curr.x - dx1 * ratio1;
       const beforeY = curr.y - dy1 * ratio1;
       const afterX = curr.x + dx2 * ratio2;
       const afterY = curr.y + dy2 * ratio2;
-      
+
       path += ` L ${beforeX} ${beforeY}`;
       path += ` Q ${curr.x} ${curr.y} ${afterX} ${afterY}`;
     }
   }
-  
+
   path += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
   return path;
 }
@@ -364,7 +403,25 @@ export function calculateWireLength(x1: number, y1: number, x2: number, y2: numb
   const distancePixels = calculateDistance(x1, y1, x2, y2);
   const distanceInches = distancePixels / pixelsPerInch;
   const distanceFeet = distanceInches / 12;
-  
+
   // Add 20% for routing and connections
   return Math.ceil(distanceFeet * 1.2);
+}
+
+// Keep the old function signature for compatibility, but forward to new router if needed
+// Or just keep it as a fallback?
+// For now, let's export the old one too if we need it, but we'll try to use calculateRoute
+export function calculateOrthogonalPathWithOrientation(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  startOrientation: TerminalOrientation,
+  endOrientation: TerminalOrientation,
+  wireOffset: number = 0,
+  cornerRadius: number = 15
+): { path: string; labelX: number; labelY: number } {
+  // Simple wrapper that calls the new router with empty obstacles
+  // This is just to satisfy existing imports if any
+  return calculateRoute(x1, y1, x2, y2, []);
 }
