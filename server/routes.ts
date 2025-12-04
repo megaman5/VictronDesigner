@@ -16,11 +16,18 @@ const openai = new OpenAI({
 // Helper function to extract JSON from markdown code blocks
 function extractJSON(content: string): string {
   // Remove markdown code blocks (```json ... ``` or ``` ... ```)
-  const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (jsonMatch) {
-    return jsonMatch[1].trim();
+  const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    return codeBlockMatch[1].trim();
   }
-  // If no code blocks, return trimmed content
+
+  // Try to find a JSON object (starts with { and ends with })
+  const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+  if (jsonObjectMatch) {
+    return jsonObjectMatch[0].trim();
+  }
+
+  // If no patterns found, return trimmed content
   return content.trim();
 }
 
@@ -599,12 +606,15 @@ Respond with valid JSON only:
         return res.status(400).json({ error: "Prompt is required" });
       }
 
+      console.log(`[SSE] Starting generation: ${maxIterations} iterations, min score ${minQualityScore}`);
+
       // Set SSE headers
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
       const sendEvent = (event: string, data: any) => {
+        console.log(`[SSE] Sending event: ${event}`, data);
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
       };
@@ -613,7 +623,10 @@ Respond with valid JSON only:
       let bestScore = 0;
       const iterationHistory: any[] = [];
 
+      console.log(`[SSE] Starting iteration loop: ${maxIterations} iterations`);
+
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        console.log(`[SSE] Iteration ${iteration + 1} of ${maxIterations} starting...`);
         sendEvent('iteration-start', { iteration: iteration + 1, maxIterations });
 
         // Build feedback context from previous iteration
