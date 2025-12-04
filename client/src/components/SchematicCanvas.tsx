@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation } from "@/lib/terminal-config";
-import { snapPointToGrid, calculateOrthogonalPath, calculateOrthogonalPathWithOrientation, calculateWireLength } from "@/lib/wire-routing";
+import { snapPointToGrid, calculateRoute, calculateWireLength, type Obstacle } from "@/lib/wire-routing";
 
 export interface WireConnectionData {
   fromComponentId: string;
@@ -26,12 +26,14 @@ interface SchematicCanvasProps {
   onComponentDelete?: (componentId: string) => void;
   onWireConnectionComplete?: (wireData: WireConnectionData) => void;
   onWireDelete?: (wireId: string) => void;
+  onWireUpdate?: (wireId: string, updates: Partial<Wire>) => void;
+  onWireEdit?: (wire: Wire) => void;
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
 }
 
-export function SchematicCanvas({ 
-  components = [], 
+export function SchematicCanvas({
+  components = [],
   wires = [],
   onComponentsChange,
   onWiresChange,
@@ -42,6 +44,8 @@ export function SchematicCanvas({
   onComponentDelete,
   onWireConnectionComplete,
   onWireDelete,
+  onWireUpdate,
+  onWireEdit,
   wireConnectionMode = false,
   wireStartComponent = null,
 }: SchematicCanvasProps) {
@@ -52,7 +56,7 @@ export function SchematicCanvas({
   const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  
+
   // Selection box state
   const [selectionBox, setSelectionBox] = useState<{
     startX: number;
@@ -61,7 +65,7 @@ export function SchematicCanvas({
     endY: number;
   } | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  
+
   // Wire connection state with terminal tracking
   const [wireStart, setWireStart] = useState<{
     componentId: string;
@@ -69,8 +73,26 @@ export function SchematicCanvas({
     position: { x: number; y: number };
   } | null>(null);
   const [wirePreviewEnd, setWirePreviewEnd] = useState<{ x: number; y: number } | null>(null);
-  
+
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Calculate terminal usage for distributing wires
+  const terminalUsage = useMemo(() => {
+    const usage = new Map<string, string[]>(); // Key: "compId-termId", Value: [wireId, wireId...]
+
+    wires.forEach(wire => {
+      const fromKey = `${wire.fromComponentId}-${wire.fromTerminal}`;
+      const toKey = `${wire.toComponentId}-${wire.toTerminal}`;
+
+      if (!usage.has(fromKey)) usage.set(fromKey, []);
+      if (!usage.has(toKey)) usage.set(toKey, []);
+
+      usage.get(fromKey)!.push(wire.id);
+      usage.get(toKey)!.push(wire.id);
+    });
+
+    return usage;
+  }, [wires]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -78,17 +100,35 @@ export function SchematicCanvas({
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const dropX = (e.clientX - rect.left) / (zoom / 100);
-    const dropY = (e.clientY - rect.top) / (zoom / 100);
-    
+
+    // Robustly get the scroll container
+    const scrollContainer = document.querySelector('[data-testid="canvas-drop-zone"]');
+    if (!scrollContainer) return;
+
+    const rect = scrollContainer.getBoundingClientRect();
+    const scrollLeft = scrollContainer.scrollLeft;
+    const scrollTop = scrollContainer.scrollTop;
+
+    const dropX = (e.clientX - rect.left + scrollLeft) / (zoom / 100);
+    const dropY = (e.clientY - rect.top + scrollTop) / (zoom / 100);
+
     if (draggedComponentId) {
       // Component being repositioned - account for cursor offset
       const newX = dropX - dragOffset.x;
       const newY = dropY - dragOffset.y;
       const deltaX = newX - dragStartPos.x;
       const deltaY = newY - dragStartPos.y;
-      onComponentMove?.(draggedComponentId, deltaX, deltaY);
+
+      // If the dragged component is part of a selection, move all selected components
+      if (selectedIds.includes(draggedComponentId)) {
+        selectedIds.forEach(id => {
+          onComponentMove?.(id, deltaX, deltaY);
+        });
+      } else {
+        // Just move the single component
+        onComponentMove?.(draggedComponentId, deltaX, deltaY);
+      }
+
       setDraggedComponentId(null);
     } else {
       // New component from library
@@ -101,18 +141,18 @@ export function SchematicCanvas({
     setSelectedId(component.id);
     setSelectedIds([component.id]); // Clear multi-selection when clicking single component
     setSelectedWireId(null); // Clear wire selection
-    
+
     if (!wireConnectionMode) {
       onComponentSelect?.(component);
     }
   };
-  
+
   const handleTerminalClick = (component: SchematicComponentType, terminal: Terminal, e: React.MouseEvent) => {
     if (!wireConnectionMode) return;
-    
+
     const terminalPos = getTerminalPosition(component.x, component.y, component.type, terminal.id);
     if (!terminalPos) return;
-    
+
     if (!wireStart) {
       // First click - start wire connection
       setWireStart({
@@ -131,7 +171,7 @@ export function SchematicCanvas({
           terminalPos.x,
           terminalPos.y
         );
-        
+
         // Pass terminal information back to parent for wire creation
         onWireConnectionComplete?.({
           fromComponentId: wireStart.componentId,
@@ -141,31 +181,31 @@ export function SchematicCanvas({
           length: wireLength,
         });
       }
-      
+
       // Reset wire connection state
       setWireStart(null);
       setWirePreviewEnd(null);
     }
   };
-  
+
   // Handle mouse move to show wire preview or update selection box
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
     if (wireStart && wireConnectionMode && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left) / (zoom / 100);
       const y = (e.clientY - rect.top) / (zoom / 100);
-      
+
       // Snap to grid for cleaner routing
       const snapped = snapPointToGrid(x, y);
       setWirePreviewEnd(snapped);
     }
-    
+
     // Update selection box if dragging
     if (selectionBox && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left) / (zoom / 100);
       const y = (e.clientY - rect.top) / (zoom / 100);
-      
+
       setSelectionBox({
         ...selectionBox,
         endX: x,
@@ -173,19 +213,19 @@ export function SchematicCanvas({
       });
     }
   };
-  
+
   // Start selection box on mouse down
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     // Don't start selection if clicking on a component or terminal
     const target = e.target as HTMLElement;
     const isComponent = target.closest('[data-testid^="canvas-component-"]');
     const isTerminal = target.closest('.terminal-indicator');
-    
+
     if (!isComponent && !isTerminal && !wireConnectionMode && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left) / (zoom / 100);
       const y = (e.clientY - rect.top) / (zoom / 100);
-      
+
       setSelectionBox({
         startX: x,
         startY: y,
@@ -194,7 +234,7 @@ export function SchematicCanvas({
       });
     }
   };
-  
+
   // Complete selection box on mouse up
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
     if (selectionBox) {
@@ -205,7 +245,7 @@ export function SchematicCanvas({
         top: Math.min(selectionBox.startY, selectionBox.endY),
         bottom: Math.max(selectionBox.startY, selectionBox.endY),
       };
-      
+
       // Component dimensions for intersection detection
       const componentDimensions: Record<string, { width: number; height: number }> = {
         multiplus: { width: 180, height: 140 },
@@ -219,23 +259,26 @@ export function SchematicCanvas({
         'dc-load': { width: 120, height: 100 },
         'busbar-positive': { width: 140, height: 60 },
         'busbar-negative': { width: 140, height: 60 },
+        fuse: { width: 80, height: 60 },
+        switch: { width: 80, height: 80 },
+        'breaker-panel': { width: 160, height: 200 },
       };
-      
+
       const selected = components.filter(comp => {
         const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
         const compLeft = comp.x;
         const compRight = comp.x + dims.width;
         const compTop = comp.y;
         const compBottom = comp.y + dims.height;
-        
-        return !(compRight < box.left || 
-                 compLeft > box.right || 
-                 compBottom < box.top || 
-                 compTop > box.bottom);
+
+        return !(compRight < box.left ||
+          compLeft > box.right ||
+          compBottom < box.top ||
+          compTop > box.bottom);
       });
-      
+
       setSelectedIds(selected.map(c => c.id));
-      
+
       // Also set the first selected component as the primary selection for properties panel
       if (selected.length > 0) {
         setSelectedId(selected[0].id);
@@ -243,7 +286,7 @@ export function SchematicCanvas({
       } else {
         setSelectedId(null);
       }
-      
+
       setSelectionBox(null);
     }
   };
@@ -252,26 +295,26 @@ export function SchematicCanvas({
     e.stopPropagation();
     setDraggedComponentId(component.id);
     setDragStartPos({ x: component.x, y: component.y });
-    
+
     // Calculate where on the component the user grabbed it
     // rect is already in screen coordinates (scaled), so we need to convert back to canvas coordinates
     const rect = e.currentTarget.getBoundingClientRect();
     const canvasEl = (e.currentTarget.parentElement?.parentElement as HTMLElement);
     const canvasRect = canvasEl?.getBoundingClientRect();
-    
+
     if (canvasRect) {
       // Get the grab point relative to canvas in screen coordinates
       const screenOffsetX = e.clientX - canvasRect.left;
       const screenOffsetY = e.clientY - canvasRect.top;
-      
+
       // Convert to canvas coordinates (unscaled)
       const canvasOffsetX = screenOffsetX / (zoom / 100);
       const canvasOffsetY = screenOffsetY / (zoom / 100);
-      
+
       // Calculate offset from component's top-left
-      setDragOffset({ 
-        x: canvasOffsetX - component.x, 
-        y: canvasOffsetY - component.y 
+      setDragOffset({
+        x: canvasOffsetX - component.x,
+        y: canvasOffsetY - component.y
       });
     }
   };
@@ -284,7 +327,7 @@ export function SchematicCanvas({
       setSelectedId(null); // Clear component selection
       setSelectedIds([]); // Clear multi-selection
       onWireSelect?.(wire);
-      
+
       // Focus the canvas to enable keyboard events
       canvasRef.current?.focus();
     }
@@ -309,7 +352,7 @@ export function SchematicCanvas({
   const getComponentPosition = (id: string) => {
     const comp = components.find((c) => c.id === id);
     if (!comp) return { x: 0, y: 0 };
-    
+
     const widths: Record<string, number> = {
       multiplus: 180,
       battery: 160,
@@ -319,8 +362,11 @@ export function SchematicCanvas({
       bmv: 140,
       'ac-load': 120,
       'dc-load': 120,
+      fuse: 80,
+      switch: 80,
+      'breaker-panel': 160,
     };
-    
+
     const heights: Record<string, number> = {
       multiplus: 140,
       battery: 110,
@@ -330,25 +376,30 @@ export function SchematicCanvas({
       bmv: 140,
       'ac-load': 100,
       'dc-load': 100,
+      fuse: 60,
+      switch: 80,
+      'breaker-panel': 200,
     };
-    
-    return { 
-      x: comp.x + (widths[comp.type] || 120) / 2, 
-      y: comp.y + (heights[comp.type] || 100) / 2 
+
+    return {
+      x: comp.x + (widths[comp.type] || 120) / 2,
+      y: comp.y + (heights[comp.type] || 100) / 2
     };
   };
 
   const getWireColor = (polarity: string) => {
     switch (polarity) {
       case "positive":
-        return "hsl(var(--wire-positive))";
+        return "hsl(var(--wire-positive))"; // Red
       case "negative":
-        return "hsl(var(--wire-negative))";
+        return "hsl(var(--wire-negative))"; // Black
       case "neutral":
+        return "hsl(var(--wire-neutral))"; // White/Grey
       case "ac":
-        return "hsl(var(--wire-ac-hot))";
+      case "ac-hot":
+        return "hsl(var(--wire-ac-hot))"; // Black/Orange (distinct from DC negative)
       case "ground":
-        return "hsl(var(--wire-ac-ground))";
+        return "hsl(var(--wire-ac-ground))"; // Green
       default:
         return "hsl(var(--primary))";
     }
@@ -358,12 +409,12 @@ export function SchematicCanvas({
     if (!gauge) return 3;
     const awgMatch = gauge.match(/(\d+(?:\/\d+)?)\s*AWG/);
     if (!awgMatch) return 3;
-    
+
     const awgValue = awgMatch[1];
     if (awgValue.includes("/")) {
       return 12;
     }
-    
+
     const awgNum = parseInt(awgValue);
     if (awgNum <= 4) return 10;
     if (awgNum <= 6) return 8;
@@ -384,7 +435,7 @@ export function SchematicCanvas({
         >
           <Grid3X3 className="h-4 w-4" />
         </Button>
-        
+
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
@@ -410,7 +461,7 @@ export function SchematicCanvas({
         </div>
       </div>
 
-      <div 
+      <div
         ref={canvasRef}
         className="flex-1 relative overflow-auto bg-background"
         onDragOver={handleDragOver}
@@ -446,126 +497,183 @@ export function SchematicCanvas({
               </pattern>
             </defs>
           )}
-          
+
           {showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
-          {wires.map((wire, wireIndex) => {
-            // Get terminal positions instead of component centers
-            const fromComp = components.find(c => c.id === wire.fromComponentId);
-            const toComp = components.find(c => c.id === wire.toComponentId);
-            
-            if (!fromComp || !toComp) {
-              console.warn('Wire skipped - missing component:', { 
-                wireId: wire.id, 
-                fromId: wire.fromComponentId, 
-                toId: wire.toComponentId,
-                foundFrom: !!fromComp,
-                foundTo: !!toComp,
-                availableComponentIds: components.map(c => c.id)
-              });
-              return null;
-            }
-            
-            // Try to get terminal positions, fall back to component centers
-            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
-            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
-            
-            // Get terminal orientations
-            const fromOrientation = getTerminalOrientation(fromComp.type, wire.fromTerminal);
-            const toOrientation = getTerminalOrientation(toComp.type, wire.toTerminal);
-            
-            // If either terminal position is null, use component centers as fallback
-            if (!fromPos) {
-              const from = getComponentPosition(wire.fromComponentId);
-              fromPos = { x: from.x, y: from.y };
-            }
-            if (!toPos) {
-              const to = getComponentPosition(wire.toComponentId);
-              toPos = { x: to.x, y: to.y };
-            }
-            
-            // Calculate wire offset to prevent overlaps
-            // Group wires by connection pair (same components, regardless of direction)
-            const connectionKey = [wire.fromComponentId, wire.toComponentId].sort().join('-');
-            const parallelWires = wires.filter(w => {
-              const wKey = [w.fromComponentId, w.toComponentId].sort().join('-');
-              return wKey === connectionKey;
+          {(() => {
+            // Build obstacles from all components
+            const componentDimensions: Record<string, { width: number; height: number }> = {
+              multiplus: { width: 180, height: 140 },
+              battery: { width: 160, height: 110 },
+              mppt: { width: 160, height: 130 },
+              'solar-panel': { width: 140, height: 120 },
+              cerbo: { width: 180, height: 120 },
+              bmv: { width: 140, height: 140 },
+              smartshunt: { width: 140, height: 140 },
+              'ac-load': { width: 120, height: 100 },
+              'dc-load': { width: 120, height: 100 },
+              'busbar-positive': { width: 140, height: 60 },
+              'busbar-negative': { width: 140, height: 60 },
+              fuse: { width: 80, height: 60 },
+              switch: { width: 80, height: 80 },
+              'breaker-panel': { width: 160, height: 200 },
+              'ac-panel': { width: 180, height: 220 },
+              'dc-panel': { width: 160, height: 240 },
+            };
+
+            const obstacles: Obstacle[] = components.map(comp => {
+              const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
+              return {
+                x: comp.x,
+                y: comp.y,
+                width: dims.width,
+                height: dims.height
+              };
             });
-            const indexInGroup = parallelWires.findIndex(w => w.id === wire.id);
-            
-            // Calculate offset: distribute wires evenly around center
-            // For n wires: if n=1 offset=0, if n=2 offsets=[-1.5,1.5], if n=3 offsets=[-3,0,3], etc.
-            const groupSize = parallelWires.length;
-            const wireOffset = groupSize === 1 
-              ? 0 
-              : (indexInGroup - (groupSize - 1) / 2) * 3.0; // 3.0 spacing for better separation (60px at GRID_SIZE=20)
-            
-            // Calculate orthogonal path with terminal orientations
-            let path: string;
-            let labelX: number;
-            let labelY: number;
-            
-            if (fromOrientation && toOrientation) {
-              const result = calculateOrthogonalPathWithOrientation(
-                fromPos.x, fromPos.y, 
+
+            // Track occupied nodes for wire separation
+            const occupiedNodes = new Set<string>();
+
+            return wires.map((wire, wireIndex) => {
+              // Get terminal positions instead of component centers
+              const fromComp = components.find(c => c.id === wire.fromComponentId);
+              const toComp = components.find(c => c.id === wire.toComponentId);
+
+              if (!fromComp || !toComp) {
+                console.warn('Wire skipped - missing component:', {
+                  wireId: wire.id,
+                  fromId: wire.fromComponentId,
+                  toId: wire.toComponentId,
+                  foundFrom: !!fromComp,
+                  foundTo: !!toComp,
+                  availableComponentIds: components.map(c => c.id)
+                });
+                return null;
+              }
+
+              // Try to get terminal positions, fall back to component centers
+              let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
+              let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
+
+              // If either terminal position is null, use component centers as fallback
+              if (!fromPos) {
+                const from = getComponentPosition(wire.fromComponentId);
+                fromPos = { x: from.x, y: from.y };
+              }
+              if (!toPos) {
+                const to = getComponentPosition(wire.toComponentId);
+                toPos = { x: to.x, y: to.y };
+              }
+
+              // Use A* router with obstacles
+              // Get terminal orientations
+              const fromOrientation = getTerminalOrientation(fromComp.type, wire.fromTerminal);
+              const toOrientation = getTerminalOrientation(toComp.type, wire.toTerminal);
+
+              // Apply dynamic offsets for multiple connections
+              const fromKey = `${wire.fromComponentId}-${wire.fromTerminal}`;
+              const toKey = `${wire.toComponentId}-${wire.toTerminal}`;
+
+              const fromWires = terminalUsage.get(fromKey) || [];
+              const toWires = terminalUsage.get(toKey) || [];
+
+              const fromIndex = fromWires.indexOf(wire.id);
+              const toIndex = toWires.indexOf(wire.id);
+
+              const getOffset = (index: number, count: number) => {
+                if (count <= 1) return 0;
+                return (index - (count - 1) / 2) * 10;
+              };
+
+              if (fromPos && fromOrientation) {
+                const offset = getOffset(fromIndex, fromWires.length);
+                if (fromOrientation === 'left' || fromOrientation === 'right') {
+                  fromPos.y += offset;
+                } else {
+                  fromPos.x += offset;
+                }
+              }
+
+              if (toPos && toOrientation) {
+                const offset = getOffset(toIndex, toWires.length);
+                if (toOrientation === 'left' || toOrientation === 'right') {
+                  toPos.y += offset;
+                } else {
+                  toPos.x += offset;
+                }
+              }
+
+              const result = calculateRoute(
+                fromPos.x, fromPos.y,
                 toPos.x, toPos.y,
-                fromOrientation, toOrientation,
-                wireOffset, 15
+                obstacles,
+                2400, // canvas width
+                1600, // canvas height
+                occupiedNodes,
+                fromOrientation || undefined,
+                toOrientation || undefined
               );
-              path = result.path;
-              labelX = result.labelX;
-              labelY = result.labelY;
-            } else {
-              // Fallback to old routing if orientations not available
-              path = calculateOrthogonalPath(fromPos.x, fromPos.y, toPos.x, toPos.y, 15, wireOffset);
-              labelX = (fromPos.x + toPos.x) / 2;
-              labelY = (fromPos.y + toPos.y) / 2;
-            }
-            
-            const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
-            const isSelected = selectedWireId === wire.id;
-            
-            return (
-              <g 
-                key={wire.id}
-                className="cursor-pointer hover:opacity-80"
-                onClick={(e) => handleWireClick(wire.id, e)}
-                data-testid={`wire-${wire.id}`}
-              >
-                <path
-                  d={path}
-                  stroke={isSelected ? "hsl(var(--primary))" : getWireColor(wire.polarity)}
-                  strokeWidth={isSelected ? getWireThickness(wire.gauge) + 2 : getWireThickness(wire.gauge)}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                  opacity={isSelected ? 1 : 0.9}
-                  style={{ pointerEvents: 'stroke' }}
-                />
-                
-                <g transform={`translate(${labelX}, ${labelY})`} className="pointer-events-none">
-                  <rect
-                    x="-35"
-                    y="-12"
-                    width="70"
-                    height="24"
-                    fill="hsl(var(--background))"
-                    stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
-                    strokeWidth={isSelected ? 2 : 1}
-                    rx="4"
+
+              // Add this wire's path to occupied nodes for next wires
+              result.pathNodes.forEach(node => occupiedNodes.add(node));
+
+              const path = result.path;
+              const labelX = result.labelX;
+              const labelY = result.labelY;
+              const labelRotation = result.labelRotation;
+
+              const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
+              const isSelected = selectedWireId === wire.id;
+
+              return (
+                <g
+                  key={wire.id}
+                  className="cursor-pointer hover:opacity-80"
+                  onClick={(e) => handleWireClick(wire.id, e)}
+                  data-testid={`wire-${wire.id}`}
+                >
+                  <path
+                    d={path}
+                    stroke="transparent"
+                    strokeWidth={20}
+                    fill="none"
+                    style={{ pointerEvents: 'stroke' }}
                   />
-                  <text
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="fill-foreground text-xs font-semibold"
-                  >
-                    {polaritySymbol} {wire.gauge || "N/A"}
-                  </text>
+                  <path
+                    d={path}
+                    stroke={isSelected ? "hsl(var(--primary))" : getWireColor(wire.polarity)}
+                    strokeWidth={isSelected ? getWireThickness(wire.gauge) + 2 : getWireThickness(wire.gauge)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                    opacity={isSelected ? 1 : 0.9}
+                    style={{ pointerEvents: 'none' }}
+                  />
+
+                  <g transform={`translate(${labelX}, ${labelY}) rotate(${labelRotation})`} className="pointer-events-none">
+                    <rect
+                      x="-35"
+                      y="-12"
+                      width="70"
+                      height="24"
+                      fill="hsl(var(--background))"
+                      stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
+                      strokeWidth={isSelected ? 2 : 1}
+                      rx="4"
+                    />
+                    <text
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="fill-foreground text-xs font-semibold"
+                    >
+                      {polaritySymbol} {wire.gauge || "N/A"}
+                    </text>
+                  </g>
                 </g>
-              </g>
-            );
-          })}
-          
+              );
+            });
+          })()}
+
           {/* Selection box when dragging */}
           {selectionBox && (
             <rect
@@ -582,28 +690,63 @@ export function SchematicCanvas({
               data-testid="selection-box"
             />
           )}
-          
+
           {/* Wire preview when dragging */}
-          {wireStart && wirePreviewEnd && (
-            <path
-              d={calculateOrthogonalPath(
-                wireStart.position.x,
-                wireStart.position.y,
-                wirePreviewEnd.x,
-                wirePreviewEnd.y,
-                15
-              )}
-              stroke={wireStart.terminal.color}
-              strokeWidth={4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray="8 4"
-              opacity={0.6}
-              fill="none"
-              className="pointer-events-none"
-              data-testid="wire-preview"
-            />
-          )}
+          {wireStart && wirePreviewEnd && (() => {
+            const componentDimensions: Record<string, { width: number; height: number }> = {
+              multiplus: { width: 180, height: 140 },
+              battery: { width: 160, height: 110 },
+              mppt: { width: 160, height: 130 },
+              'solar-panel': { width: 140, height: 120 },
+              cerbo: { width: 180, height: 120 },
+              bmv: { width: 140, height: 140 },
+              smartshunt: { width: 140, height: 140 },
+              'ac-load': { width: 120, height: 100 },
+              'dc-load': { width: 120, height: 100 },
+              'busbar-positive': { width: 140, height: 60 },
+              'busbar-negative': { width: 140, height: 60 },
+              fuse: { width: 80, height: 60 },
+              switch: { width: 80, height: 80 },
+              'breaker-panel': { width: 160, height: 200 },
+              'ac-panel': { width: 180, height: 220 },
+              'dc-panel': { width: 160, height: 240 },
+            };
+
+            const obstacles: Obstacle[] = components.map(comp => {
+              const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
+              return {
+                x: comp.x,
+                y: comp.y,
+                width: dims.width,
+                height: dims.height
+              };
+            });
+
+            const previewRoute = calculateRoute(
+              wireStart.position.x, wireStart.position.y,
+              wirePreviewEnd.x, wirePreviewEnd.y,
+              obstacles,
+              2400, // canvas width
+              1600, // canvas height
+              new Set<string>(), // No occupied nodes for preview
+              wireStart.terminal.orientation
+            );
+
+            return (
+              <path
+                d={previewRoute.path}
+                stroke={wireStart.terminal.color}
+                strokeWidth={4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="8 4"
+                opacity={0.6}
+                fill="none"
+                className="pointer-events-none"
+                data-testid="wire-preview"
+              />
+            );
+          })()}
         </svg>
 
         <div className="absolute inset-0 p-4 pointer-events-none" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}>
@@ -613,17 +756,16 @@ export function SchematicCanvas({
             if (wireStart && wireStart.componentId === component.id) {
               highlightedTerminals.push(wireStart.terminal.id);
             }
-            
+
             return (
               <div
                 key={component.id}
                 draggable
                 onDragStart={(e) => handleComponentDragStart(component, e)}
-                className={`absolute cursor-move pointer-events-none ${
-                  wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
-                }`}
-                style={{ 
-                  left: component.x, 
+                className={`absolute cursor-move pointer-events-none ${wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
+                  }`}
+                style={{
+                  left: component.x,
                   top: component.y,
                 }}
                 data-testid={`canvas-component-${component.id}`}

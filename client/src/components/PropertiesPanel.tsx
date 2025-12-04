@@ -1,5 +1,6 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +35,11 @@ interface PropertiesPanelProps {
     length: number;
   };
   wireCalculation?: WireCalculation;
+  onEditWire?: (wire: any) => void;
+  onUpdateComponent?: (id: string, updates: any) => void;
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, onEditWire, onUpdateComponent }: PropertiesPanelProps) {
   return (
     <div className="w-80 border-l bg-card flex flex-col h-full">
       <div className="p-4 border-b">
@@ -64,6 +67,14 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   <div className="text-sm text-muted-foreground p-2 bg-muted rounded-md">
                     {selectedWire.fromComponentId} → {selectedWire.toComponentId}
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2"
+                    onClick={() => onEditWire?.(selectedWire)}
+                  >
+                    Edit Wire Properties
+                  </Button>
                 </div>
 
                 <Separator />
@@ -90,6 +101,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       type="number"
                       defaultValue={selectedWire.length}
                       data-testid="input-wire-length"
+                      readOnly
                     />
                   </div>
                   <div className="space-y-2">
@@ -117,6 +129,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   <Input
                     defaultValue={selectedComponent.name}
                     data-testid="input-component-name"
+                    onChange={(e) => onUpdateComponent?.(selectedComponent.id, { name: e.target.value })}
                   />
                 </div>
 
@@ -130,6 +143,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       type="number"
                       defaultValue={selectedComponent.voltage || 12}
                       data-testid="input-voltage"
+                      onChange={(e) => onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent, voltage: parseFloat(e.target.value) } })}
                     />
                   </div>
                   <div className="space-y-2">
@@ -138,6 +152,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       type="number"
                       defaultValue={selectedComponent.current || 0}
                       data-testid="input-current"
+                      onChange={(e) => onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent, current: parseFloat(e.target.value) } })}
                     />
                   </div>
                   <div className="space-y-2">
@@ -146,8 +161,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       type="number"
                       defaultValue={selectedComponent.power || 0}
                       data-testid="input-power"
-                      disabled
-                      className="bg-muted"
+                      onChange={(e) => onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent, power: parseFloat(e.target.value) } })}
                     />
                   </div>
                 </div>
@@ -165,7 +179,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
               <>
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium">Wire Sizing</h3>
-                  
+
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Current</span>
@@ -214,6 +228,6 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
           </TabsContent>
         </ScrollArea>
       </Tabs>
-    </div>
+    </div >
   );
 }
