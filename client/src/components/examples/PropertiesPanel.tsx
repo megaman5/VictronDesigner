@@ -7,6 +7,7 @@ export default function PropertiesPanelExample() {
       <div className="h-screen bg-background">
         <PropertiesPanel
           selectedComponent={{
+            id: "multiplus-1",
             name: "MultiPlus 1200VA",
             voltage: 12,
             current: 100,

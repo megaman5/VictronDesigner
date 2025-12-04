@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest } from "@shared/schema";
+import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
 import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
@@ -89,6 +89,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(calculation);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Design validation endpoint
+  app.post("/api/validate-design", async (req, res) => {
+    try {
+      const { components, wires, systemVoltage = 12 } = req.body;
+
+      if (!components || !Array.isArray(components)) {
+        return res.status(400).json({ error: "Components array is required" });
+      }
+
+      if (!wires || !Array.isArray(wires)) {
+        return res.status(400).json({ error: "Wires array is required" });
+      }
+
+      const validation = validateDesign(components, wires, systemVoltage);
+      res.json(validation);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -369,6 +389,379 @@ JSON RESPONSE FORMAT:
     } catch (error: any) {
       console.error("AI wire generation error:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Iterative AI generation with quality validation
+  app.post("/api/ai-generate-system-iterative", async (req, res) => {
+    try {
+      const {
+        prompt,
+        systemVoltage = 12,
+        minQualityScore = 70,
+        maxIterations = 5
+      } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      let bestDesign: any = null;
+      let bestScore = 0;
+      const iterationHistory: any[] = [];
+
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        console.log(`\n=== Iteration ${iteration + 1}/${maxIterations} ===`);
+
+        // Build feedback context from previous iteration
+        let feedbackContext = "";
+        if (iteration > 0 && bestDesign) {
+          const validation = bestDesign.validation;
+          feedbackContext = `\n\nPREVIOUS ITERATION FEEDBACK (Score: ${validation.score}/100):
+- Errors: ${validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message).join(', ')}
+- Warnings: ${validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message).join(', ')}
+- Suggestions: ${validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion).join(', ')}
+
+Please address these issues in your next design.`;
+        }
+
+        const systemMessage = `You are a Victron energy system design expert. Design a complete electrical schematic based on the user's requirements.
+
+CANVAS DIMENSIONS: 2000px width × 1500px height (0,0 is top-left corner)
+
+COMPONENT DIMENSIONS (width × height):
+- multiplus: 180×140px
+- mppt: 160×130px
+- cerbo: 180×120px
+- bmv: 140×140px
+- smartshunt: 140×130px
+- battery: 160×110px
+- solar-panel: 140×120px
+- ac-load: 120×100px
+- dc-load: 120×100px
+- busbar-positive: 200×60px
+- busbar-negative: 200×60px
+
+LAYOUT RULES:
+1. Components must NOT overlap - check dimensions above
+2. Leave minimum 300px horizontal spacing between component centers
+3. Leave minimum 250px vertical spacing between component centers
+4. Organize logically: solar/charging top, battery middle, loads bottom
+5. Use grid alignment: positions should be multiples of 20px
+6. Stay within canvas bounds with margin: x=100-1800, y=100-1300
+
+TERMINAL IDs BY COMPONENT (use EXACT IDs for wiring):
+- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- cerbo: "data-1", "data-2", "data-3", "power"
+- bmv: "data"
+- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
+- battery: "positive", "negative"
+- solar-panel: "positive", "negative"
+- ac-load: "ac-in"
+- dc-load: "positive", "negative"
+- busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+
+CRITICAL WIRING RULES:
+1. SmartShunt MUST be in negative path: Battery negative → SmartShunt "negative", SmartShunt "system-minus" → all loads
+2. Use bus bars when 3+ connections needed (separate bars for positive/negative)
+3. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
+4. Use EXACT terminal IDs from list above
+5. Calculate wire gauge based on current: 0-25A=10AWG, 25-40A=8AWG, 40-60A=6AWG, 60-100A=4AWG, 100-150A=2AWG, 150-200A=1AWG
+
+VALIDATION CHECKLIST:
+✓ All components within canvas bounds (100-1800, 100-1300)
+✓ No overlapping components (check dimensions + 300px spacing)
+✓ All wires have valid terminal IDs
+✓ SmartShunt in negative path if present
+✓ Proper polarity on all connections
+✓ Appropriate wire gauges for current
+✓ Logical component layout
+
+${feedbackContext}
+
+Respond with valid JSON only:
+{
+  "components": [...],
+  "wires": [...],
+  "description": "Brief system description",
+  "recommendations": ["recommendation 1", "recommendation 2"]
+}`;
+
+        const userMessage = iteration === 0
+          ? prompt
+          : `${prompt}\n\nImprove the previous design based on the feedback above.`;
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5.1-chat-latest",
+          messages: [
+            { role: "system", content: systemMessage },
+            { role: "user", content: userMessage }
+          ],
+          temperature: 0.7,
+          max_completion_tokens: 4000,
+        });
+
+        const content = completion.choices[0].message.content;
+        if (!content) {
+          throw new Error("Empty response from AI");
+        }
+
+        const response: AISystemResponse = JSON.parse(content);
+
+        // Validate the design
+        const validation = validateDesign(
+          response.components,
+          response.wires,
+          systemVoltage
+        );
+
+        console.log(`Iteration ${iteration + 1} - Score: ${validation.score}, Errors: ${validation.issues.filter(i => i.severity === 'error').length}, Warnings: ${validation.issues.filter(i => i.severity === 'warning').length}`);
+
+        // Generate visual feedback (optional, for debugging)
+        let visualFeedback = null;
+        try {
+          visualFeedback = await renderSchematicToPNG(response.components, response.wires);
+        } catch (err) {
+          console.log("Visual feedback generation skipped:", err);
+        }
+
+        // Track this iteration
+        iterationHistory.push({
+          iteration: iteration + 1,
+          score: validation.score,
+          errorCount: validation.issues.filter(i => i.severity === 'error').length,
+          warningCount: validation.issues.filter(i => i.severity === 'warning').length,
+          design: response,
+          validation
+        });
+
+        // Update best design if this is better
+        if (validation.score > bestScore) {
+          bestScore = validation.score;
+          bestDesign = {
+            ...response,
+            validation,
+            visualFeedback
+          };
+        }
+
+        // Check if we've achieved minimum quality
+        if (validation.score >= minQualityScore) {
+          console.log(`✓ Achieved quality threshold (${validation.score} >= ${minQualityScore}) at iteration ${iteration + 1}`);
+          res.json({
+            ...bestDesign,
+            iterationHistory,
+            finalIteration: iteration + 1,
+            achievedQualityThreshold: true
+          });
+          return;
+        }
+      }
+
+      // Return best design after max iterations
+      console.log(`Max iterations reached. Best score: ${bestScore}/${minQualityScore}`);
+      res.json({
+        ...bestDesign,
+        iterationHistory,
+        finalIteration: maxIterations,
+        achievedQualityThreshold: bestScore >= minQualityScore
+      });
+
+    } catch (error: any) {
+      console.error("Iterative AI generation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // SSE streaming endpoint for real-time progress updates
+  app.post("/api/ai-generate-system-stream", async (req, res) => {
+    try {
+      const {
+        prompt,
+        systemVoltage = 12,
+        minQualityScore = 70,
+        maxIterations = 5
+      } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      // Set SSE headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const sendEvent = (event: string, data: any) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      let bestDesign: any = null;
+      let bestScore = 0;
+      const iterationHistory: any[] = [];
+
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        sendEvent('iteration-start', { iteration: iteration + 1, maxIterations });
+
+        // Build feedback context from previous iteration
+        let feedbackContext = "";
+        if (iteration > 0 && bestDesign) {
+          const validation = bestDesign.validation;
+          feedbackContext = `\n\nPREVIOUS ITERATION FEEDBACK (Score: ${validation.score}/100):
+- Errors: ${validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message).join(', ')}
+- Warnings: ${validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message).join(', ')}
+- Suggestions: ${validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion).join(', ')}
+
+Please address these issues in your next design.`;
+        }
+
+        const systemMessage = `You are a Victron energy system design expert. Design a complete electrical schematic based on the user's requirements.
+
+CANVAS DIMENSIONS: 2000px width × 1500px height (0,0 is top-left corner)
+
+COMPONENT DIMENSIONS (width × height):
+- multiplus: 180×140px
+- mppt: 160×130px
+- cerbo: 180×120px
+- bmv: 140×140px
+- smartshunt: 140×130px
+- battery: 160×110px
+- solar-panel: 140×120px
+- ac-load: 120×100px
+- dc-load: 120×100px
+- busbar-positive: 200×60px
+- busbar-negative: 200×60px
+
+LAYOUT RULES:
+1. Components must NOT overlap - check dimensions above
+2. Leave minimum 300px horizontal spacing between component centers
+3. Leave minimum 250px vertical spacing between component centers
+4. Organize logically: solar/charging top, battery middle, loads bottom
+5. Use grid alignment: positions should be multiples of 20px
+6. Stay within canvas bounds with margin: x=100-1800, y=100-1300
+
+TERMINAL IDs BY COMPONENT (use EXACT IDs for wiring):
+- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- cerbo: "data-1", "data-2", "data-3", "power"
+- bmv: "data"
+- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
+- battery: "positive", "negative"
+- solar-panel: "positive", "negative"
+- ac-load: "ac-in"
+- dc-load: "positive", "negative"
+- busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+
+CRITICAL WIRING RULES:
+1. SmartShunt MUST be in negative path: Battery negative → SmartShunt "negative", SmartShunt "system-minus" → all loads
+2. Use bus bars when 3+ connections needed (separate bars for positive/negative)
+3. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
+4. Use EXACT terminal IDs from list above
+5. Calculate wire gauge based on current: 0-25A=10AWG, 25-40A=8AWG, 40-60A=6AWG, 60-100A=4AWG, 100-150A=2AWG, 150-200A=1AWG
+
+VALIDATION CHECKLIST:
+✓ All components within canvas bounds (100-1800, 100-1300)
+✓ No overlapping components (check dimensions + 300px spacing)
+✓ All wires have valid terminal IDs
+✓ SmartShunt in negative path if present
+✓ Proper polarity on all connections
+✓ Appropriate wire gauges for current
+✓ Logical component layout
+
+${feedbackContext}
+
+Respond with valid JSON only:
+{
+  "components": [...],
+  "wires": [...],
+  "description": "Brief system description",
+  "recommendations": ["recommendation 1", "recommendation 2"]
+}`;
+
+        const userMessage = iteration === 0
+          ? prompt
+          : `${prompt}\n\nImprove the previous design based on the feedback above.`;
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5.1-chat-latest",
+          messages: [
+            { role: "system", content: systemMessage },
+            { role: "user", content: userMessage }
+          ],
+          temperature: 0.7,
+          max_completion_tokens: 4000,
+        });
+
+        const content = completion.choices[0].message.content;
+        if (!content) {
+          throw new Error("Empty response from AI");
+        }
+
+        const response: AISystemResponse = JSON.parse(content);
+
+        // Validate the design
+        const validation = validateDesign(
+          response.components,
+          response.wires,
+          systemVoltage
+        );
+
+        // Track this iteration
+        iterationHistory.push({
+          iteration: iteration + 1,
+          score: validation.score,
+          errorCount: validation.issues.filter(i => i.severity === 'error').length,
+          warningCount: validation.issues.filter(i => i.severity === 'warning').length
+        });
+
+        // Update best design if this is better
+        if (validation.score > bestScore) {
+          bestScore = validation.score;
+          bestDesign = {
+            ...response,
+            validation
+          };
+        }
+
+        sendEvent('iteration-complete', {
+          iteration: iteration + 1,
+          score: validation.score,
+          errorCount: validation.issues.filter(i => i.severity === 'error').length,
+          warningCount: validation.issues.filter(i => i.severity === 'warning').length,
+          isBest: validation.score === bestScore
+        });
+
+        // Check if we've achieved minimum quality
+        if (validation.score >= minQualityScore) {
+          sendEvent('complete', {
+            ...bestDesign,
+            iterationHistory,
+            finalIteration: iteration + 1,
+            achievedQualityThreshold: true
+          });
+          res.end();
+          return;
+        }
+      }
+
+      // Return best design after max iterations
+      sendEvent('complete', {
+        ...bestDesign,
+        iterationHistory,
+        finalIteration: maxIterations,
+        achievedQualityThreshold: bestScore >= minQualityScore
+      });
+      res.end();
+
+    } catch (error: any) {
+      console.error("SSE streaming error:", error);
+      res.write(`event: error\n`);
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
     }
   });
 
