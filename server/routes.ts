@@ -13,6 +13,17 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Helper function to extract JSON from markdown code blocks
+function extractJSON(content: string): string {
+  // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+  const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (jsonMatch) {
+    return jsonMatch[1].trim();
+  }
+  // If no code blocks, return trimmed content
+  return content.trim();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Schematic CRUD operations
   app.get("/api/schematics", async (req, res) => {
@@ -267,7 +278,7 @@ JSON RESPONSE FORMAT:
         response_format: { type: "json_object" },
       });
 
-      const response = JSON.parse(completion.choices[0].message.content || "{}");
+      const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
 
       // Log AI response for debugging
       console.log("AI Response:", JSON.stringify(response, null, 2));
@@ -380,7 +391,7 @@ JSON RESPONSE FORMAT:
         response_format: { type: "json_object" },
       });
 
-      const response = JSON.parse(completion.choices[0].message.content || "{}");
+      const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
 
       console.log("AI Wire Generation Response:", JSON.stringify(response, null, 2));
       console.log("Generated wires count:", response.wires?.length || 0);
@@ -507,7 +518,7 @@ Respond with valid JSON only:
           throw new Error("Empty response from AI");
         }
 
-        const response: AISystemResponse = JSON.parse(content);
+        const response: AISystemResponse = JSON.parse(extractJSON(content));
 
         // Validate the design
         const validation = validateDesign(
@@ -699,7 +710,7 @@ Respond with valid JSON only:
           throw new Error("Empty response from AI");
         }
 
-        const response: AISystemResponse = JSON.parse(content);
+        const response: AISystemResponse = JSON.parse(extractJSON(content));
 
         // Validate the design
         const validation = validateDesign(
