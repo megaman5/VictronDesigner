@@ -795,12 +795,14 @@ Respond with valid JSON only:
           warningCount: validation.issues.filter(i => i.severity === 'warning').length
         });
 
-        // Log validation details if score is 0
-        if (validation.score === 0) {
-          console.log(`[SSE] Iteration ${iteration + 1} scored 0 - validation issues:`);
+        // Log validation details
+        console.log(`[SSE] Iteration ${iteration + 1} validation (score ${validation.score}):`);
+        if (validation.issues.length > 0) {
           validation.issues.forEach(issue => {
             console.log(`  [${issue.severity}] ${issue.category}: ${issue.message}`);
           });
+        } else {
+          console.log(`  No issues found`);
         }
 
         // Update best design if this is better
