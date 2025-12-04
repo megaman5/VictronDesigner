@@ -29,6 +29,16 @@ export default function SchematicDesigner() {
   const [wires, setWires] = useState<Wire[]>([]);
   const [systemVoltage, setSystemVoltage] = useState(12);
 
+  // Iteration progress for AI generation
+  const [iterationProgress, setIterationProgress] = useState<{
+    iteration: number;
+    maxIterations: number;
+    score?: number;
+    errorCount?: number;
+    warningCount?: number;
+    isBest?: boolean;
+  } | null>(null);
+
   // Load schematic
   const { data: schematic } = useQuery<Schematic>({
     queryKey: ["/api/schematics", currentSchematicId],
@@ -82,43 +92,108 @@ export default function SchematicDesigner() {
     },
   });
 
-  // AI generation mutation
-  const aiGenerateMutation = useMutation({
-    mutationFn: async (prompt: string) => {
-      const res = await apiRequest("POST", "/api/ai-generate-system", {
-        prompt,
-        systemVoltage,
+  // AI generation with SSE streaming
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+
+  const handleAIGenerateWithStreaming = async (prompt: string) => {
+    setIsAiGenerating(true);
+    setIterationProgress(null);
+
+    try {
+      const response = await fetch("/api/ai-generate-system-stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          systemVoltage,
+          minQualityScore: 70,
+          maxIterations: 5,
+        }),
       });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      console.log("AI Generated System:", data);
-      console.log("Components:", data.components);
-      console.log("Wires:", data.wires);
 
-      setComponents(data.components || []);
+      if (!response.ok) {
+        throw new Error("Failed to generate system");
+      }
 
-      // Generate unique IDs for the wires
-      const wiresWithIds = (data.wires || []).map((wire: any, index: number) => ({
-        ...wire,
-        id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-      }));
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      setWires(wiresWithIds);
-      toast({
-        title: "System Generated",
-        description: data.description || "AI has generated your electrical system",
-      });
-      setAiDialogOpen(false);
-    },
-    onError: (error: any) => {
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let currentEventType = "";
+
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            currentEventType = line.substring(6).trim();
+            continue;
+          }
+
+          if (line.startsWith("data:")) {
+            const data = JSON.parse(line.substring(5).trim());
+
+            if (currentEventType === "iteration-start") {
+              setIterationProgress({
+                iteration: data.iteration,
+                maxIterations: data.maxIterations,
+              });
+            } else if (currentEventType === "iteration-complete") {
+              setIterationProgress({
+                iteration: data.iteration,
+                maxIterations: data.maxIterations,
+                score: data.score,
+                errorCount: data.errorCount,
+                warningCount: data.warningCount,
+                isBest: data.isBest,
+              });
+            } else if (currentEventType === "complete") {
+              console.log("AI Generated System:", data);
+              setComponents(data.components || []);
+
+              const wiresWithIds = (data.wires || []).map((wire: any, index: number) => ({
+                ...wire,
+                id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+              }));
+
+              setWires(wiresWithIds);
+              toast({
+                title: "System Generated",
+                description: `Design complete! Quality score: ${data.validation?.score || 'N/A'}`,
+              });
+              setAiDialogOpen(false);
+              setIterationProgress(null);
+            } else if (currentEventType === "error") {
+              throw new Error(data.error || "Generation failed");
+            }
+
+            currentEventType = "";
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error("AI generation error:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to generate system",
         variant: "destructive",
       });
-    },
-  });
+      setIterationProgress(null);
+    } finally {
+      setIsAiGenerating(false);
+    }
+  };
 
   // AI wire generation mutation
   const aiWireMutation = useMutation({
@@ -471,8 +546,9 @@ export default function SchematicDesigner() {
       <AIPromptDialog
         open={aiDialogOpen}
         onOpenChange={setAiDialogOpen}
-        onGenerate={(prompt) => aiGenerateMutation.mutate(prompt)}
-        isGenerating={aiGenerateMutation.isPending}
+        onGenerate={(prompt) => handleAIGenerateWithStreaming(prompt)}
+        isGenerating={isAiGenerating}
+        iterationProgress={iterationProgress}
       />
 
       <ExportDialog
