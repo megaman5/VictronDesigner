@@ -4,6 +4,7 @@ import { TopBar } from "@/components/TopBar";
 import { ComponentLibrary } from "@/components/ComponentLibrary";
 import { SchematicCanvas } from "@/components/SchematicCanvas";
 import { PropertiesPanel } from "@/components/PropertiesPanel";
+import { DesignReviewPanel } from "@/components/DesignReviewPanel";
 import { AIPromptDialog } from "@/components/AIPromptDialog";
 import { ExportDialog } from "@/components/ExportDialog";
 import { WireEditDialog } from "@/components/WireEditDialog";
@@ -159,7 +160,12 @@ export default function SchematicDesigner() {
                 isBest: data.isBest,
               });
             } else if (currentEventType === "complete") {
-              console.log("AI Generated System:", data);
+              console.log("AI Generated System - Full Data:", data);
+              console.log("Components count:", data.components?.length || 0);
+              console.log("Wires count:", data.wires?.length || 0);
+              console.log("Components:", data.components);
+              console.log("Wires:", data.wires);
+
               setComponents(data.components || []);
 
               const wiresWithIds = (data.wires || []).map((wire: any, index: number) => ({
@@ -170,7 +176,7 @@ export default function SchematicDesigner() {
               setWires(wiresWithIds);
               toast({
                 title: "System Generated",
-                description: `Design complete! Quality score: ${data.validation?.score || 'N/A'}`,
+                description: `Design complete! ${data.components?.length || 0} components, ${data.wires?.length || 0} wires. Quality score: ${data.validation?.score || 'N/A'}`,
               });
               setAiDialogOpen(false);
               setIterationProgress(null);
@@ -489,58 +495,70 @@ export default function SchematicDesigner() {
           wireStartComponent={wireStartComponent}
         />
 
-        <PropertiesPanel
-          selectedComponent={selectedComponent ? {
-            id: selectedComponent.id,
-            name: selectedComponent.name,
-            voltage: selectedComponent.properties?.voltage,
-            current: selectedComponent.properties?.current,
-            power: selectedComponent.properties?.power,
-          } : undefined}
-          selectedWire={selectedWire ? {
-            id: selectedWire.id,
-            fromComponentId: selectedWire.fromComponentId,
-            toComponentId: selectedWire.toComponentId,
-            fromTerminal: selectedWire.fromTerminal,
-            toTerminal: selectedWire.toTerminal,
-            polarity: selectedWire.polarity,
-            gauge: selectedWire.gauge,
-            length: selectedWire.length,
-          } : undefined}
-          wireCalculation={wireCalculation ? {
-            current: wireCalculation.current,
-            length: wireCalculation.length,
-            voltage: wireCalculation.voltage,
-            recommendedGauge: wireCalculation.recommendedGauge,
-            voltageDrop: wireCalculation.actualVoltageDrop,
-            status: wireCalculation.status,
-          } : undefined}
-          onEditWire={handleWireEdit}
-          onUpdateComponent={(id, updates) => {
-            setComponents(prev => prev.map(comp => {
-              if (comp.id === id) {
-                const updatedComp = { ...comp, ...updates };
-                // Also update selected component state to reflect changes immediately
-                if (selectedComponent?.id === id) {
-                  setSelectedComponent(updatedComp);
+        <div className="w-80 flex flex-col gap-4 p-4 bg-muted/30 border-l overflow-y-auto">
+          <PropertiesPanel
+            selectedComponent={selectedComponent ? {
+              id: selectedComponent.id,
+              name: selectedComponent.name,
+              voltage: selectedComponent.properties?.voltage,
+              current: selectedComponent.properties?.current,
+              power: selectedComponent.properties?.power,
+            } : undefined}
+            selectedWire={selectedWire ? {
+              id: selectedWire.id,
+              fromComponentId: selectedWire.fromComponentId,
+              toComponentId: selectedWire.toComponentId,
+              fromTerminal: selectedWire.fromTerminal,
+              toTerminal: selectedWire.toTerminal,
+              polarity: selectedWire.polarity,
+              gauge: selectedWire.gauge,
+              length: selectedWire.length,
+            } : undefined}
+            wireCalculation={wireCalculation ? {
+              current: wireCalculation.current,
+              length: wireCalculation.length,
+              voltage: wireCalculation.voltage,
+              recommendedGauge: wireCalculation.recommendedGauge,
+              voltageDrop: wireCalculation.actualVoltageDrop,
+              status: wireCalculation.status,
+            } : undefined}
+            onEditWire={handleWireEdit}
+            onUpdateComponent={(id, updates) => {
+              setComponents(prev => prev.map(comp => {
+                if (comp.id === id) {
+                  const updatedComp = { ...comp, ...updates };
+                  // Also update selected component state to reflect changes immediately
+                  if (selectedComponent?.id === id) {
+                    setSelectedComponent(updatedComp);
+                  }
+                  return updatedComp;
                 }
-                return updatedComp;
-              }
-              return comp;
-            }));
+                return comp;
+              }));
 
-            // Trigger wire recalculation if properties changed
-            if (updates.properties) {
-              // Find connected wires and recalculate
-              const connectedWires = wires.filter(
-                (w) => w.fromComponentId === id || w.toComponentId === id
-              );
-              if (connectedWires.length > 0) {
-                calculateWire(connectedWires[0]);
+              // Trigger wire recalculation if properties changed
+              if (updates.properties) {
+                // Find connected wires and recalculate
+                const connectedWires = wires.filter(
+                  (w) => w.fromComponentId === id || w.toComponentId === id
+                );
+                if (connectedWires.length > 0) {
+                  calculateWire(connectedWires[0]);
+                }
               }
-            }
-          }}
-        />
+            }}
+          />
+
+          <DesignReviewPanel
+            components={components}
+            wires={wires}
+            systemVoltage={systemVoltage}
+            onIssueClick={(issue) => {
+              console.log("Issue clicked:", issue);
+              // TODO: Highlight affected components/wires
+            }}
+          />
+        </div>
       </div>
 
       <AIPromptDialog
