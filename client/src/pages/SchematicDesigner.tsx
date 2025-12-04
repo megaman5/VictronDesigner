@@ -6,15 +6,18 @@ import { SchematicCanvas } from "@/components/SchematicCanvas";
 import { PropertiesPanel } from "@/components/PropertiesPanel";
 import { AIPromptDialog } from "@/components/AIPromptDialog";
 import { ExportDialog } from "@/components/ExportDialog";
+import { DesignReviewPanel } from "@/components/DesignReviewPanel";
+import { IterationProgress } from "@/components/IterationProgress";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Schematic, SchematicComponent, Wire, WireCalculation } from "@shared/schema";
+import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationIssue } from "@shared/schema";
 
 export default function SchematicDesigner() {
   const { toast } = useToast();
   const [currentSchematicId, setCurrentSchematicId] = useState<string | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [designReviewOpen, setDesignReviewOpen] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
   const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
@@ -80,12 +83,29 @@ export default function SchematicDesigner() {
     },
   });
 
-  // AI generation mutation
+  // AI generation mutation with iterative quality improvement
+  const [iterationStatus, setIterationStatus] = useState<{
+    currentIteration: number;
+    maxIterations: number;
+    currentScore: number;
+    status: string;
+  } | null>(null);
+
   const aiGenerateMutation = useMutation({
     mutationFn: async (prompt: string) => {
-      const res = await apiRequest("POST", "/api/ai-generate-system", {
+      // Show initial status
+      setIterationStatus({
+        currentIteration: 0,
+        maxIterations: 3,
+        currentScore: 0,
+        status: "🎨 Generating initial design...",
+      });
+
+      const res = await apiRequest("POST", "/api/ai-generate-system-iterative", {
         prompt,
         systemVoltage,
+        minQualityScore: 70,
+        maxIterations: 3,
       });
       return res.json();
     },
@@ -93,23 +113,48 @@ export default function SchematicDesigner() {
       console.log("AI Generated System:", data);
       console.log("Components:", data.components);
       console.log("Wires:", data.wires);
-      
+      console.log("Iteration History:", data.iterationHistory);
+
       setComponents(data.components || []);
-      
+
       // Generate unique IDs for the wires
       const wiresWithIds = (data.wires || []).map((wire: any, index: number) => ({
         ...wire,
         id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
       }));
-      
+
       setWires(wiresWithIds);
-      toast({
-        title: "System Generated",
-        description: data.description || "AI has generated your electrical system",
+
+      // Show final iteration status
+      const finalScore = data.validation?.score || 0;
+      const iterations = data.finalIteration || 1;
+
+      setIterationStatus({
+        currentIteration: iterations,
+        maxIterations: 3,
+        currentScore: finalScore,
+        status: data.achievedQualityThreshold
+          ? `✅ Design optimized!`
+          : `⚠️ Best effort design`,
       });
+
+      // Show detailed success message
+      const iterationSummary = data.iterationHistory
+        ?.map((h: any, i: number) => `Iteration ${i + 1}: ${h.score}/100 (${h.errorCount} errors, ${h.warningCount} warnings)`)
+        .join('\n') || '';
+
+      toast({
+        title: data.achievedQualityThreshold ? "✅ High-Quality Design Generated" : "⚠️ Design Generated",
+        description: `Quality Score: ${finalScore}/100\nIterations: ${iterations}\n\n${data.description || ''}`,
+        duration: 10000,
+      });
+
+      // Clear status after a delay
+      setTimeout(() => setIterationStatus(null), 8000);
       setAiDialogOpen(false);
     },
     onError: (error: any) => {
+      setIterationStatus(null);
       toast({
         title: "Error",
         description: error.message || "Failed to generate system",
@@ -295,6 +340,23 @@ export default function SchematicDesigner() {
     setWires(prev => prev.filter(w => w.id !== wireId));
   };
 
+  const handleValidationIssueClick = (issue: ValidationIssue) => {
+    // Highlight affected components
+    if (issue.componentIds && issue.componentIds.length > 0) {
+      const comp = components.find(c => c.id === issue.componentIds![0]);
+      if (comp) {
+        setSelectedComponent(comp);
+      }
+    }
+    // Show issue details in toast
+    toast({
+      title: `${issue.severity.toUpperCase()}: ${issue.category}`,
+      description: issue.message + (issue.suggestion ? `\n\n💡 ${issue.suggestion}` : ''),
+      variant: issue.severity === 'error' ? 'destructive' : 'default',
+      duration: 8000,
+    });
+  };
+
   const handleExport = async (options: { wiringDiagram: boolean; shoppingList: boolean; wireLabels: boolean; format: string }) => {
     if (!currentSchematicId) {
       toast({
@@ -332,6 +394,16 @@ export default function SchematicDesigner() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      {/* Iteration Progress Overlay */}
+      {iterationStatus && (
+        <IterationProgress
+          currentIteration={iterationStatus.currentIteration}
+          maxIterations={iterationStatus.maxIterations}
+          currentScore={iterationStatus.currentScore}
+          status={iterationStatus.status}
+        />
+      )}
+
       <TopBar
         onAIPrompt={() => setAiDialogOpen(true)}
         onAIWire={() => aiWireMutation.mutate()}
@@ -340,6 +412,8 @@ export default function SchematicDesigner() {
         onOpen={() => console.log("Open project")}
         onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
         wireMode={wireConnectionMode}
+        onDesignReview={() => setDesignReviewOpen(!designReviewOpen)}
+        designReviewOpen={designReviewOpen}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -364,33 +438,44 @@ export default function SchematicDesigner() {
           wireStartComponent={wireStartComponent}
         />
 
-        <PropertiesPanel
-          selectedComponent={selectedComponent ? {
-            id: selectedComponent.id,
-            name: selectedComponent.name,
-            voltage: selectedComponent.properties?.voltage,
-            current: selectedComponent.properties?.current,
-            power: selectedComponent.properties?.power,
-          } : undefined}
-          selectedWire={selectedWire ? {
-            id: selectedWire.id,
-            fromComponentId: selectedWire.fromComponentId,
-            toComponentId: selectedWire.toComponentId,
-            fromTerminal: selectedWire.fromTerminal,
-            toTerminal: selectedWire.toTerminal,
-            polarity: selectedWire.polarity,
-            gauge: selectedWire.gauge,
-            length: selectedWire.length,
-          } : undefined}
-          wireCalculation={wireCalculation ? {
-            current: wireCalculation.current,
-            length: wireCalculation.length,
-            voltage: wireCalculation.voltage,
-            recommendedGauge: wireCalculation.recommendedGauge,
-            voltageDrop: wireCalculation.actualVoltageDrop,
-            status: wireCalculation.status,
-          } : undefined}
-        />
+        {designReviewOpen ? (
+          <div className="w-96 border-l bg-card p-4 overflow-auto">
+            <DesignReviewPanel
+              components={components}
+              wires={wires}
+              systemVoltage={systemVoltage}
+              onIssueClick={handleValidationIssueClick}
+            />
+          </div>
+        ) : (
+          <PropertiesPanel
+            selectedComponent={selectedComponent ? {
+              id: selectedComponent.id,
+              name: selectedComponent.name,
+              voltage: selectedComponent.properties?.voltage,
+              current: selectedComponent.properties?.current,
+              power: selectedComponent.properties?.power,
+            } : undefined}
+            selectedWire={selectedWire ? {
+              id: selectedWire.id,
+              fromComponentId: selectedWire.fromComponentId,
+              toComponentId: selectedWire.toComponentId,
+              fromTerminal: selectedWire.fromTerminal,
+              toTerminal: selectedWire.toTerminal,
+              polarity: selectedWire.polarity,
+              gauge: selectedWire.gauge,
+              length: selectedWire.length,
+            } : undefined}
+            wireCalculation={wireCalculation ? {
+              current: wireCalculation.current,
+              length: wireCalculation.length,
+              voltage: wireCalculation.voltage,
+              recommendedGauge: wireCalculation.recommendedGauge,
+              voltageDrop: wireCalculation.actualVoltageDrop,
+              status: wireCalculation.status,
+            } : undefined}
+          />
+        )}
       </div>
 
       <AIPromptDialog
