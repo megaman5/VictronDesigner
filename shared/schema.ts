@@ -71,6 +71,7 @@ export interface Wire {
   current?: number;
   voltageDrop?: number;
   color?: string;
+  conductorMaterial?: "copper" | "aluminum";
 }
 
 export interface WireCalculation {

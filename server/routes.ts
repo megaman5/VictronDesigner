@@ -2,12 +2,13 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest } from "@shared/schema";
+import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
 import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || "mock-key",
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -94,6 +95,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
+      if (!process.env.OPENAI_API_KEY) {
+        console.log("No OpenAI API key found, returning mock response");
+        const mockResponse = {
+          components: [
+            { id: "battery-1", type: "battery", name: "Battery Bank", x: 100, y: 400, properties: { voltage: 12, capacity: 400 } },
+            { id: "mppt-1", type: "mppt", name: "Solar Controller", x: 400, y: 400, properties: { voltage: 12, current: 30 } },
+            { id: "solar-1", type: "solar-panel", name: "Solar Array", x: 400, y: 100, properties: { watts: 400 } },
+            { id: "load-1", type: "dc-load", name: "Lights", x: 700, y: 400, properties: { current: 5 } },
+            { id: "bus-pos", type: "busbar-positive", name: "DC Positive Bus", x: 400, y: 250, properties: {} },
+            { id: "bus-neg", type: "busbar-negative", name: "DC Negative Bus", x: 400, y: 550, properties: {} }
+          ],
+          wires: [
+            // Solar to MPPT
+            { fromComponentId: "solar-1", toComponentId: "mppt-1", fromTerminal: "positive", toTerminal: "pv-positive", polarity: "positive", gauge: "10 AWG", length: 2 },
+            { fromComponentId: "solar-1", toComponentId: "mppt-1", fromTerminal: "negative", toTerminal: "pv-negative", polarity: "negative", gauge: "10 AWG", length: 2 },
+
+            // MPPT to Busbars
+            { fromComponentId: "mppt-1", toComponentId: "bus-pos", fromTerminal: "batt-positive", toTerminal: "pos-1", polarity: "positive", gauge: "8 AWG", length: 3 },
+            { fromComponentId: "mppt-1", toComponentId: "bus-neg", fromTerminal: "batt-negative", toTerminal: "neg-1", polarity: "negative", gauge: "8 AWG", length: 3 },
+
+            // Battery to Busbars
+            { fromComponentId: "battery-1", toComponentId: "bus-pos", fromTerminal: "positive", toTerminal: "pos-2", polarity: "positive", gauge: "4 AWG", length: 3 },
+            { fromComponentId: "battery-1", toComponentId: "bus-neg", fromTerminal: "negative", toTerminal: "neg-2", polarity: "negative", gauge: "4 AWG", length: 3 },
+
+            // Load to Busbars
+            { fromComponentId: "bus-pos", toComponentId: "load-1", fromTerminal: "pos-3", toTerminal: "positive", polarity: "positive", gauge: "12 AWG", length: 4 },
+            { fromComponentId: "bus-neg", toComponentId: "load-1", fromTerminal: "neg-3", toTerminal: "negative", polarity: "negative", gauge: "12 AWG", length: 4 }
+          ],
+          description: "Mock system generated without OpenAI API key. Includes battery, solar, busbars, and basic load.",
+          recommendations: ["Connect solar panels in series/parallel as needed", "Fuse battery connections"]
+        };
+        return res.json(mockResponse);
+      }
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -115,35 +150,32 @@ COMPONENT DIMENSIONS & SPACING:
 - dc-load: 100×100px
 - busbar-positive: 200×60px
 - busbar-negative: 200×60px
+- fuse: 80×60px
+- switch: 80×80px
+- breaker-panel: 160×200px
 
 LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
 1. Minimum 300px horizontal spacing between component centers
 2. Minimum 250px vertical spacing between component centers
 3. First component starts at x≥100, y≥100
-4. Use left-to-right flow: Battery → Controllers → Inverters → Loads
+4. Use left-to-right flow: Battery → Fuses/Switches → Busbars → Inverters/Loads
 5. Bus bars can centralize multiple connections (use when 3+ loads)
 6. Example positions:
    - Battery: x=150, y=400
-   - MPPT: x=500, y=400 (350px from battery)
-   - Solar: x=500, y=150 (250px above MPPT)
-   - MultiPlus: x=850, y=400 (350px from MPPT)
-   - SmartShunt (if used): x=150, y=550 (below battery)
-   - Positive Bus: x=900, y=200 (above loads)
-   - Negative Bus: x=900, y=600 (below loads)
-   - Loads: x=1100-1400, y=300-500 (stacked vertically)
-
-COMPONENT TERMINALS (EXACT NAMES):
-- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
-- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
-- cerbo: "data-1", "data-2", "data-3", "power"
-- bmv: "data"
-- smartshunt: "negative" (battery side), "system-minus" (system side), "data"
-- battery: "positive", "negative"
-- solar-panel: "positive", "negative"
-- ac-load: "ac-in"
-- dc-load: "positive", "negative"
-- busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
-- busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+   - Fuse: x=300, y=400 (between battery and switch)
+   - Switch: x=450, y=400 (between fuse and busbar)
+   - Positive Bus: x=600, y=200
+   - Negative Bus: x=600, y=600
+   - MPPT: x=800, y=200
+   - MultiPlus: x=1000, y=400
+   - Breaker Panel: x=1200, y=400
+   - MultiPlus: x=1000, y=400
+   - Breaker Panel: x=1200, y=400
+- fuse: "in", "out"
+- switch: "in", "out"
+- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
+- ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", ...
+- dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", ...
 
 WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
 EVERY wire must have these exact fields:
@@ -168,16 +200,30 @@ CRITICAL WIRING RULES:
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
 3. Use bus bars when connecting 3+ devices of the same type to simplify wiring
-4. Main battery cables (battery to inverter): Use largest gauge
+4. Main battery cables (battery to inverter): Use largest gauge (4/0 AWG or 2/0 AWG)
 5. Never mix polarities on same bus bar
+6. MultiPlus Connections:
+   - AC IN: Connect to Shore Power or Grid (Hot/Neutral/Ground)
+   - AC OUT: Connect to AC Distribution Panel (Hot/Neutral/Ground)
+   - DC: Connect to Battery Bank (via Fuse/Switch)
 
-WIRE GAUGE SELECTION:
-- 0-25A: 10 AWG
-- 25-40A: 8 AWG
+DEVICE KNOWLEDGE BASE (STRICTLY FOLLOW THESE RULES):
+${Object.values(DEVICE_DEFINITIONS).map(d => `
+${d.name.toUpperCase()} (${d.type}):
+- Terminals: ${d.terminals.map(t => `${t.id} (${t.type})`).join(", ")}
+- Rules:
+${d.wiringRules.map(r => `  * ${r}`).join("\n")}
+`).join("\n")}
+
+WIRE GAUGE SELECTION (BASED ON CURRENT):
+- 0-20A: 12 AWG or 10 AWG
+- 20-40A: 8 AWG
 - 40-60A: 6 AWG
 - 60-100A: 4 AWG
 - 100-150A: 2 AWG
-- 150-200A: 1 AWG
+- 150-200A: 1/0 AWG
+- 200A+: 4/0 AWG
+- Battery to Inverter: ALWAYS 4/0 AWG or 2/0 AWG
 
 JSON RESPONSE FORMAT:
 {
@@ -200,7 +246,7 @@ JSON RESPONSE FORMAT:
       });
 
       const response = JSON.parse(completion.choices[0].message.content || "{}");
-      
+
       // Log AI response for debugging
       console.log("AI Response:", JSON.stringify(response, null, 2));
       console.log("Components count:", response.components?.length || 0);
@@ -208,7 +254,7 @@ JSON RESPONSE FORMAT:
       if (response.wires && response.wires.length > 0) {
         console.log("Sample wire:", JSON.stringify(response.wires[0], null, 2));
       }
-      
+
       res.json(response);
     } catch (error: any) {
       console.error("AI generation error:", error);
@@ -220,7 +266,7 @@ JSON RESPONSE FORMAT:
   app.post("/api/ai-wire-components", async (req, res) => {
     try {
       const { components, systemVoltage = 12 } = req.body;
-      
+
       if (!components || !Array.isArray(components) || components.length === 0) {
         return res.status(400).json({ error: "Components array is required" });
       }
@@ -235,7 +281,7 @@ JSON RESPONSE FORMAT:
             content: `You are an expert Victron electrical system designer. Your task is to create ONLY the wire connections for a set of components that a user has already placed on a canvas.
 
 COMPONENT TERMINALS (EXACT NAMES):
-- multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "data-1", "data-2", "data-3", "power"
 - bmv: "data"
@@ -246,6 +292,8 @@ COMPONENT TERMINALS (EXACT NAMES):
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
+- ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground"
+- dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg"
 
 WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
 EVERY wire must have these exact fields:
@@ -270,13 +318,18 @@ CRITICAL WIRING RULES:
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
 3. Use bus bars when connecting 3+ devices of the same type to simplify wiring
-4. Main battery cables (battery to inverter): Use largest gauge
-5. Never mix polarities on same bus bar
-5. Solar panels connect to MPPT PV terminals, MPPT battery terminals connect to battery
-6. Inverters connect to battery or main bus bars
-7. AC loads connect to inverter AC output
+   - DISTRIBUTE connections across bus bar terminals (e.g., pos-1, pos-2, pos-3)
+   - Do NOT connect all wires to the same terminal (e.g., do not put everything on pos-1)
 8. DC loads connect to battery/bus bars after SmartShunt on negative side
 9. Data connections: BMV/SmartShunt to Cerbo via data terminals
+
+DEVICE KNOWLEDGE BASE (STRICTLY FOLLOW THESE RULES):
+${Object.values(DEVICE_DEFINITIONS).map(d => `
+${d.name.toUpperCase()} (${d.type}):
+- Terminals: ${d.terminals.map(t => `${t.id} (${t.type})`).join(", ")}
+- Rules:
+${d.wiringRules.map(r => `  * ${r}`).join("\n")}
+`).join("\n")}
 
 WIRE GAUGE SELECTION:
 - 0-25A: 10 AWG
@@ -306,10 +359,10 @@ JSON RESPONSE FORMAT:
       });
 
       const response = JSON.parse(completion.choices[0].message.content || "{}");
-      
+
       console.log("AI Wire Generation Response:", JSON.stringify(response, null, 2));
       console.log("Generated wires count:", response.wires?.length || 0);
-      
+
       res.json(response);
     } catch (error: any) {
       console.error("AI wire generation error:", error);
@@ -339,7 +392,7 @@ JSON RESPONSE FORMAT:
       }
       const items = generateShoppingList(schematic);
       const csv = generateCSV(items);
-      
+
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-shopping-list.csv"`);
       res.send(csv);
@@ -368,7 +421,7 @@ JSON RESPONSE FORMAT:
         return res.status(404).json({ error: "Schematic not found" });
       }
       const report = generateSystemReport(schematic);
-      
+
       res.setHeader("Content-Type", "text/plain");
       res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-report.txt"`);
       res.send(report);
