@@ -8,7 +8,7 @@
 const prompt = process.argv[2] || "12V battery with solar panel and DC load";
 const systemVoltage = 12;
 const minQualityScore = 70;
-const maxIterations = 3;
+const maxIterations = 5;
 
 console.log("🧪 Testing AI Iterative Generation");
 console.log("━".repeat(60));

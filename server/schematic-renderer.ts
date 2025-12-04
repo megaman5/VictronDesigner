@@ -143,7 +143,7 @@ export async function getVisualFeedback(
   const base64Image = imageBuffer.toString('base64');
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-5.1",
     messages: [
       {
         role: "user",
@@ -168,7 +168,7 @@ Provide specific, actionable feedback on how to improve the layout. Be concise a
         ]
       }
     ],
-    max_tokens: 500
+    max_completion_tokens: 500
   });
 
   return response.choices[0].message.content || "No feedback provided";
