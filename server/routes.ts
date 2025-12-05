@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
@@ -8,10 +8,25 @@ import { generateShoppingList, generateWireLabels, generateCSV, generateSystemRe
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
+import { passport } from "./auth";
+import type { User } from "@shared/schema";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Authentication middleware
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ error: "Unauthorized" });
+}
+
+// TypeScript helper to get authenticated user
+function getAuthUser(req: Request): User {
+  return req.user as User;
+}
 
 // Helper function to extract JSON from markdown code blocks
 function extractJSON(content: string): string {
@@ -35,17 +50,47 @@ function extractJSON(content: string): string {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Schematic CRUD operations
-  app.get("/api/schematics", async (req, res) => {
+  // Authentication routes
+  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+
+  app.get(
+    "/auth/google/callback",
+    passport.authenticate("google", { failureRedirect: "/login" }),
+    (req, res) => {
+      // Successful authentication, redirect to designer
+      res.redirect("/");
+    }
+  );
+
+  app.get("/auth/user", (req, res) => {
+    if (req.isAuthenticated()) {
+      res.json(req.user);
+    } else {
+      res.status(401).json({ error: "Not authenticated" });
+    }
+  });
+
+  app.post("/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.json({ success: true });
+    });
+  });
+
+  // Schematic CRUD operations (protected)
+  app.get("/api/schematics", requireAuth, async (req, res) => {
     try {
-      const schematics = await storage.getAllSchematics();
+      const user = getAuthUser(req);
+      const schematics = await storage.getUserSchematics(user.id);
       res.json(schematics);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/schematics/:id", async (req, res) => {
+  app.get("/api/schematics/:id", requireAuth, async (req, res) => {
     try {
       const schematic = await storage.getSchematic(req.params.id);
       if (!schematic) {
@@ -57,9 +102,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/schematics", async (req, res) => {
+  app.post("/api/schematics", requireAuth, async (req, res) => {
     try {
-      const data = insertSchematicSchema.parse(req.body);
+      const user = getAuthUser(req);
+      const data = insertSchematicSchema.parse({ ...req.body, userId: user.id });
       const schematic = await storage.createSchematic(data);
       res.json(schematic);
     } catch (error: any) {
@@ -67,7 +113,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/schematics/:id", async (req, res) => {
+  app.patch("/api/schematics/:id", requireAuth, async (req, res) => {
     try {
       const data = updateSchematicSchema.parse(req.body);
       const schematic = await storage.updateSchematic(req.params.id, data);
@@ -80,7 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/schematics/:id", async (req, res) => {
+  app.delete("/api/schematics/:id", requireAuth, async (req, res) => {
     try {
       const success = await storage.deleteSchematic(req.params.id);
       if (!success) {

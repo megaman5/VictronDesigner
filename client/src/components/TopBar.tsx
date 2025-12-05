@@ -1,4 +1,4 @@
-import { Zap, Save, FolderOpen, Download, Sparkles, Cable } from "lucide-react";
+import { Zap, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -16,11 +16,13 @@ interface TopBarProps {
   onSave?: () => void;
   onOpen?: () => void;
   onWireMode?: () => void;
+  onDesignQuality?: () => void;
   wireMode?: boolean;
   hasComponents?: boolean; // Whether canvas has components (for AI Iterate mode)
+  designQualityScore?: number;
 }
 
-export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, wireMode = false, hasComponents = false }: TopBarProps) {
+export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, onDesignQuality, wireMode = false, hasComponents = false, designQualityScore }: TopBarProps) {
   return (
     <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
       <div className="flex items-center gap-3">
@@ -62,6 +64,20 @@ export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireM
         >
           <Cable className="h-4 w-4" />
           {wireMode ? "Connecting..." : "Add Wire"}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onDesignQuality}
+          data-testid="button-design-quality"
+          className="gap-2"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          Quality
+          {designQualityScore !== undefined && (
+            <span className="ml-1 font-semibold">{designQualityScore}</span>
+          )}
         </Button>
 
         <Button

@@ -8,6 +8,7 @@ import { DesignReviewPanel } from "@/components/DesignReviewPanel";
 import { AIPromptDialog } from "@/components/AIPromptDialog";
 import { ExportDialog } from "@/components/ExportDialog";
 import { WireEditDialog } from "@/components/WireEditDialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
@@ -17,6 +18,7 @@ export default function SchematicDesigner() {
   const [currentSchematicId, setCurrentSchematicId] = useState<string | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [designQualitySheetOpen, setDesignQualitySheetOpen] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
   const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
@@ -533,8 +535,10 @@ export default function SchematicDesigner() {
         onSave={() => saveMutation.mutate()}
         onOpen={() => console.log("Open project")}
         onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
+        onDesignQuality={() => setDesignQualitySheetOpen(true)}
         wireMode={wireConnectionMode}
         hasComponents={components.length > 0}
+        designQualityScore={validationResult?.score}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -562,72 +566,58 @@ export default function SchematicDesigner() {
           wireStartComponent={wireStartComponent}
         />
 
-        <div className="w-80 flex flex-col gap-4 p-4 bg-muted/30 border-l overflow-y-auto">
-          <PropertiesPanel
-            selectedComponent={selectedComponent ? {
-              id: selectedComponent.id,
-              name: selectedComponent.name,
-              voltage: selectedComponent.properties?.voltage,
-              current: selectedComponent.properties?.current,
-              power: selectedComponent.properties?.power,
-            } : undefined}
-            selectedWire={selectedWire ? {
-              id: selectedWire.id,
-              fromComponentId: selectedWire.fromComponentId,
-              toComponentId: selectedWire.toComponentId,
-              fromTerminal: selectedWire.fromTerminal,
-              toTerminal: selectedWire.toTerminal,
-              polarity: selectedWire.polarity,
-              gauge: selectedWire.gauge,
-              length: selectedWire.length,
-            } : undefined}
-            wireCalculation={wireCalculation ? {
-              current: wireCalculation.current,
-              length: wireCalculation.length,
-              voltage: wireCalculation.voltage,
-              recommendedGauge: wireCalculation.recommendedGauge,
-              voltageDrop: wireCalculation.actualVoltageDrop,
-              status: wireCalculation.status,
-            } : undefined}
-            onEditWire={handleWireEdit}
-            onUpdateComponent={(id, updates) => {
-              setComponents(prev => prev.map(comp => {
-                if (comp.id === id) {
-                  const updatedComp = { ...comp, ...updates };
-                  // Also update selected component state to reflect changes immediately
-                  if (selectedComponent?.id === id) {
-                    setSelectedComponent(updatedComp);
-                  }
-                  return updatedComp;
+        <PropertiesPanel
+          selectedComponent={selectedComponent ? {
+            id: selectedComponent.id,
+            name: selectedComponent.name,
+            voltage: selectedComponent.properties?.voltage,
+            current: selectedComponent.properties?.current,
+            power: selectedComponent.properties?.power,
+          } : undefined}
+          selectedWire={selectedWire ? {
+            id: selectedWire.id,
+            fromComponentId: selectedWire.fromComponentId,
+            toComponentId: selectedWire.toComponentId,
+            fromTerminal: selectedWire.fromTerminal,
+            toTerminal: selectedWire.toTerminal,
+            polarity: selectedWire.polarity,
+            gauge: selectedWire.gauge,
+            length: selectedWire.length,
+          } : undefined}
+          wireCalculation={wireCalculation ? {
+            current: wireCalculation.current,
+            length: wireCalculation.length,
+            voltage: wireCalculation.voltage,
+            recommendedGauge: wireCalculation.recommendedGauge,
+            voltageDrop: wireCalculation.actualVoltageDrop,
+            status: wireCalculation.status,
+          } : undefined}
+          onEditWire={handleWireEdit}
+          onUpdateComponent={(id, updates) => {
+            setComponents(prev => prev.map(comp => {
+              if (comp.id === id) {
+                const updatedComp = { ...comp, ...updates };
+                // Also update selected component state to reflect changes immediately
+                if (selectedComponent?.id === id) {
+                  setSelectedComponent(updatedComp);
                 }
-                return comp;
-              }));
-
-              // Trigger wire recalculation if properties changed
-              if (updates.properties) {
-                // Find connected wires and recalculate
-                const connectedWires = wires.filter(
-                  (w) => w.fromComponentId === id || w.toComponentId === id
-                );
-                if (connectedWires.length > 0) {
-                  calculateWire(connectedWires[0]);
-                }
+                return updatedComp;
               }
-            }}
-          />
+              return comp;
+            }));
 
-          <DesignReviewPanel
-            components={components}
-            wires={wires}
-            systemVoltage={systemVoltage}
-            validationResult={validationResult}
-            onValidate={validateDesign}
-            onIssueClick={(issue) => {
-              console.log("Issue clicked:", issue);
-              // TODO: Highlight affected components/wires
-            }}
-          />
-        </div>
+            // Trigger wire recalculation if properties changed
+            if (updates.properties) {
+              // Find connected wires and recalculate
+              const connectedWires = wires.filter(
+                (w) => w.fromComponentId === id || w.toComponentId === id
+              );
+              if (connectedWires.length > 0) {
+                calculateWire(connectedWires[0]);
+              }
+            }
+          }}
+        />
       </div>
 
       <AIPromptDialog
@@ -652,6 +642,27 @@ export default function SchematicDesigner() {
         onOpenChange={(open) => !open && setEditingWire(null)}
         onSave={(id, updates) => handleWireUpdate(id, updates)}
       />
+
+      <Sheet open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
+        <SheetContent side="right" className="w-full sm:w-[540px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Design Quality Review</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
+            <DesignReviewPanel
+              components={components}
+              wires={wires}
+              systemVoltage={systemVoltage}
+              validationResult={validationResult}
+              onValidate={validateDesign}
+              onIssueClick={(issue) => {
+                console.log("Issue clicked:", issue);
+                // TODO: Highlight affected components/wires
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

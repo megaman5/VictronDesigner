@@ -5,12 +5,17 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  username: text("username").unique(),
+  password: text("password"),
+  googleId: text("google_id").unique(),
+  email: text("email").unique(),
+  displayName: text("display_name"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const schematics = pgTable("schematics", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   description: text("description"),
   systemVoltage: integer("system_voltage").notNull().default(12),
