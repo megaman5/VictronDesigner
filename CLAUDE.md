@@ -506,7 +506,18 @@ Required for full functionality:
 
 ## Recent Changes (Last Session)
 
-See `replit.md` lines 13-42 for detailed recent changes including:
+**December 2025 - Enhanced Power Calculations and Wire Validation:**
+- **AI Realistic Power Values**: AI now generates realistic amps/watts for loads (LED: 10-50W, Refrigerator: 50-150W, etc.) instead of placeholder zeros
+- **Auto-Calculate Watts ↔ Amps**: Properties panel automatically calculates power from current and vice versa using Ohm's Law (P = V × I)
+- **NEC-Compliant Wire Ampacity Validation**: Wire gauges validated against NEC/ABYC standards with temperature derating factors
+- **Visual Wire Validation**: Wires with validation issues highlighted with colored glow effects (red = error, orange = warning)
+- **Wire Drag-and-Drop**: Drag wire endpoints between terminals with real-time path updates and automatic length recalculation
+- **Component Drag Preview**: Semi-transparent preview of component position while dragging with connected wires updating in real-time
+- **Auto-Validation**: Design validation runs automatically 500ms after any component or wire changes
+- **Scroll-Aware Interactions**: Fixed coordinate calculations for selection box and wire dragging when canvas is scrolled
+- **Z-Order Fix**: Wire drag handles now render in separate overlay layer for proper visibility
+
+Previous features (see `replit.md` for details):
 - Terminal-based wire connections
 - AI system generation with terminal support
 - SmartShunt component and wiring rules
