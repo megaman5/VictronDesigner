@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,76 @@ interface PropertiesPanelProps {
 }
 
 export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, onEditWire, onUpdateComponent }: PropertiesPanelProps) {
+  // State for controlled inputs with auto-calculation
+  const [voltage, setVoltage] = useState<number>(12);
+  const [current, setCurrent] = useState<number>(0);
+  const [power, setPower] = useState<number>(0);
+
+  // Sync state when selectedComponent changes
+  useEffect(() => {
+    if (selectedComponent) {
+      setVoltage(selectedComponent.voltage || 12);
+      setCurrent(selectedComponent.current || 0);
+      setPower(selectedComponent.power || 0);
+    }
+  }, [selectedComponent?.id, selectedComponent?.voltage, selectedComponent?.current, selectedComponent?.power]);
+
+  // Handle voltage change - recalculate current if power is set
+  const handleVoltageChange = (newVoltage: number) => {
+    if (isNaN(newVoltage) || newVoltage <= 0) return;
+
+    setVoltage(newVoltage);
+
+    // Recalculate current based on power if power is non-zero
+    if (power > 0) {
+      const newCurrent = power / newVoltage;
+      setCurrent(newCurrent);
+      onUpdateComponent?.(selectedComponent!.id, {
+        properties: { voltage: newVoltage, current: newCurrent, power }
+      });
+    } else {
+      onUpdateComponent?.(selectedComponent!.id, {
+        properties: { voltage: newVoltage, current, power }
+      });
+    }
+  };
+
+  // Handle current (amps) change - auto-calculate power
+  const handleCurrentChange = (newCurrent: number) => {
+    if (isNaN(newCurrent)) return;
+
+    setCurrent(newCurrent);
+
+    // Auto-calculate power: P = V × I
+    const newPower = voltage * newCurrent;
+    setPower(newPower);
+
+    onUpdateComponent?.(selectedComponent!.id, {
+      properties: { voltage, current: newCurrent, power: newPower }
+    });
+  };
+
+  // Handle power (watts) change - auto-calculate current
+  const handlePowerChange = (newPower: number) => {
+    if (isNaN(newPower)) return;
+
+    setPower(newPower);
+
+    // Auto-calculate current: I = P / V
+    if (voltage > 0) {
+      const newCurrent = newPower / voltage;
+      setCurrent(newCurrent);
+
+      onUpdateComponent?.(selectedComponent!.id, {
+        properties: { voltage, current: newCurrent, power: newPower }
+      });
+    } else {
+      onUpdateComponent?.(selectedComponent!.id, {
+        properties: { voltage, current, power: newPower }
+      });
+    }
+  };
+
   return (
     <div className="w-80 border-l bg-card flex flex-col h-full">
       <div className="p-4 border-b">
@@ -141,27 +212,29 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <Label>Voltage (V)</Label>
                     <Input
                       type="number"
-                      defaultValue={selectedComponent.voltage || 12}
+                      value={voltage}
                       data-testid="input-voltage"
-                      onChange={(e) => onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent, voltage: parseFloat(e.target.value) } })}
+                      onChange={(e) => handleVoltageChange(parseFloat(e.target.value))}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Current (A)</Label>
                     <Input
                       type="number"
-                      defaultValue={selectedComponent.current || 0}
+                      value={current}
                       data-testid="input-current"
-                      onChange={(e) => onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent, current: parseFloat(e.target.value) } })}
+                      onChange={(e) => handleCurrentChange(parseFloat(e.target.value))}
+                      step="0.1"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Power (W)</Label>
                     <Input
                       type="number"
-                      defaultValue={selectedComponent.power || 0}
+                      value={power}
                       data-testid="input-power"
-                      onChange={(e) => onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent, power: parseFloat(e.target.value) } })}
+                      onChange={(e) => handlePowerChange(parseFloat(e.target.value))}
+                      step="1"
                     />
                   </div>
                 </div>

@@ -282,10 +282,42 @@ WIRE GAUGE SELECTION (BASED ON CURRENT):
 - 200A+: 4/0 AWG
 - Battery to Inverter: ALWAYS 4/0 AWG or 2/0 AWG
 
+COMPONENT PROPERTIES (MUST BE REALISTIC):
+All components MUST have realistic property values based on their type:
+
+DC Loads:
+- properties: { "watts": <realistic value> } OR { "amps": <realistic value> }
+- Examples:
+  * LED Lights: 10-50W (1-4A @ 12V)
+  * Refrigerator: 50-150W (4-12A @ 12V)
+  * Water Pump: 40-100W (3-8A @ 12V)
+  * Fans: 10-30W (1-3A @ 12V)
+  * Electronics: 10-50W (1-4A @ 12V)
+
+AC Loads:
+- properties: { "watts": <realistic value> } OR { "amps": <realistic value> }
+- Examples:
+  * Microwave: 1000-1500W (8-12A @ 120V)
+  * Coffee Maker: 800-1200W (7-10A @ 120V)
+  * TV: 100-300W (1-3A @ 120V)
+  * Laptop: 60-100W (0.5-1A @ 120V)
+  * Air Conditioner: 1000-1800W (8-15A @ 120V)
+  * Space Heater: 1500W (12-13A @ 120V)
+
+Other Components:
+- battery: { "voltage": <12/24/48>, "capacity": <amp-hours, e.g., 200-800> }
+- solar-panel: { "watts": <realistic value, e.g., 100-400W per panel> }
+- mppt: { "maxCurrent": <amps, e.g., 30-100A> }
+- multiplus: { "powerRating": <watts, e.g., 1200-3000W> }
+
+NEVER use 0 or placeholder values for watts/amps - always provide realistic numbers!
+
 JSON RESPONSE FORMAT:
 {
   "components": [
-    {"id": "battery-1", "type": "battery", "name": "Battery Bank", "x": 150, "y": 400, "properties": {"voltage": 12, "capacity": 400}}
+    {"id": "battery-1", "type": "battery", "name": "Battery Bank", "x": 150, "y": 400, "properties": {"voltage": 12, "capacity": 400}},
+    {"id": "load-1", "type": "dc-load", "name": "Refrigerator", "x": 450, "y": 400, "properties": {"watts": 80}},
+    {"id": "load-2", "type": "ac-load", "name": "Microwave", "x": 750, "y": 400, "properties": {"watts": 1200}}
   ],
   "wires": [
     {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
