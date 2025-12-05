@@ -12,6 +12,8 @@ interface DesignReviewPanelProps {
   components: any[];
   wires: any[];
   systemVoltage: number;
+  validationResult?: ValidationResult | null;
+  onValidate?: () => void;
   onIssueClick?: (issue: ValidationIssue) => void;
 }
 
@@ -19,37 +21,16 @@ export function DesignReviewPanel({
   components,
   wires,
   systemVoltage,
+  validationResult,
+  onValidate,
   onIssueClick,
 }: DesignReviewPanelProps) {
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [isValidating, setIsValidating] = useState(false);
 
-  // Auto-validate on component/wire changes (debounced)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      validateDesign();
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [components, wires]);
-
-  const validateDesign = async () => {
+  const handleValidateClick = async () => {
     setIsValidating(true);
     try {
-      const response = await fetch("/api/validate-design", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Validation failed");
-      }
-
-      const result: ValidationResult = await response.json();
-      setValidationResult(result);
-    } catch (error) {
-      console.error("Validation error:", error);
+      await onValidate?.();
     } finally {
       setIsValidating(false);
     }
@@ -126,7 +107,7 @@ export function DesignReviewPanel({
           <CardDescription>Validate your electrical system design</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={validateDesign} className="w-full">
+          <Button onClick={handleValidateClick} className="w-full">
             Run Validation
           </Button>
         </CardContent>
@@ -200,7 +181,7 @@ export function DesignReviewPanel({
           </div>
 
           <Button
-            onClick={validateDesign}
+            onClick={handleValidateClick}
             className="w-full"
             variant="outline"
             disabled={isValidating}

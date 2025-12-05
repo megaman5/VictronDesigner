@@ -3,7 +3,7 @@ import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
-import { Terminal, getTerminalPosition, getTerminalOrientation } from "@/lib/terminal-config";
+import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, calculateWireLength, type Obstacle } from "@/lib/wire-routing";
 
 export interface WireConnectionData {
@@ -17,6 +17,7 @@ export interface WireConnectionData {
 interface SchematicCanvasProps {
   components?: SchematicComponentType[];
   wires?: Wire[];
+  wireValidationStatus?: Map<string, "error" | "warning">;
   onComponentsChange?: (components: SchematicComponentType[]) => void;
   onWiresChange?: (wires: Wire[]) => void;
   onComponentSelect?: (component: SchematicComponentType) => void;
@@ -35,6 +36,7 @@ interface SchematicCanvasProps {
 export function SchematicCanvas({
   components = [],
   wires = [],
+  wireValidationStatus,
   onComponentsChange,
   onWiresChange,
   onComponentSelect,
@@ -56,6 +58,7 @@ export function SchematicCanvas({
   const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragPreviewPos, setDragPreviewPos] = useState<{ x: number; y: number } | null>(null);
 
   // Selection box state
   const [selectionBox, setSelectionBox] = useState<{
@@ -73,6 +76,14 @@ export function SchematicCanvas({
     position: { x: number; y: number };
   } | null>(null);
   const [wirePreviewEnd, setWirePreviewEnd] = useState<{ x: number; y: number } | null>(null);
+
+  // Wire endpoint dragging state
+  const [draggedWireEndpoint, setDraggedWireEndpoint] = useState<{
+    wireId: string;
+    endpoint: 'from' | 'to';
+    wire: Wire;
+  } | null>(null);
+  const [draggedEndpointPos, setDraggedEndpointPos] = useState<{ x: number; y: number } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -96,6 +107,21 @@ export function SchematicCanvas({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+
+    // Update preview position during drag
+    if (draggedComponentId) {
+      const scrollContainer = document.querySelector('[data-testid="canvas-drop-zone"]');
+      if (!scrollContainer) return;
+
+      const rect = scrollContainer.getBoundingClientRect();
+      const scrollLeft = scrollContainer.scrollLeft;
+      const scrollTop = scrollContainer.scrollTop;
+
+      const x = (e.clientX - rect.left + scrollLeft) / (zoom / 100);
+      const y = (e.clientY - rect.top + scrollTop) / (zoom / 100);
+
+      setDragPreviewPos({ x: x - dragOffset.x, y: y - dragOffset.y });
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -130,6 +156,7 @@ export function SchematicCanvas({
       }
 
       setDraggedComponentId(null);
+      setDragPreviewPos(null);
     } else {
       // New component from library
       onDrop?.(dropX, dropY);
@@ -190,22 +217,29 @@ export function SchematicCanvas({
 
   // Handle mouse move to show wire preview or update selection box
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (wireStart && wireConnectionMode && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / (zoom / 100);
-      const y = (e.clientY - rect.top) / (zoom / 100);
+    if (!canvasRef.current) return;
 
-      // Snap to grid for cleaner routing
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scrollLeft = canvasRef.current.scrollLeft;
+    const scrollTop = canvasRef.current.scrollTop;
+    const x = (e.clientX - rect.left + scrollLeft) / (zoom / 100);
+    const y = (e.clientY - rect.top + scrollTop) / (zoom / 100);
+
+    // Handle wire endpoint dragging
+    if (draggedWireEndpoint) {
+      const snapped = snapPointToGrid(x, y);
+      setDraggedEndpointPos(snapped);
+      return;
+    }
+
+    // Handle wire connection preview
+    if (wireStart && wireConnectionMode) {
       const snapped = snapPointToGrid(x, y);
       setWirePreviewEnd(snapped);
     }
 
     // Update selection box if dragging
-    if (selectionBox && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / (zoom / 100);
-      const y = (e.clientY - rect.top) / (zoom / 100);
-
+    if (selectionBox) {
       setSelectionBox({
         ...selectionBox,
         endX: x,
@@ -223,8 +257,10 @@ export function SchematicCanvas({
 
     if (!isComponent && !isTerminal && !wireConnectionMode && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / (zoom / 100);
-      const y = (e.clientY - rect.top) / (zoom / 100);
+      const scrollLeft = canvasRef.current.scrollLeft;
+      const scrollTop = canvasRef.current.scrollTop;
+      const x = (e.clientX - rect.left + scrollLeft) / (zoom / 100);
+      const y = (e.clientY - rect.top + scrollTop) / (zoom / 100);
 
       setSelectionBox({
         startX: x,
@@ -237,6 +273,80 @@ export function SchematicCanvas({
 
   // Complete selection box on mouse up
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
+    // Handle wire endpoint drop
+    if (draggedWireEndpoint && draggedEndpointPos && canvasRef.current) {
+      const { wireId, endpoint, wire } = draggedWireEndpoint;
+
+      // Find closest terminal to drop position
+      let closestTerminal: Terminal | null = null;
+      let closestComponent: SchematicComponentType | null = null;
+      let closestDistance = 50; // Maximum snap distance in pixels
+
+      components.forEach(comp => {
+        const terminal = findClosestTerminal(
+          comp.x,
+          comp.y,
+          comp.type,
+          draggedEndpointPos.x,
+          draggedEndpointPos.y,
+          closestDistance
+        );
+
+        if (terminal) {
+          const termX = comp.x + terminal.x;
+          const termY = comp.y + terminal.y;
+          const distance = Math.sqrt(
+            (draggedEndpointPos.x - termX) ** 2 + (draggedEndpointPos.y - termY) ** 2
+          );
+
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestTerminal = terminal;
+            closestComponent = comp;
+          }
+        }
+      });
+
+      // Update wire if we found a valid terminal
+      if (closestTerminal && closestComponent) {
+        const updates: Partial<Wire> = {};
+
+        if (endpoint === 'from') {
+          updates.fromComponentId = closestComponent.id;
+          updates.fromTerminal = closestTerminal.id;
+        } else {
+          updates.toComponentId = closestComponent.id;
+          updates.toTerminal = closestTerminal.id;
+        }
+
+        // Recalculate wire length based on new positions
+        const fromComp = endpoint === 'from' ? closestComponent : components.find(c => c.id === wire.fromComponentId);
+        const toComp = endpoint === 'to' ? closestComponent : components.find(c => c.id === wire.toComponentId);
+
+        if (fromComp && toComp) {
+          const fromTerm = endpoint === 'from' ? closestTerminal : TERMINAL_CONFIGS[fromComp.type]?.terminals.find(t => t.id === wire.fromTerminal);
+          const toTerm = endpoint === 'to' ? closestTerminal : TERMINAL_CONFIGS[toComp.type]?.terminals.find(t => t.id === wire.toTerminal);
+
+          if (fromTerm && toTerm) {
+            const newLength = calculateWireLength(
+              fromComp.x + fromTerm.x,
+              fromComp.y + fromTerm.y,
+              toComp.x + toTerm.x,
+              toComp.y + toTerm.y
+            );
+            updates.length = newLength;
+          }
+        }
+
+        onWireUpdate?.(wireId, updates);
+      }
+
+      // Clear dragging state
+      setDraggedWireEndpoint(null);
+      setDraggedEndpointPos(null);
+      return;
+    }
+
     if (selectionBox) {
       // Check which components intersect with the selection box
       const box = {
@@ -292,6 +402,12 @@ export function SchematicCanvas({
   };
 
   const handleComponentDragStart = (component: SchematicComponentType, e: React.DragEvent) => {
+    // Don't allow component dragging if we're dragging a wire endpoint
+    if (draggedWireEndpoint) {
+      e.preventDefault();
+      return;
+    }
+
     e.stopPropagation();
     setDraggedComponentId(component.id);
     setDragStartPos({ x: component.x, y: component.y });
@@ -330,6 +446,25 @@ export function SchematicCanvas({
 
       // Focus the canvas to enable keyboard events
       canvasRef.current?.focus();
+    }
+  };
+
+  const handleWireEndpointMouseDown = (wireId: string, endpoint: 'from' | 'to', e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault(); // Prevent component drag from being triggered
+    const wire = wires.find(w => w.id === wireId);
+    if (!wire) return;
+
+    setDraggedWireEndpoint({ wireId, endpoint, wire });
+
+    // Get current endpoint position
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const scrollLeft = canvasRef.current.scrollLeft;
+      const scrollTop = canvasRef.current.scrollTop;
+      const x = (e.clientX - rect.left + scrollLeft) / (zoom / 100);
+      const y = (e.clientY - rect.top + scrollTop) / (zoom / 100);
+      setDraggedEndpointPos({ x, y });
     }
   };
 
@@ -403,6 +538,19 @@ export function SchematicCanvas({
       default:
         return "hsl(var(--primary))";
     }
+  };
+
+  const getWireGlowColor = (wireId: string): string | null => {
+    // Check validation status and return glow color
+    const validationStatus = wireValidationStatus?.get(wireId);
+
+    if (validationStatus === "error") {
+      return "hsl(0 84% 60%)"; // Bright red glow for errors
+    } else if (validationStatus === "warning") {
+      return "hsl(38 92% 50%)"; // Orange glow for warnings
+    }
+
+    return null; // No glow for valid wires
   };
 
   const getWireThickness = (gauge: string | undefined) => {
@@ -479,8 +627,8 @@ export function SchematicCanvas({
           height="1600"
           style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
         >
-          {showGrid && (
-            <defs>
+          <defs>
+            {showGrid && (
               <pattern
                 id="grid"
                 width="20"
@@ -495,8 +643,13 @@ export function SchematicCanvas({
                   opacity="0.3"
                 />
               </pattern>
-            </defs>
-          )}
+            )}
+            {/* Glow filter for validation warnings/errors */}
+            <filter id="wire-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
 
           {showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
@@ -551,18 +704,49 @@ export function SchematicCanvas({
                 return null;
               }
 
+              // Use preview position if component is being dragged
+              const fromCompX = (draggedComponentId === fromComp.id && dragPreviewPos) ? dragPreviewPos.x : fromComp.x;
+              const fromCompY = (draggedComponentId === fromComp.id && dragPreviewPos) ? dragPreviewPos.y : fromComp.y;
+              const toCompX = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.x : toComp.x;
+              const toCompY = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.y : toComp.y;
+
               // Try to get terminal positions, fall back to component centers
-              let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
-              let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
+              let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, wire.fromTerminal);
+              let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, wire.toTerminal);
 
               // If either terminal position is null, use component centers as fallback
               if (!fromPos) {
-                const from = getComponentPosition(wire.fromComponentId);
-                fromPos = { x: from.x, y: from.y };
+                if (draggedComponentId === fromComp.id && dragPreviewPos) {
+                  // Use preview position for dragged component
+                  const config = TERMINAL_CONFIGS[fromComp.type];
+                  const centerX = dragPreviewPos.x + (config?.width || 120) / 2;
+                  const centerY = dragPreviewPos.y + (config?.height || 100) / 2;
+                  fromPos = { x: centerX, y: centerY };
+                } else {
+                  const from = getComponentPosition(wire.fromComponentId);
+                  fromPos = { x: from.x, y: from.y };
+                }
               }
               if (!toPos) {
-                const to = getComponentPosition(wire.toComponentId);
-                toPos = { x: to.x, y: to.y };
+                if (draggedComponentId === toComp.id && dragPreviewPos) {
+                  // Use preview position for dragged component
+                  const config = TERMINAL_CONFIGS[toComp.type];
+                  const centerX = dragPreviewPos.x + (config?.width || 120) / 2;
+                  const centerY = dragPreviewPos.y + (config?.height || 100) / 2;
+                  toPos = { x: centerX, y: centerY };
+                } else {
+                  const to = getComponentPosition(wire.toComponentId);
+                  toPos = { x: to.x, y: to.y };
+                }
+              }
+
+              // Override endpoint position if this wire is being dragged
+              if (draggedWireEndpoint?.wireId === wire.id && draggedEndpointPos) {
+                if (draggedWireEndpoint.endpoint === 'from') {
+                  fromPos = { ...draggedEndpointPos };
+                } else {
+                  toPos = { ...draggedEndpointPos };
+                }
               }
 
               // Use A* router with obstacles
@@ -624,6 +808,7 @@ export function SchematicCanvas({
 
               const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
               const isSelected = selectedWireId === wire.id;
+              const glowColor = getWireGlowColor(wire.id);
 
               return (
                 <g
@@ -639,6 +824,21 @@ export function SchematicCanvas({
                     fill="none"
                     style={{ pointerEvents: 'stroke' }}
                   />
+                  {/* Glow layer for validation warnings/errors */}
+                  {glowColor && (
+                    <path
+                      d={path}
+                      stroke={glowColor}
+                      strokeWidth={getWireThickness(wire.gauge) + 8}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                      opacity={0.6}
+                      filter="url(#wire-glow)"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+                  {/* Main wire path with correct polarity color */}
                   <path
                     d={path}
                     stroke={isSelected ? "hsl(var(--primary))" : getWireColor(wire.polarity)}
@@ -669,6 +869,20 @@ export function SchematicCanvas({
                       {polaritySymbol} {wire.gauge || "N/A"}
                     </text>
                   </g>
+
+                  {/* Preview of dragged endpoint */}
+                  {draggedWireEndpoint?.wireId === wire.id && draggedEndpointPos && (
+                    <circle
+                      cx={draggedEndpointPos.x}
+                      cy={draggedEndpointPos.y}
+                      r={10}
+                      fill="hsl(var(--primary))"
+                      stroke="white"
+                      strokeWidth={3}
+                      opacity={0.7}
+                      className="pointer-events-none"
+                    />
+                  )}
                 </g>
               );
             });
@@ -781,7 +995,91 @@ export function SchematicCanvas({
               </div>
             );
           })}
+
+          {/* Drag preview - shows component position while dragging */}
+          {draggedComponentId && dragPreviewPos && (() => {
+            const draggedComp = components.find(c => c.id === draggedComponentId);
+            if (!draggedComp) return null;
+
+            return (
+              <div
+                key={`preview-${draggedComponentId}`}
+                className="absolute pointer-events-none opacity-50"
+                style={{
+                  left: dragPreviewPos.x,
+                  top: dragPreviewPos.y,
+                }}
+              >
+                <SchematicComponent
+                  type={draggedComp.type}
+                  name={draggedComp.name}
+                  selected={false}
+                  onClick={() => {}}
+                  onTerminalClick={() => {}}
+                  highlightedTerminals={[]}
+                />
+              </div>
+            );
+          })()}
         </div>
+
+        {/* Wire drag handles overlay - rendered on top of everything */}
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width="2400"
+          height="1600"
+          style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
+        >
+          {wires.map((wire) => {
+            const isSelected = selectedWireId === wire.id;
+            if (!isSelected || draggedWireEndpoint) return null;
+
+            const fromComp = components.find(c => c.id === wire.fromComponentId);
+            const toComp = components.find(c => c.id === wire.toComponentId);
+            if (!fromComp || !toComp) return null;
+
+            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
+            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
+
+            if (!fromPos) {
+              const from = getComponentPosition(wire.fromComponentId);
+              fromPos = { x: from.x, y: from.y };
+            }
+            if (!toPos) {
+              const to = getComponentPosition(wire.toComponentId);
+              toPos = { x: to.x, y: to.y };
+            }
+
+            return (
+              <g key={`handles-${wire.id}`}>
+                {/* From endpoint handle */}
+                <circle
+                  cx={fromPos.x}
+                  cy={fromPos.y}
+                  r={8}
+                  fill="hsl(var(--primary))"
+                  stroke="white"
+                  strokeWidth={2}
+                  className="cursor-move"
+                  onMouseDown={(e) => handleWireEndpointMouseDown(wire.id, 'from', e)}
+                  style={{ pointerEvents: 'all' }}
+                />
+                {/* To endpoint handle */}
+                <circle
+                  cx={toPos.x}
+                  cy={toPos.y}
+                  r={8}
+                  fill="hsl(var(--primary))"
+                  stroke="white"
+                  strokeWidth={2}
+                  className="cursor-move"
+                  onMouseDown={(e) => handleWireEndpointMouseDown(wire.id, 'to', e)}
+                  style={{ pointerEvents: 'all' }}
+                />
+              </g>
+            );
+          })}
+        </svg>
       </div>
     </div>
   );

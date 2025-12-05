@@ -10,7 +10,7 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { WireEditDialog } from "@/components/WireEditDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Schematic, SchematicComponent, Wire, WireCalculation } from "@shared/schema";
+import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 
 export default function SchematicDesigner() {
   const { toast } = useToast();
@@ -29,6 +29,9 @@ export default function SchematicDesigner() {
   const [components, setComponents] = useState<SchematicComponent[]>([]);
   const [wires, setWires] = useState<Wire[]>([]);
   const [systemVoltage, setSystemVoltage] = useState(12);
+
+  // Validation state
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
   // Iteration progress for AI generation
   const [iterationProgress, setIterationProgress] = useState<{
@@ -54,6 +57,40 @@ export default function SchematicDesigner() {
       setSystemVoltage(schematic.systemVoltage);
     }
   }, [schematic]);
+
+  // Auto-validate design when components or wires change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      validateDesign();
+    }, 500); // Debounce validation
+
+    return () => clearTimeout(timer);
+  }, [components, wires, systemVoltage]);
+
+  // Validation function
+  const validateDesign = async () => {
+    if (components.length === 0 && wires.length === 0) {
+      setValidationResult(null);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/validate-design", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ components, wires, systemVoltage }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Validation failed");
+      }
+
+      const result: ValidationResult = await response.json();
+      setValidationResult(result);
+    } catch (error) {
+      console.error("Validation error:", error);
+    }
+  };
 
   // Save schematic mutation
   const saveMutation = useMutation({
@@ -471,6 +508,22 @@ export default function SchematicDesigner() {
     }
   };
 
+  // Create wire validation status mapping for canvas rendering
+  const wireValidationStatus = new Map<string, "error" | "warning">();
+  validationResult?.issues.forEach(issue => {
+    if (issue.wireIds && issue.category === "wire-sizing") {
+      // Only show error/warning for wire sizing issues
+      issue.wireIds.forEach(wireId => {
+        if (issue.severity === "error") {
+          wireValidationStatus.set(wireId, "error");
+        } else if (issue.severity === "warning" && !wireValidationStatus.has(wireId)) {
+          // Only set warning if not already marked as error
+          wireValidationStatus.set(wireId, "warning");
+        }
+      });
+    }
+  });
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <TopBar
@@ -493,6 +546,7 @@ export default function SchematicDesigner() {
         <SchematicCanvas
           components={components}
           wires={wires}
+          wireValidationStatus={wireValidationStatus}
           onComponentsChange={setComponents}
           onWiresChange={setWires}
           onComponentSelect={handleComponentSelect}
@@ -566,6 +620,8 @@ export default function SchematicDesigner() {
             components={components}
             wires={wires}
             systemVoltage={systemVoltage}
+            validationResult={validationResult}
+            onValidate={validateDesign}
             onIssueClick={(issue) => {
               console.log("Issue clicked:", issue);
               // TODO: Highlight affected components/wires

@@ -45,13 +45,22 @@ function getTemperatureDerating(tempC: number): number {
 function getAmpacity(gauge: string, insulationType: "60C" | "75C" | "90C"): number {
   const data = WIRE_DATA[gauge as keyof typeof WIRE_DATA];
   if (!data) return 0;
-  
+
   switch (insulationType) {
     case "60C": return data.ampacity60C;
     case "75C": return data.ampacity75C;
     case "90C": return data.ampacity90C;
     default: return data.ampacity75C;
   }
+}
+
+// Export function to get wire ampacity for validation
+export function getWireAmpacity(gauge: string, insulationType: "60C" | "75C" | "90C" = "75C", temperatureC: number = 30, bundlingFactor: number = 1.0): number {
+  const baseAmpacity = getAmpacity(gauge, insulationType);
+  if (baseAmpacity === 0) return 0;
+
+  const tempDeratingFactor = getTemperatureDerating(temperatureC);
+  return baseAmpacity * tempDeratingFactor * bundlingFactor;
 }
 
 export function calculateWireSize(params: {

@@ -1,5 +1,6 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
 import { TERMINAL_CONFIGS } from "../client/src/lib/terminal-config";
+import { getWireAmpacity } from "./wire-calculator";
 
 export interface ValidationIssue {
   severity: "error" | "warning" | "info";
@@ -287,27 +288,41 @@ export class DesignValidator {
         return;
       }
 
-      // Check ampacity
+      // Check ampacity using proper temperature-adjusted calculations
       const current = wire.current || 0;
-      if (current > wireData.maxCurrent) {
-        this.issues.push({
-          severity: "error",
-          category: "wire-sizing",
-          message: `Wire gauge ${wire.gauge} insufficient for ${current}A (max ${wireData.maxCurrent}A)`,
-          wireId: wire.id,
-          suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGauge(current)})`,
-        });
-      } else if (current > wireData.maxCurrent * 0.9) {
-        this.issues.push({
-          severity: "warning",
-          category: "wire-sizing",
-          message: `Wire gauge ${wire.gauge} near capacity at ${current}A (max ${wireData.maxCurrent}A)`,
-          wireId: wire.id,
-          suggestion: "Consider larger gauge for safety margin",
-        });
+      if (current > 0) {
+        // Normalize gauge format (remove " AWG" suffix if present)
+        const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
+        const maxAmpacity = getWireAmpacity(normalizedGauge, "75C", 30, 1.0);
+
+        if (maxAmpacity === 0) {
+          this.issues.push({
+            severity: "warning",
+            category: "wire-sizing",
+            message: `Wire has unknown gauge: ${wire.gauge}`,
+            wireId: wire.id,
+          });
+        } else if (current > maxAmpacity) {
+          this.issues.push({
+            severity: "error",
+            category: "wire-sizing",
+            message: `Wire gauge ${wire.gauge} insufficient for ${current.toFixed(1)}A (max ${maxAmpacity.toFixed(1)}A at 75°C)`,
+            wireId: wire.id,
+            suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGauge(current)})`,
+          });
+        } else if (current > maxAmpacity * 0.8) {
+          // Warning if wire is above 80% of capacity
+          this.issues.push({
+            severity: "warning",
+            category: "wire-sizing",
+            message: `Wire gauge ${wire.gauge} running at ${((current / maxAmpacity) * 100).toFixed(0)}% capacity (${current.toFixed(1)}A of ${maxAmpacity.toFixed(1)}A max)`,
+            wireId: wire.id,
+            suggestion: `Consider using larger gauge for better safety margin`,
+          });
+        }
       }
 
-      // Check voltage drop
+      // Check voltage drop (voltage drop calculations are separate from ampacity)
       const length = wire.length || 0;
       const resistancePerFoot = wireData.resistance / 1000;
       const voltageDrop = 2 * current * resistancePerFoot * length; // 2 for round trip
