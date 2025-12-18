@@ -1,9 +1,15 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import FileStore from "session-file-store";
+import path from "path";
+import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { passport } from "./auth";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FileStoreSession = FileStore(session);
 
 const app = express();
 
@@ -13,9 +19,15 @@ app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session configuration
+// Session configuration with file-based storage (survives restarts)
 app.use(
   session({
+    store: new FileStoreSession({
+      path: path.join(__dirname, "..", "sessions"),
+      ttl: 7 * 24 * 60 * 60, // 7 days in seconds
+      retries: 0,
+      logFn: () => {}, // Suppress logging
+    }),
     secret: process.env.SESSION_SECRET || "your-secret-key-change-this-in-production",
     resave: false,
     saveUninitialized: false,

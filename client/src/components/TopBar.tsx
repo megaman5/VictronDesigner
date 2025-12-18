@@ -1,4 +1,4 @@
-import { Zap, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User } from "lucide-react";
+import { Zap, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -38,6 +38,7 @@ interface TopBarProps {
   designQualityScore?: number;
   user?: AuthUser | null;
   currentDesignName?: string;
+  isAIWiring?: boolean;
 }
 
 export function TopBar({ 
@@ -55,7 +56,8 @@ export function TopBar({
   hasComponents = false, 
   designQualityScore,
   user,
-  currentDesignName
+  currentDesignName,
+  isAIWiring = false
 }: TopBarProps) {
   const isLoggedIn = !!user;
 
@@ -90,11 +92,21 @@ export function TopBar({
             variant="outline"
             size="sm"
             onClick={onAIWire}
+            disabled={isAIWiring}
             data-testid="button-ai-wire"
             className="gap-2"
           >
-            <Sparkles className="h-4 w-4" />
-            AI Wire
+            {isAIWiring ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Wiring...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                AI Wire
+              </>
+            )}
           </Button>
 
           <Button

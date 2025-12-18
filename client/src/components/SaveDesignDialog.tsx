@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 import type { SchematicComponent, Wire } from "@shared/schema";
 
 interface SaveDesignDialogProps {
@@ -25,6 +26,7 @@ interface SaveDesignDialogProps {
   existingDesignId?: string;
   existingName?: string;
   onSaved?: (designId: string, name: string) => void;
+  onSessionExpired?: () => void;
 }
 
 export function SaveDesignDialog({
@@ -36,12 +38,14 @@ export function SaveDesignDialog({
   existingDesignId,
   existingName,
   onSaved,
+  onSessionExpired,
 }: SaveDesignDialogProps) {
   const { toast } = useToast();
   const [name, setName] = useState(existingName || "");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMode, setSaveMode] = useState<"update" | "copy" | null>(null);
+  const [sessionExpiredOpen, setSessionExpiredOpen] = useState(false);
 
   // Reset name when dialog opens
   useEffect(() => {
@@ -109,6 +113,11 @@ export function SaveDesignDialog({
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          // Session expired - show login dialog
+          setSessionExpiredOpen(true);
+          return;
+        }
         const error = await response.json();
         throw new Error(error.error || "Failed to save design");
       }
@@ -137,14 +146,28 @@ export function SaveDesignDialog({
     }
   };
 
+  const handleReLogin = () => {
+    setSessionExpiredOpen(false);
+    onOpenChange(false);
+    // Redirect to login with return to current page
+    window.location.href = `/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`;
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Save className="h-5 w-5" />
-            {hasExistingDesign ? "Save Design" : "Save New Design"}
-          </DialogTitle>
+    <>
+      <SessionExpiredDialog
+        open={sessionExpiredOpen}
+        onOpenChange={setSessionExpiredOpen}
+        onLogin={handleReLogin}
+      />
+      
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Save className="h-5 w-5" />
+              {hasExistingDesign ? "Save Design" : "Save New Design"}
+            </DialogTitle>
           <DialogDescription>
             {hasExistingDesign 
               ? "Update this design or save as a new copy."
@@ -238,5 +261,6 @@ export function SaveDesignDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
