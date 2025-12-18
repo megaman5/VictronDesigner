@@ -5,12 +5,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import SchematicDesigner from "@/pages/SchematicDesigner";
+import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={SchematicDesigner} />
+      <Route path="/feedback-admin" component={FeedbackAdmin} />
       <Route component={NotFound} />
     </Switch>
   );

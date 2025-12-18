@@ -8,9 +8,12 @@ import { DesignReviewPanel } from "@/components/DesignReviewPanel";
 import { AIPromptDialog } from "@/components/AIPromptDialog";
 import { ExportDialog } from "@/components/ExportDialog";
 import { WireEditDialog } from "@/components/WireEditDialog";
+import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle } from "lucide-react";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 
 export default function SchematicDesigner() {
@@ -19,6 +22,7 @@ export default function SchematicDesigner() {
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [designQualitySheetOpen, setDesignQualitySheetOpen] = useState(false);
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
   const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
@@ -59,6 +63,29 @@ export default function SchematicDesigner() {
       setSystemVoltage(schematic.systemVoltage);
     }
   }, [schematic]);
+
+  // Load feedback state from localStorage if available
+  useEffect(() => {
+    const loadedState = localStorage.getItem("loadedFeedbackState");
+    if (loadedState) {
+      try {
+        const state = JSON.parse(loadedState);
+        setComponents(state.components || []);
+        setWires(state.wires || []);
+        setSystemVoltage(state.systemVoltage || 12);
+        
+        // Clear the loaded state
+        localStorage.removeItem("loadedFeedbackState");
+        
+        toast({
+          title: "Feedback state loaded",
+          description: `Loaded design with ${state.components?.length || 0} components and ${state.wires?.length || 0} wires`,
+        });
+      } catch (error) {
+        console.error("Error loading feedback state:", error);
+      }
+    }
+  }, []);
 
   // Auto-validate design when components or wires change
   useEffect(() => {
@@ -536,10 +563,23 @@ export default function SchematicDesigner() {
         onOpen={() => console.log("Open project")}
         onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
         onDesignQuality={() => setDesignQualitySheetOpen(true)}
+        onFeedback={() => setFeedbackDialogOpen(true)}
         wireMode={wireConnectionMode}
         hasComponents={components.length > 0}
         designQualityScore={validationResult?.score}
       />
+
+      {/* Alpha Warning Banner */}
+      <div className="px-4 pt-3 pb-0">
+        <Alert variant="default" className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+          <AlertTitle className="text-yellow-800 dark:text-yellow-400">Alpha Version - Work in Progress</AlertTitle>
+          <AlertDescription className="text-yellow-700 dark:text-yellow-500">
+            This tool is in active development. Some features like Save, Open, and Export are not yet implemented. 
+            Your work is not automatically saved - please use screenshots to preserve your designs for now.
+          </AlertDescription>
+        </Alert>
+      </div>
 
       <div className="flex-1 flex overflow-hidden">
         <ComponentLibrary
@@ -634,6 +674,14 @@ export default function SchematicDesigner() {
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
         onExport={handleExport}
+      />
+
+      <FeedbackDialog
+        open={feedbackDialogOpen}
+        onOpenChange={setFeedbackDialogOpen}
+        components={components}
+        wires={wires}
+        systemVoltage={systemVoltage}
       />
 
       <WireEditDialog
