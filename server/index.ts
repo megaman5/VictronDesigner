@@ -6,6 +6,10 @@ import { setupVite, serveStatic, log } from "./vite";
 import { passport } from "./auth";
 
 const app = express();
+
+// Trust proxy (nginx) - required for secure cookies behind reverse proxy
+app.set("trust proxy", 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -15,10 +19,12 @@ app.use(
     secret: process.env.SESSION_SECRET || "your-secret-key-change-this-in-production",
     resave: false,
     saveUninitialized: false,
+    proxy: true, // Trust the reverse proxy
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production", // HTTPS only in production
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      sameSite: "lax",
     },
   })
 );
