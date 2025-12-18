@@ -102,10 +102,38 @@ Each feedback entry contains:
 - `client/src/pages/SchematicDesigner.tsx` - Integrated feedback dialog and state loading
 - `client/src/App.tsx` - Added feedback admin route
 
-## Security Considerations
+## Security & Authentication
 
-- No authentication required for submitting feedback (by design for alpha)
-- Admin page is publicly accessible (consider adding auth in production)
+### Admin Access Control
+
+The feedback admin panel is protected by Google OAuth authentication:
+
+1. **Authorized Admins**: Only `megaman5@gmail.com` can access the admin panel
+2. **Authentication Flow**:
+   - Users click "Sign in with Google" on the admin page
+   - After OAuth, the system checks if the email is in the admin whitelist
+   - Non-admin users see an "Access Denied" message
+3. **Session**: 7-day session cookies for authenticated users
+
+### Modifying Admin Access
+
+To add/remove admin users, edit `/usr/local/victron/server/auth.ts`:
+
+```typescript
+// Admin email whitelist
+const ADMIN_EMAILS = ["megaman5@gmail.com", "another@email.com"];
+```
+
+After modifying, rebuild and restart the service:
+```bash
+cd /usr/local/victron
+sudo rm -rf dist && npm run build
+sudo systemctl restart victron-designer
+```
+
+### Other Security Notes
+
+- Feedback submission is open to all users (no auth required)
 - Screenshot data is base64 encoded PNG
 - Email addresses are optional and stored in plaintext
 - User agent strings captured for debugging purposes

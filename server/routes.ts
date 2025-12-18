@@ -9,8 +9,7 @@ import { generateShoppingList, generateWireLabels, generateCSV, generateSystemRe
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
-import { passport } from "./auth";
-import type { User } from "@shared/schema";
+import { passport, isAdmin, type AuthUser } from "./auth";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -22,11 +21,6 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     return next();
   }
   res.status(401).json({ error: "Unauthorized" });
-}
-
-// TypeScript helper to get authenticated user
-function getAuthUser(req: Request): User {
-  return req.user as User;
 }
 
 // Helper function to extract JSON from markdown code blocks
@@ -52,20 +46,44 @@ function extractJSON(content: string): string {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
-  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+  app.get("/auth/google", (req, res, next) => {
+    const returnTo = req.query.returnTo as string || "/";
+    // Pass returnTo through OAuth state parameter (base64 encoded)
+    const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64");
+    passport.authenticate("google", { 
+      scope: ["profile", "email"],
+      state 
+    })(req, res, next);
+  });
 
   app.get(
     "/auth/google/callback",
-    passport.authenticate("google", { failureRedirect: "/login" }),
+    passport.authenticate("google", { failureRedirect: "/?auth=failed" }),
     (req, res) => {
-      // Successful authentication, redirect to designer
-      res.redirect("/");
+      // Decode returnTo from state parameter
+      let returnTo = "/";
+      try {
+        const state = req.query.state as string;
+        if (state) {
+          const decoded = JSON.parse(Buffer.from(state, "base64").toString());
+          returnTo = decoded.returnTo || "/";
+        }
+      } catch (e) {
+        console.error("Error decoding OAuth state:", e);
+      }
+      res.redirect(returnTo);
     }
   );
 
   app.get("/auth/user", (req, res) => {
     if (req.isAuthenticated()) {
-      res.json(req.user);
+      const user = req.user as AuthUser;
+      res.json({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        isAdmin: user.isAdmin,
+      });
     } else {
       res.status(401).json({ error: "Not authenticated" });
     }
@@ -1094,7 +1112,8 @@ Respond with valid JSON only:
     }
   });
 
-  app.get("/api/feedback", async (req, res) => {
+  // Protected admin-only feedback endpoints
+  app.get("/api/feedback", isAdmin, async (req, res) => {
     try {
       const allFeedback = await feedbackStorage.getAll();
       res.json(allFeedback);
@@ -1103,7 +1122,7 @@ Respond with valid JSON only:
     }
   });
 
-  app.get("/api/feedback/:id", async (req, res) => {
+  app.get("/api/feedback/:id", isAdmin, async (req, res) => {
     try {
       const feedback = await feedbackStorage.getById(req.params.id);
       if (!feedback) {
@@ -1115,7 +1134,7 @@ Respond with valid JSON only:
     }
   });
 
-  app.delete("/api/feedback/:id", async (req, res) => {
+  app.delete("/api/feedback/:id", isAdmin, async (req, res) => {
     try {
       const deleted = await feedbackStorage.delete(req.params.id);
       if (!deleted) {
@@ -1127,7 +1146,7 @@ Respond with valid JSON only:
     }
   });
 
-  app.get("/api/feedback-count", async (req, res) => {
+  app.get("/api/feedback-count", isAdmin, async (req, res) => {
     try {
       const count = await feedbackStorage.count();
       res.json({ count });
