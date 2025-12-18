@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import SchematicDesigner from "@/pages/SchematicDesigner";
 import FeedbackAdmin from "@/pages/FeedbackAdmin";
+import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -13,6 +14,7 @@ function Router() {
     <Switch>
       <Route path="/" component={SchematicDesigner} />
       <Route path="/feedback-admin" component={FeedbackAdmin} />
+      <Route path="/observability-admin" component={ObservabilityAdmin} />
       <Route component={NotFound} />
     </Switch>
   );
