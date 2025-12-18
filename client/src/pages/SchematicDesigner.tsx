@@ -644,16 +644,16 @@ export default function SchematicDesigner() {
         designQualityScore={validationResult?.score}
         user={user}
         currentDesignName={currentDesignName || undefined}
+        isAIWiring={aiWireMutation.isPending}
       />
 
       {/* Alpha Warning Banner */}
       <div className="px-4 pt-3 pb-0">
         <Alert variant="default" className="border-yellow-500/50 bg-yellow-500/10">
           <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
-          <AlertTitle className="text-yellow-800 dark:text-yellow-400">Alpha Version - Work in Progress</AlertTitle>
+          <AlertTitle className="text-yellow-800 dark:text-yellow-400">Alpha Version</AlertTitle>
           <AlertDescription className="text-yellow-700 dark:text-yellow-500">
-            This tool is in active development. Some features like Save, Open, and Export are not yet implemented. 
-            Your work is not automatically saved - please use screenshots to preserve your designs for now.
+            This tool is in active development. Sign in to save your designs. Please report any bugs using the Feedback button!
           </AlertDescription>
         </Alert>
       </div>

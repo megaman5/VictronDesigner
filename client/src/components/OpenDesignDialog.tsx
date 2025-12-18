@@ -18,6 +18,7 @@ import {
   Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
 
 interface DesignSummary {
   id: string;
@@ -53,12 +54,17 @@ export function OpenDesignDialog({
   const [loading, setLoading] = useState(true);
   const [loadingDesignId, setLoadingDesignId] = useState<string | null>(null);
   const [deletingDesignId, setDeletingDesignId] = useState<string | null>(null);
+  const [sessionExpiredOpen, setSessionExpiredOpen] = useState(false);
 
   const loadDesigns = async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/designs");
       if (!response.ok) {
+        if (response.status === 401) {
+          setSessionExpiredOpen(true);
+          return;
+        }
         throw new Error("Failed to load designs");
       }
       const data = await response.json();
@@ -86,6 +92,10 @@ export function OpenDesignDialog({
     try {
       const response = await fetch(`/api/designs/${designId}`);
       if (!response.ok) {
+        if (response.status === 401) {
+          setSessionExpiredOpen(true);
+          return;
+        }
         throw new Error("Failed to load design");
       }
       const design = await response.json();
@@ -127,6 +137,10 @@ export function OpenDesignDialog({
         method: "DELETE",
       });
       if (!response.ok) {
+        if (response.status === 401) {
+          setSessionExpiredOpen(true);
+          return;
+        }
         throw new Error("Failed to delete design");
       }
 
@@ -158,8 +172,21 @@ export function OpenDesignDialog({
     });
   };
 
+  const handleReLogin = () => {
+    setSessionExpiredOpen(false);
+    onOpenChange(false);
+    window.location.href = `/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`;
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <SessionExpiredDialog
+        open={sessionExpiredOpen}
+        onOpenChange={setSessionExpiredOpen}
+        onLogin={handleReLogin}
+      />
+      
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -249,5 +276,6 @@ export function OpenDesignDialog({
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }
