@@ -8,9 +8,31 @@ This is a professional electrical schematic design tool specifically for Victron
 
 Preferred communication style: Simple, everyday language.
 
+## Production Deployment
+
+The app runs as a systemd service on the server:
+
+```bash
+# Restart after code changes (MUST rebuild first!)
+npm run build
+sudo systemctl restart victron-designer.service
+
+# Check status
+sudo systemctl status victron-designer.service
+
+# View logs
+sudo journalctl -u victron-designer.service -f
+```
+
 ## Recent Changes
 
-### Latest Session Improvements (Current)
+### Latest Session - AI Component Properties Fix (December 2025)
+1. **Fixed AI omitting properties**: AI was generating loads without `properties` field (watts/amps = 0)
+2. **Enhanced AI prompts**: Added explicit JSON examples showing required `properties` for all components
+3. **Validation for missing properties**: `design-validator.ts` now flags loads without watts/amps as errors
+4. **Iterative feedback**: AI receives validation errors when properties missing, helping it self-correct
+
+### Previous Session Improvements
 1. **AI Loading Animation**: Added visual feedback during system generation with animated progress indicator
 2. **Bus Bar Components**: Added busbar-positive and busbar-negative with 6 terminals each for multi-wire connections
    - Professional SVG rendering with copper/black styling
