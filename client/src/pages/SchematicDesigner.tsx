@@ -9,12 +9,21 @@ import { AIPromptDialog } from "@/components/AIPromptDialog";
 import { ExportDialog } from "@/components/ExportDialog";
 import { WireEditDialog } from "@/components/WireEditDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
+import { SaveDesignDialog } from "@/components/SaveDesignDialog";
+import { OpenDesignDialog } from "@/components/OpenDesignDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle } from "lucide-react";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
+
+interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  isAdmin: boolean;
+}
 
 export default function SchematicDesigner() {
   const { toast } = useToast();
@@ -23,6 +32,13 @@ export default function SchematicDesigner() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [designQualitySheetOpen, setDesignQualitySheetOpen] = useState(false);
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [openDialogOpen, setOpenDialogOpen] = useState(false);
+
+  // User auth state
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [currentDesignId, setCurrentDesignId] = useState<string | null>(null);
+  const [currentDesignName, setCurrentDesignName] = useState<string | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
   const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
@@ -64,6 +80,22 @@ export default function SchematicDesigner() {
     }
   }, [schematic]);
 
+  // Check auth status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch("/auth/user");
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error("Auth check failed:", error);
+      }
+    };
+    checkAuth();
+  }, []);
+
   // Load feedback state from localStorage if available
   useEffect(() => {
     const loadedState = localStorage.getItem("loadedFeedbackState");
@@ -86,6 +118,47 @@ export default function SchematicDesigner() {
       }
     }
   }, []);
+
+  // Login/logout handlers
+  const handleLogin = () => {
+    window.location.href = `/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`;
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/auth/logout", { method: "POST" });
+      setUser(null);
+      toast({
+        title: "Signed out",
+        description: "You have been signed out",
+      });
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  // Handle loading a saved design
+  const handleLoadDesign = (design: {
+    id: string;
+    name: string;
+    components: any[];
+    wires: any[];
+    systemVoltage: number;
+  }) => {
+    setComponents(design.components);
+    setWires(design.wires);
+    setSystemVoltage(design.systemVoltage);
+    setCurrentDesignId(design.id);
+    setCurrentDesignName(design.name);
+    setSelectedComponent(null);
+    setSelectedWire(null);
+  };
+
+  // Handle design saved
+  const handleDesignSaved = (designId: string, name: string) => {
+    setCurrentDesignId(designId);
+    setCurrentDesignName(name);
+  };
 
   // Auto-validate design when components or wires change
   useEffect(() => {
@@ -559,14 +632,18 @@ export default function SchematicDesigner() {
         onAIPrompt={() => setAiDialogOpen(true)}
         onAIWire={() => aiWireMutation.mutate()}
         onExport={() => setExportDialogOpen(true)}
-        onSave={() => saveMutation.mutate()}
-        onOpen={() => console.log("Open project")}
+        onSave={() => setSaveDialogOpen(true)}
+        onOpen={() => setOpenDialogOpen(true)}
         onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
         onDesignQuality={() => setDesignQualitySheetOpen(true)}
         onFeedback={() => setFeedbackDialogOpen(true)}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
         wireMode={wireConnectionMode}
         hasComponents={components.length > 0}
         designQualityScore={validationResult?.score}
+        user={user}
+        currentDesignName={currentDesignName || undefined}
       />
 
       {/* Alpha Warning Banner */}
@@ -673,7 +750,10 @@ export default function SchematicDesigner() {
       <ExportDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        onExport={handleExport}
+        components={components}
+        wires={wires}
+        systemVoltage={systemVoltage}
+        designName={currentDesignName || "Design"}
       />
 
       <FeedbackDialog
@@ -682,6 +762,23 @@ export default function SchematicDesigner() {
         components={components}
         wires={wires}
         systemVoltage={systemVoltage}
+      />
+
+      <SaveDesignDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        components={components}
+        wires={wires}
+        systemVoltage={systemVoltage}
+        existingDesignId={currentDesignId || undefined}
+        existingName={currentDesignName || undefined}
+        onSaved={handleDesignSaved}
+      />
+
+      <OpenDesignDialog
+        open={openDialogOpen}
+        onOpenChange={setOpenDialogOpen}
+        onLoad={handleLoadDesign}
       />
 
       <WireEditDialog

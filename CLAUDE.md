@@ -1,8 +1,8 @@
-# CLAUDE.md - Victron Designer AI Assistant Guide
+# CLAUDE.md - VictronDesigner.com AI Assistant Guide
 
 ## Project Overview
 
-**Victron Designer** is a professional electrical schematic design tool for Victron energy systems (solar/power systems). It provides a drag-and-drop interface with terminal-based wire connections, automatic wire sizing calculations based on ABYC/NEC standards, real-time orthogonal wire routing with grid snapping, and AI-powered system recommendations.
+**VictronDesigner.com** is a professional electrical schematic design tool for Victron energy systems (solar/power systems). It provides a drag-and-drop interface with terminal-based wire connections, automatic wire sizing calculations based on ABYC/NEC standards, real-time orthogonal wire routing with grid snapping, and AI-powered system recommendations.
 
 **User Preference**: Use simple, everyday language when communicating about this project.
 

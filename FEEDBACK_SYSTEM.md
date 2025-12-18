@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Victron Designer now includes a comprehensive feedback system that allows users to submit feedback along with their current design state and screenshots. This makes it easy to understand the context of bug reports and feature requests.
+VictronDesigner.com now includes a comprehensive feedback system that allows users to submit feedback along with their current design state and screenshots. This makes it easy to understand the context of bug reports and feature requests.
 
 ## Features
 

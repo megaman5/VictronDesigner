@@ -1,4 +1,6 @@
-import { Download, FileText, ShoppingCart, Tag } from "lucide-react";
+import { useState } from "react";
+import { Download, FileText, ShoppingCart, Tag, FileImage, Loader2 } from "lucide-react";
+import html2canvas from "html2canvas";
 import {
   Dialog,
   DialogContent,
@@ -7,34 +9,193 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import type { SchematicComponent, Wire } from "@shared/schema";
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onExport?: (options: ExportOptions) => void;
+  components: SchematicComponent[];
+  wires: Wire[];
+  systemVoltage: number;
+  designName?: string;
 }
 
-interface ExportOptions {
-  wiringDiagram: boolean;
-  shoppingList: boolean;
-  wireLabels: boolean;
-  format: "pdf" | "png";
-}
+export function ExportDialog({ 
+  open, 
+  onOpenChange, 
+  components, 
+  wires, 
+  systemVoltage,
+  designName = "Design"
+}: ExportDialogProps) {
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState<string | null>(null);
 
-export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps) {
-  const handleExport = () => {
-    console.log("Exporting schematic...");
-    onExport?.({
-      wiringDiagram: true,
-      shoppingList: true,
-      wireLabels: true,
-      format: "pdf",
-    });
-    onOpenChange(false);
+  const exportShoppingList = async () => {
+    setExporting("shopping");
+    try {
+      const response = await fetch("/api/export/shopping-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName }),
+      });
+
+      if (!response.ok) throw new Error("Export failed");
+
+      const items = await response.json();
+      
+      // Convert to CSV
+      const csv = [
+        "Category,Item,Quantity,Notes",
+        ...items.map((item: any) => 
+          `"${item.category}","${item.name}",${item.quantity},"${item.notes || ''}"`
+        )
+      ].join("\n");
+
+      // Download
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${designName}-shopping-list.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exported!",
+        description: "Shopping list downloaded as CSV",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to export shopping list",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
   };
+
+  const exportWireLabels = async () => {
+    setExporting("labels");
+    try {
+      const response = await fetch("/api/export/wire-labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName }),
+      });
+
+      if (!response.ok) throw new Error("Export failed");
+
+      const labels = await response.json();
+      
+      // Convert to printable format
+      const text = labels.map((label: any) => 
+        `Wire: ${label.from} → ${label.to}\nGauge: ${label.gauge}\nLength: ${label.length}m\nPolarity: ${label.polarity}\n${"─".repeat(30)}`
+      ).join("\n\n");
+
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${designName}-wire-labels.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exported!",
+        description: "Wire labels downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to export wire labels",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportDiagram = async () => {
+    setExporting("diagram");
+    try {
+      // Find the schematic canvas container
+      const canvasElement = document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
+      if (!canvasElement) {
+        throw new Error("Design canvas not found");
+      }
+
+      // Use html2canvas to capture the design
+      const canvas = await html2canvas(canvasElement, {
+        backgroundColor: "#1a1a2e", // Dark background
+        scale: 2, // Higher resolution
+        useCORS: true,
+        logging: false,
+      });
+
+      // Export as PNG
+      const dataUrl = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `${designName}-diagram.png`;
+      a.click();
+
+      toast({
+        title: "Exported!",
+        description: "Wiring diagram downloaded as PNG",
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to export diagram",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportSystemReport = async () => {
+    setExporting("report");
+    try {
+      const response = await fetch("/api/export/system-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName }),
+      });
+
+      if (!response.ok) throw new Error("Export failed");
+
+      const report = await response.text();
+      
+      const blob = new Blob([report], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${designName}-system-report.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exported!",
+        description: "System report downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to export system report",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const hasContent = components.length > 0 || wires.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,75 +203,99 @@ export function ExportDialog({ open, onOpenChange, onExport }: ExportDialogProps
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5 text-primary" />
-            Export Schematic
+            Export Design
           </DialogTitle>
           <DialogDescription>
-            Choose what to include in your export
+            Download your design in various formats
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 pt-4">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <Checkbox id="diagram" defaultChecked data-testid="checkbox-export-diagram" />
-              <div className="flex-1">
-                <Label htmlFor="diagram" className="flex items-center gap-2 cursor-pointer">
-                  <FileText className="h-4 w-4" />
-                  Wiring Diagram
-                </Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Professional schematic with all components and connections
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <Checkbox id="bom" defaultChecked data-testid="checkbox-export-bom" />
-              <div className="flex-1">
-                <Label htmlFor="bom" className="flex items-center gap-2 cursor-pointer">
-                  <ShoppingCart className="h-4 w-4" />
-                  Shopping List
-                </Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Bill of materials with part numbers and quantities
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <Checkbox id="labels" defaultChecked data-testid="checkbox-export-labels" />
-              <div className="flex-1">
-                <Label htmlFor="labels" className="flex items-center gap-2 cursor-pointer">
-                  <Tag className="h-4 w-4" />
-                  Wire Labels
-                </Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Printable labels with wire gauge, current, and connection points
-                </p>
-              </div>
-            </div>
+        {!hasContent ? (
+          <div className="py-8 text-center text-muted-foreground">
+            <p>No components to export.</p>
+            <p className="text-sm mt-1">Add components to your design first.</p>
           </div>
-
-          <Separator />
-
-          <div className="flex justify-end gap-2">
+        ) : (
+          <div className="space-y-3 pt-4">
             <Button
               variant="outline"
-              onClick={() => onOpenChange(false)}
-              data-testid="button-cancel-export"
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={exportDiagram}
+              disabled={!!exporting}
             >
-              Cancel
+              {exporting === "diagram" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <FileImage className="h-5 w-5" />
+              )}
+              <div className="text-left">
+                <div className="font-medium">Wiring Diagram</div>
+                <div className="text-xs text-muted-foreground">PNG image of your schematic</div>
+              </div>
             </Button>
+
             <Button
-              onClick={handleExport}
-              data-testid="button-confirm-export"
-              className="gap-2"
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={exportShoppingList}
+              disabled={!!exporting}
             >
-              <Download className="h-4 w-4" />
-              Export
+              {exporting === "shopping" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ShoppingCart className="h-5 w-5" />
+              )}
+              <div className="text-left">
+                <div className="font-medium">Shopping List</div>
+                <div className="text-xs text-muted-foreground">CSV with all components and parts</div>
+              </div>
             </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={exportWireLabels}
+              disabled={!!exporting || wires.length === 0}
+            >
+              {exporting === "labels" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Tag className="h-5 w-5" />
+              )}
+              <div className="text-left">
+                <div className="font-medium">Wire Labels</div>
+                <div className="text-xs text-muted-foreground">
+                  {wires.length === 0 ? "No wires to label" : "Printable labels for each wire"}
+                </div>
+              </div>
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={exportSystemReport}
+              disabled={!!exporting}
+            >
+              {exporting === "report" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <FileText className="h-5 w-5" />
+              )}
+              <div className="text-left">
+                <div className="font-medium">System Report</div>
+                <div className="text-xs text-muted-foreground">Full technical summary</div>
+              </div>
+            </Button>
+
+            <Separator />
+
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );

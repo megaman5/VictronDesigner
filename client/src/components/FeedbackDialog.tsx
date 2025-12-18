@@ -1,4 +1,5 @@
 import { useState } from "react";
+import html2canvas from "html2canvas";
 import {
   Dialog,
   DialogContent,
@@ -37,14 +38,19 @@ export function FeedbackDialog({
 
   const captureScreenshot = async (): Promise<string | undefined> => {
     try {
-      // Find the canvas element
-      const canvas = document.querySelector('canvas');
-      if (!canvas) {
+      const canvasElement = document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
+      if (!canvasElement) {
         console.warn("No canvas found for screenshot");
         return undefined;
       }
 
-      // Convert canvas to base64 image
+      const canvas = await html2canvas(canvasElement, {
+        backgroundColor: "#1a1a2e",
+        scale: 1,
+        useCORS: true,
+        logging: false,
+      });
+
       return canvas.toDataURL('image/png');
     } catch (error) {
       console.error("Error capturing screenshot:", error);
