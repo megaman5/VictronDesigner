@@ -122,95 +122,168 @@ export function ExportDialog({
   const exportDiagram = async () => {
     setExporting("diagram");
     try {
-      // Find the schematic canvas container
-      const canvasElement = document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
-      if (!canvasElement) {
+      // Find the SVG element which is the actual canvas content
+      const svgElement = document.querySelector('[data-testid="canvas-drop-zone"] svg') as SVGElement;
+      if (!svgElement) {
         throw new Error("Design canvas not found");
       }
 
-      // Use html2canvas to capture the design
-      const canvas = await html2canvas(canvasElement, {
-        backgroundColor: "#1a1a2e", // Dark background
-        scale: 2, // Higher resolution
-        useCORS: true,
-        logging: false,
+      // Get the parent container to also capture the component overlays
+      const canvasContainer = document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
+      
+      // Find all scaled elements and temporarily reset their transform to 100%
+      const scaledElements = canvasContainer.querySelectorAll('[style*="transform"]') as NodeListOf<HTMLElement>;
+      const originalTransforms: string[] = [];
+      
+      scaledElements.forEach((el, i) => {
+        originalTransforms[i] = el.style.transform;
+        el.style.transform = 'scale(1)';
       });
 
-      // Add logo watermark to bottom-right corner
-      const ctx = canvas.getContext("2d");
+      // Create a temporary container for export with fixed dimensions
+      const exportContainer = document.createElement('div');
+      exportContainer.style.cssText = `
+        position: fixed;
+        left: -9999px;
+        top: 0;
+        width: 2400px;
+        height: 1600px;
+        overflow: hidden;
+        background-color: #0f0f1a;
+      `;
+      
+      // Clone the canvas content
+      const clone = canvasContainer.cloneNode(true) as HTMLElement;
+      clone.style.cssText = `
+        width: 2400px;
+        height: 1600px;
+        overflow: visible;
+        position: relative;
+      `;
+      
+      // Reset transforms on cloned elements
+      const clonedScaled = clone.querySelectorAll('[style*="transform"]') as NodeListOf<HTMLElement>;
+      clonedScaled.forEach((el) => {
+        el.style.transform = 'scale(1)';
+      });
+      
+      exportContainer.appendChild(clone);
+      document.body.appendChild(exportContainer);
+
+      // Use html2canvas to capture the clean container
+      const canvas = await html2canvas(exportContainer, {
+        backgroundColor: "#0f0f1a",
+        scale: 1,
+        useCORS: true,
+        logging: false,
+        width: 2400,
+        height: 1600,
+      });
+
+      // Clean up
+      document.body.removeChild(exportContainer);
+      
+      // Restore original transforms
+      scaledElements.forEach((el, i) => {
+        el.style.transform = originalTransforms[i];
+      });
+
+      // Load the icon first
+      const iconImg = await new Promise<HTMLImageElement | null>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => {
+          console.warn("Failed to load watermark icon");
+          resolve(null);
+        };
+        // Set a timeout
+        setTimeout(() => resolve(null), 3000);
+        img.src = window.location.origin + "/icon-only.png";
+      });
+      
+      // Create a new canvas to composite the result with watermark
+      const finalCanvas = document.createElement("canvas");
+      finalCanvas.width = canvas.width;
+      finalCanvas.height = canvas.height;
+      const ctx = finalCanvas.getContext("2d");
+      
       if (ctx) {
-        try {
-          // Load both the icon and create text watermark
-          const icon = new Image();
-          icon.crossOrigin = "anonymous";
-          
-          await new Promise<void>((resolve) => {
-            icon.onload = () => {
-              // Calculate icon size
-              const iconHeight = 60;
-              const iconScale = iconHeight / icon.height;
-              const iconWidth = icon.width * iconScale;
-              
-              // Position in bottom-right corner with padding
-              const padding = 30;
-              const textWidth = 280; // Approximate width for "VictronDesigner.com"
-              const totalWidth = iconWidth + textWidth + 10;
-              const x = canvas.width - totalWidth - padding;
-              const y = canvas.height - iconHeight - padding;
-              
-              // Draw semi-transparent rounded background
-              const bgPadding = 15;
-              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-              ctx.beginPath();
-              const bgX = x - bgPadding;
-              const bgY = y - bgPadding;
-              const bgWidth = totalWidth + bgPadding * 2;
-              const bgHeight = iconHeight + bgPadding * 2;
-              const radius = 10;
-              ctx.moveTo(bgX + radius, bgY);
-              ctx.lineTo(bgX + bgWidth - radius, bgY);
-              ctx.quadraticCurveTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius);
-              ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
-              ctx.quadraticCurveTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight);
-              ctx.lineTo(bgX + radius, bgY + bgHeight);
-              ctx.quadraticCurveTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius);
-              ctx.lineTo(bgX, bgY + radius);
-              ctx.quadraticCurveTo(bgX, bgY, bgX + radius, bgY);
-              ctx.closePath();
-              ctx.fill();
-              
-              // Draw icon
-              ctx.drawImage(icon, x, y, iconWidth, iconHeight);
-              
-              // Draw text
-              ctx.fillStyle = "#1e3a5f";
-              ctx.font = "bold 28px Inter, system-ui, sans-serif";
-              ctx.textBaseline = "middle";
-              ctx.fillText("VictronDesigner.com", x + iconWidth + 10, y + iconHeight / 2);
-              
-              resolve();
-            };
-            icon.onerror = () => {
-              console.warn("Failed to load icon for watermark, using text only");
-              // Fallback: just add text watermark
-              const padding = 30;
-              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-              ctx.fillRect(canvas.width - 320, canvas.height - 60, 300, 40);
-              ctx.fillStyle = "#1e3a5f";
-              ctx.font = "bold 24px Inter, system-ui, sans-serif";
-              ctx.fillText("VictronDesigner.com", canvas.width - 300, canvas.height - 35);
-              resolve();
-            };
-            // Use full URL to ensure it loads correctly
-            icon.src = window.location.origin + "/icon-only.png";
-          });
-        } catch (err) {
-          console.warn("Watermark error:", err);
+        // Draw the captured content
+        ctx.drawImage(canvas, 0, 0);
+        
+        console.log("Final canvas dimensions:", finalCanvas.width, finalCanvas.height);
+        console.log("Icon loaded:", !!iconImg);
+        
+        // Watermark settings
+        const padding = 40;
+        const textContent = "VictronDesigner.com";
+        const bgHeight = 60;
+        const iconHeight = 45;
+        const iconPadding = 12;
+        
+        // Calculate icon dimensions
+        let iconWidth = 0;
+        if (iconImg) {
+          const iconScale = iconHeight / iconImg.height;
+          iconWidth = iconImg.width * iconScale;
         }
+        
+        // Calculate text width
+        ctx.font = "bold 26px Arial, sans-serif";
+        const textWidth = ctx.measureText(textContent).width;
+        
+        // Total width includes icon + gap + text + padding
+        const gap = iconImg ? 10 : 0;
+        const totalWidth = iconPadding + iconWidth + gap + textWidth + iconPadding + 10;
+        
+        // Position in bottom right
+        const bgX = finalCanvas.width - totalWidth - padding;
+        const bgY = finalCanvas.height - bgHeight - padding;
+        const radius = 10;
+        
+        console.log("Watermark position:", bgX, bgY, "size:", totalWidth, bgHeight);
+        
+        // Draw white rounded rectangle background
+        ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.beginPath();
+        ctx.moveTo(bgX + radius, bgY);
+        ctx.lineTo(bgX + totalWidth - radius, bgY);
+        ctx.arcTo(bgX + totalWidth, bgY, bgX + totalWidth, bgY + radius, radius);
+        ctx.lineTo(bgX + totalWidth, bgY + bgHeight - radius);
+        ctx.arcTo(bgX + totalWidth, bgY + bgHeight, bgX + totalWidth - radius, bgY + bgHeight, radius);
+        ctx.lineTo(bgX + radius, bgY + bgHeight);
+        ctx.arcTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius, radius);
+        ctx.lineTo(bgX, bgY + radius);
+        ctx.arcTo(bgX, bgY, bgX + radius, bgY, radius);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add subtle border
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Draw icon if loaded
+        let textX = bgX + iconPadding;
+        if (iconImg) {
+          const iconY = bgY + (bgHeight - iconHeight) / 2;
+          ctx.drawImage(iconImg, bgX + iconPadding, iconY, iconWidth, iconHeight);
+          textX = bgX + iconPadding + iconWidth + gap;
+        }
+        
+        // Draw text
+        ctx.fillStyle = "#1e3a5f";
+        ctx.font = "bold 26px Arial, sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillText(textContent, textX, bgY + bgHeight / 2);
+        
+        console.log("Watermark drawn successfully with icon:", !!iconImg);
       }
 
-      // Export as PNG
-      const dataUrl = canvas.toDataURL("image/png");
+      // Export as PNG from the final canvas with watermark
+      const dataUrl = finalCanvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `${designName}-diagram.png`;
