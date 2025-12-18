@@ -331,6 +331,27 @@ npm run build
 # 2. esbuild bundles server → dist/index.js
 ```
 
+### Production Deployment (Systemd)
+The production server runs as a systemd service:
+
+```bash
+# Check service status
+sudo systemctl status victron-designer.service
+
+# Restart after code changes (MUST rebuild first!)
+npm run build
+sudo systemctl restart victron-designer.service
+
+# View logs
+sudo journalctl -u victron-designer.service -f
+
+# Service file location: /etc/systemd/system/victron-designer.service
+```
+
+**Important**: After changing any server-side TypeScript files (`server/*.ts`, `shared/*.ts`), you MUST:
+1. Run `npm run build` to recompile
+2. Run `sudo systemctl restart victron-designer.service` to restart
+
 ### Database Migrations
 ```bash
 npm run db:push
@@ -506,7 +527,14 @@ Required for full functionality:
 
 ## Recent Changes (Last Session)
 
-**December 2025 - Enhanced Power Calculations and Wire Validation:**
+**December 2025 - AI Component Properties Fix:**
+- **Fixed AI omitting properties**: AI was generating loads without `properties` field (watts/amps = 0)
+- **Enhanced AI prompts**: Added explicit JSON examples showing required `properties` field for all components
+- **Added validation for missing properties**: `design-validator.ts` now flags loads without watts/amps as errors
+- **Validation feedback loop**: Iterative AI now receives feedback when properties are missing, helping it self-correct
+- **Example guidance**: Clear ✅ CORRECT vs ❌ WRONG examples in prompts showing proper component format
+
+**Previous Session - Enhanced Power Calculations and Wire Validation:**
 - **AI Realistic Power Values**: AI now generates realistic amps/watts for loads (LED: 10-50W, Refrigerator: 50-150W, etc.) instead of placeholder zeros
 - **Auto-Calculate Watts ↔ Amps**: Properties panel automatically calculates power from current and vice versa using Ohm's Law (P = V × I)
 - **NEC-Compliant Wire Ampacity Validation**: Wire gauges validated against NEC/ABYC standards with temperature derating factors

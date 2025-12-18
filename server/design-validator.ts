@@ -626,30 +626,30 @@ export class DesignValidator {
       });
     }
 
-    // Check for missing or invalid properties on loads
-    const loadsWithoutProperties = this.components.filter(c => {
+    // Check for missing or invalid properties on loads - flag EACH load separately for stronger penalty
+    this.components.forEach(c => {
       if (c.type === "dc-load" || c.type === "ac-load") {
         const props = c.properties as Record<string, unknown> | undefined;
-        if (!props) return true;
-        const watts = props.watts as number | undefined;
-        const amps = props.amps as number | undefined;
-        // Check if both watts and amps are missing, zero, or undefined
+        const watts = props?.watts as number | undefined;
+        const amps = props?.amps as number | undefined;
         const hasValidWatts = typeof watts === 'number' && watts > 0;
         const hasValidAmps = typeof amps === 'number' && amps > 0;
-        return !hasValidWatts && !hasValidAmps;
+        
+        if (!hasValidWatts && !hasValidAmps) {
+          const loadType = c.type === "dc-load" ? "DC" : "AC";
+          const examples = c.type === "dc-load" 
+            ? "LED Lights: 30W, Refrigerator: 100W, Water Pump: 60W"
+            : "Microwave: 1200W, Coffee Maker: 1000W, AC Outlets: 1500W";
+          this.issues.push({
+            severity: "error",
+            category: "ai-quality",
+            message: `${loadType} load "${c.name}" missing required "properties" with watts value`,
+            componentIds: [c.id],
+            suggestion: `Add properties: {"watts": <realistic value>}. Examples: ${examples}`,
+          });
+        }
       }
-      return false;
     });
-
-    if (loadsWithoutProperties.length > 0) {
-      this.issues.push({
-        severity: "error",
-        category: "ai-quality",
-        message: `${loadsWithoutProperties.length} load(s) missing required "properties" with watts/amps: ${loadsWithoutProperties.map(c => c.name).join(", ")}`,
-        componentIds: loadsWithoutProperties.map(c => c.id),
-        suggestion: 'Add properties: {"watts": <realistic value>} to each load. Example: LED Lights: 30W, Refrigerator: 100W, Microwave: 1200W',
-      });
-    }
 
     // Check for batteries without capacity
     const batteriesWithoutCapacity = this.components.filter(c => {
