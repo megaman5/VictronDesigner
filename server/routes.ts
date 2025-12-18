@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { feedbackStorage } from "./feedback-storage";
 import { userDesignsStorage } from "./user-designs-storage";
+import { observabilityStorage } from "./observability-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
@@ -11,6 +12,26 @@ import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
 import { passport, isAdmin, type AuthUser } from "./auth";
+
+// Helper to extract visitor ID from request
+function getVisitorId(req: Request): string {
+  // Try to get from cookie first, then generate from IP + User-Agent
+  const cookie = req.cookies?.visitorId;
+  if (cookie) return cookie;
+  
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const ua = req.headers["user-agent"] || "unknown";
+  // Simple hash for visitor fingerprint
+  return Buffer.from(`${ip}:${ua}`).toString("base64").substring(0, 24);
+}
+
+// Helper to get client IP
+function getClientIP(req: Request): string {
+  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() 
+    || req.ip 
+    || req.socket.remoteAddress 
+    || "unknown";
+}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -201,6 +222,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI-powered system generation
   app.post("/api/ai-generate-system", async (req, res) => {
+    const startTime = Date.now();
+    const visitorId = getVisitorId(req);
+    const user = req.user as AuthUser | undefined;
+    
     try {
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
@@ -410,15 +435,47 @@ JSON RESPONSE FORMAT:
         console.log("Sample wire:", JSON.stringify(response.wires[0], null, 2));
       }
 
+      // Log to observability
+      await observabilityStorage.logAIRequest({
+        visitorId,
+        userId: user?.id,
+        action: "generate-system",
+        prompt,
+        systemVoltage,
+        success: true,
+        durationMs: Date.now() - startTime,
+        componentCount: response.components?.length || 0,
+        wireCount: response.wires?.length || 0,
+        model: "gpt-5.1-chat-latest",
+      });
+
       res.json(response);
     } catch (error: any) {
       console.error("AI generation error:", error);
+      
+      // Log error to observability
+      await observabilityStorage.logAIRequest({
+        visitorId,
+        userId: user?.id,
+        action: "generate-system",
+        prompt: req.body.prompt || "",
+        systemVoltage: req.body.systemVoltage || 12,
+        success: false,
+        durationMs: Date.now() - startTime,
+        errorMessage: error.message,
+        model: "gpt-5.1-chat-latest",
+      });
+      
       res.status(500).json({ error: error.message });
     }
   });
 
   // AI wire generation for existing components
   app.post("/api/ai-wire-components", async (req, res) => {
+    const startTime = Date.now();
+    const visitorId = getVisitorId(req);
+    const user = req.user as AuthUser | undefined;
+    
     try {
       const { components, systemVoltage = 12 } = req.body;
 
@@ -532,9 +589,37 @@ JSON RESPONSE FORMAT:
       console.log("AI Wire Generation Response:", JSON.stringify(response, null, 2));
       console.log("Generated wires count:", response.wires?.length || 0);
 
+      // Log to observability
+      await observabilityStorage.logAIRequest({
+        visitorId,
+        userId: user?.id,
+        action: "wire-components",
+        prompt: `Wire ${components.length} components`,
+        systemVoltage,
+        success: true,
+        durationMs: Date.now() - startTime,
+        componentCount: components.length,
+        wireCount: response.wires?.length || 0,
+        model: "gpt-5.1-chat-latest",
+      });
+
       res.json(response);
     } catch (error: any) {
       console.error("AI wire generation error:", error);
+      
+      // Log error to observability
+      await observabilityStorage.logAIRequest({
+        visitorId,
+        userId: user?.id,
+        action: "wire-components",
+        prompt: `Wire ${req.body.components?.length || 0} components`,
+        systemVoltage: req.body.systemVoltage || 12,
+        success: false,
+        durationMs: Date.now() - startTime,
+        errorMessage: error.message,
+        model: "gpt-5.1-chat-latest",
+      });
+      
       res.status(500).json({ error: error.message });
     }
   });
@@ -800,6 +885,10 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
   // SSE streaming endpoint for real-time progress updates
   app.post("/api/ai-generate-system-stream", async (req, res) => {
+    const startTime = Date.now();
+    const visitorId = getVisitorId(req);
+    const user = req.user as AuthUser | undefined;
+    
     try {
       const {
         prompt,
@@ -1062,6 +1151,22 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
         // Check if we've achieved minimum quality
         if (validation.score >= minQualityScore) {
+          // Log success to observability
+          await observabilityStorage.logAIRequest({
+            visitorId,
+            userId: user?.id,
+            action: "iterate-design",
+            prompt,
+            systemVoltage,
+            success: true,
+            durationMs: Date.now() - startTime,
+            iterations: iteration + 1,
+            qualityScore: validation.score,
+            componentCount: bestDesign.components?.length || 0,
+            wireCount: bestDesign.wires?.length || 0,
+            model: "gpt-5.1-chat-latest",
+          });
+          
           sendEvent('complete', {
             ...bestDesign,
             iterationHistory,
@@ -1076,6 +1181,21 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
       // Return best design after max iterations
       if (!bestDesign || !bestDesign.components || bestDesign.components.length === 0) {
         console.log('[SSE] All iterations failed - no valid design generated');
+        
+        // Log failure to observability
+        await observabilityStorage.logAIRequest({
+          visitorId,
+          userId: user?.id,
+          action: "iterate-design",
+          prompt,
+          systemVoltage,
+          success: false,
+          durationMs: Date.now() - startTime,
+          iterations: maxIterations,
+          errorMessage: "All iterations failed - no valid design generated",
+          model: "gpt-5.1-chat-latest",
+        });
+        
         sendEvent('error', {
           error: 'Failed to generate a valid design after all iterations. All attempts had validation errors.',
           iterationHistory,
@@ -1084,6 +1204,22 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         res.end();
         return;
       }
+
+      // Log success to observability
+      await observabilityStorage.logAIRequest({
+        visitorId,
+        userId: user?.id,
+        action: "iterate-design",
+        prompt,
+        systemVoltage,
+        success: true,
+        durationMs: Date.now() - startTime,
+        iterations: maxIterations,
+        qualityScore: bestScore,
+        componentCount: bestDesign.components?.length || 0,
+        wireCount: bestDesign.wires?.length || 0,
+        model: "gpt-5.1-chat-latest",
+      });
 
       sendEvent('complete', {
         ...bestDesign,
@@ -1095,6 +1231,20 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
     } catch (error: any) {
       console.error("SSE streaming error:", error);
+      
+      // Log error to observability
+      await observabilityStorage.logAIRequest({
+        visitorId,
+        userId: user?.id,
+        action: "iterate-design",
+        prompt: req.body.prompt || "",
+        systemVoltage: req.body.systemVoltage || 12,
+        success: false,
+        durationMs: Date.now() - startTime,
+        errorMessage: error.message,
+        model: "gpt-5.1-chat-latest",
+      });
+      
       res.write(`event: error\n`);
       res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
       res.end();
@@ -1348,6 +1498,187 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
     try {
       const count = await feedbackStorage.count();
       res.json({ count });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==========================================
+  // Observability / Admin Analytics Endpoints
+  // ==========================================
+
+  // Get overall stats
+  app.get("/api/admin/observability/stats", isAdmin, async (req, res) => {
+    try {
+      const stats = await observabilityStorage.getStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get daily analytics
+  app.get("/api/admin/observability/analytics", isAdmin, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const analytics = await observabilityStorage.getAnalytics(days);
+      res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get AI action breakdown
+  app.get("/api/admin/observability/ai-breakdown", isAdmin, async (req, res) => {
+    try {
+      const breakdown = await observabilityStorage.getAIActionBreakdown();
+      res.json(breakdown);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get AI logs
+  app.get("/api/admin/observability/ai-logs", isAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const logs = await observabilityStorage.getAILogs(limit, offset);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get sessions
+  app.get("/api/admin/observability/sessions", isAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const sessions = await observabilityStorage.getSessions(limit, offset);
+      res.json(sessions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get events
+  app.get("/api/admin/observability/events", isAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const events = await observabilityStorage.getEvents(limit, offset);
+      res.json(events);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get errors
+  app.get("/api/admin/observability/errors", isAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const errors = await observabilityStorage.getErrors(limit, offset);
+      res.json(errors);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Cleanup old data
+  app.post("/api/admin/observability/cleanup", isAdmin, async (req, res) => {
+    try {
+      const retentionDays = parseInt(req.body.retentionDays as string) || 90;
+      const result = await observabilityStorage.cleanupOldData(retentionDays);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Track page view (called from client)
+  app.post("/api/track/pageview", async (req, res) => {
+    try {
+      const visitorId = getVisitorId(req);
+      const userAgent = req.headers["user-agent"] || "unknown";
+      const ip = getClientIP(req);
+      const user = req.user as AuthUser | undefined;
+
+      const session = await observabilityStorage.getOrCreateSession(
+        visitorId,
+        userAgent,
+        ip,
+        user?.id,
+        user?.email
+      );
+
+      await observabilityStorage.incrementSessionStats(session.id, 1, 0);
+
+      await observabilityStorage.logEvent({
+        sessionId: session.id,
+        visitorId,
+        userId: user?.id,
+        type: "page_view",
+        name: req.body.page || "/",
+        metadata: req.body.metadata,
+      });
+
+      res.json({ success: true, sessionId: session.id });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Track action (called from client)
+  app.post("/api/track/action", async (req, res) => {
+    try {
+      const visitorId = getVisitorId(req);
+      const userAgent = req.headers["user-agent"] || "unknown";
+      const ip = getClientIP(req);
+      const user = req.user as AuthUser | undefined;
+
+      const session = await observabilityStorage.getOrCreateSession(
+        visitorId,
+        userAgent,
+        ip,
+        user?.id,
+        user?.email
+      );
+
+      await observabilityStorage.incrementSessionStats(session.id, 0, 1);
+
+      await observabilityStorage.logEvent({
+        sessionId: session.id,
+        visitorId,
+        userId: user?.id,
+        type: req.body.type || "action",
+        name: req.body.name,
+        metadata: req.body.metadata,
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Track client-side error
+  app.post("/api/track/error", async (req, res) => {
+    try {
+      const visitorId = getVisitorId(req);
+      const user = req.user as AuthUser | undefined;
+
+      await observabilityStorage.logError({
+        visitorId,
+        userId: user?.id,
+        type: "client_error",
+        message: req.body.message || "Unknown error",
+        stack: req.body.stack,
+        metadata: req.body.metadata,
+      });
+
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

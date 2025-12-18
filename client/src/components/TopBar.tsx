@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2 } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -242,10 +242,16 @@ export function TopBar({
                   My Designs
                 </DropdownMenuItem>
                 {user.isAdmin && (
-                  <DropdownMenuItem onClick={() => window.location.href = '/feedback-admin'}>
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Feedback Admin
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem onClick={() => window.location.href = '/feedback-admin'}>
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Feedback Admin
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => window.location.href = '/observability-admin'}>
+                      <Activity className="h-4 w-4 mr-2" />
+                      Observability Admin
+                    </DropdownMenuItem>
+                  </>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout}>

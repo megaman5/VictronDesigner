@@ -16,7 +16,8 @@ import {
   MessageSquare,
   LogIn,
   ShieldAlert,
-  LogOut
+  LogOut,
+  Activity
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -296,6 +297,10 @@ export default function FeedbackAdmin() {
             <Badge variant="secondary" className="text-lg px-4 py-2">
               {feedback.length} submissions
             </Badge>
+            <Button variant="outline" size="sm" onClick={() => setLocation("/observability-admin")} className="gap-2">
+              <Activity className="h-4 w-4" />
+              Observability
+            </Button>
             <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2">
               <LogOut className="h-4 w-4" />
               Sign Out
