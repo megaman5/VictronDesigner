@@ -1,6 +1,12 @@
-import { Zap, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2 } from "lucide-react";
+import { Zap, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,22 +23,24 @@ interface TopBarProps {
   onOpen?: () => void;
   onWireMode?: () => void;
   onDesignQuality?: () => void;
+  onFeedback?: () => void;
   wireMode?: boolean;
   hasComponents?: boolean; // Whether canvas has components (for AI Iterate mode)
   designQualityScore?: number;
 }
 
-export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, onDesignQuality, wireMode = false, hasComponents = false, designQualityScore }: TopBarProps) {
+export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireMode, onDesignQuality, onFeedback, wireMode = false, hasComponents = false, designQualityScore }: TopBarProps) {
   return (
-    <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Zap className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-semibold">Victron Designer</h1>
+    <TooltipProvider>
+      <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Zap className="h-6 w-6 text-primary" />
+            <h1 className="text-xl font-semibold">Victron Designer</h1>
+          </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -80,49 +88,77 @@ export function TopBar({ onAIPrompt, onAIWire, onExport, onSave, onOpen, onWireM
           )}
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpen}
-          data-testid="button-open-project"
-        >
-          <FolderOpen className="h-5 w-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled
+                data-testid="button-open-project"
+                className="opacity-50 cursor-not-allowed"
+              >
+                <FolderOpen className="h-5 w-5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Coming Soon - Not yet implemented</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled
+                data-testid="button-save-project"
+                className="opacity-50 cursor-not-allowed"
+              >
+                <Save className="h-5 w-5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Coming Soon - Not yet implemented</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                disabled
+                data-testid="button-export"
+                className="opacity-50 cursor-not-allowed"
+              >
+                <Download className="h-5 w-5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Coming Soon - Not yet implemented</p>
+          </TooltipContent>
+        </Tooltip>
 
         <Button
-          variant="ghost"
-          size="icon"
-          onClick={onSave}
-          data-testid="button-save-project"
+          variant="outline"
+          size="sm"
+          onClick={onFeedback}
+          data-testid="button-feedback"
+          className="gap-2"
         >
-          <Save className="h-5 w-5" />
+          <MessageSquare className="h-4 w-4" />
+          Feedback
         </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" data-testid="button-export">
-              <Download className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onExport} data-testid="menu-export-diagram">
-              Export Wiring Diagram
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onExport} data-testid="menu-export-bom">
-              Export Shopping List
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onExport} data-testid="menu-export-labels">
-              Export Wire Labels
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onExport} data-testid="menu-export-pdf">
-              Export as PDF
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
 
         <ThemeToggle />
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

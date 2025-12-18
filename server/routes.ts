@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { feedbackStorage } from "./feedback-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
@@ -1060,6 +1061,76 @@ Respond with valid JSON only:
       res.setHeader("Content-Type", "text/plain");
       res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-report.txt"`);
       res.send(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Feedback endpoints
+  app.post("/api/feedback", async (req, res) => {
+    try {
+      const { message, email, state, screenshot } = req.body;
+
+      if (!message || !message.trim()) {
+        return res.status(400).json({ error: "Feedback message is required" });
+      }
+
+      if (!state || !state.components || !state.wires) {
+        return res.status(400).json({ error: "Design state is required" });
+      }
+
+      const feedback = await feedbackStorage.create({
+        message: message.trim(),
+        email: email?.trim() || undefined,
+        userAgent: req.headers["user-agent"] || "Unknown",
+        state,
+        screenshot,
+      });
+
+      res.json({ success: true, id: feedback.id });
+    } catch (error: any) {
+      console.error("Error saving feedback:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/feedback", async (req, res) => {
+    try {
+      const allFeedback = await feedbackStorage.getAll();
+      res.json(allFeedback);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/feedback/:id", async (req, res) => {
+    try {
+      const feedback = await feedbackStorage.getById(req.params.id);
+      if (!feedback) {
+        return res.status(404).json({ error: "Feedback not found" });
+      }
+      res.json(feedback);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/feedback/:id", async (req, res) => {
+    try {
+      const deleted = await feedbackStorage.delete(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Feedback not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/feedback-count", async (req, res) => {
+    try {
+      const count = await feedbackStorage.count();
+      res.json({ count });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
