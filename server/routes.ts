@@ -211,7 +211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             { id: "battery-1", type: "battery", name: "Battery Bank", x: 100, y: 400, properties: { voltage: 12, capacity: 400 } },
             { id: "mppt-1", type: "mppt", name: "Solar Controller", x: 400, y: 400, properties: { voltage: 12, current: 30 } },
             { id: "solar-1", type: "solar-panel", name: "Solar Array", x: 400, y: 100, properties: { watts: 400 } },
-            { id: "load-1", type: "dc-load", name: "Lights", x: 700, y: 400, properties: { current: 5 } },
+            { id: "load-1", type: "dc-load", name: "LED Lights", x: 700, y: 400, properties: { watts: 60 } },
             { id: "bus-pos", type: "busbar-positive", name: "DC Positive Bus", x: 400, y: 250, properties: {} },
             { id: "bus-neg", type: "busbar-negative", name: "DC Negative Bus", x: 400, y: 550, properties: {} }
           ],
@@ -643,6 +643,29 @@ CRITICAL WIRING RULES:
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
+⚠️ COMPONENT PROPERTIES - MUST USE REALISTIC VALUES (NEVER 0):
+DC Loads (dc-load) - properties MUST have watts or amps:
+- LED Lights: 10-50W (1-4A @ 12V)
+- Refrigerator: 50-150W (4-12A @ 12V)
+- Water Pump: 40-100W (3-8A @ 12V)
+- Fans/Ventilation: 10-30W (1-3A @ 12V)
+- Electronics/USB: 10-50W (1-4A @ 12V)
+- Example: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "properties": {"watts": 30}}
+
+AC Loads (ac-load) - properties MUST have watts or amps:
+- Microwave: 1000-1500W
+- Coffee Maker: 800-1200W
+- TV/Monitor: 100-300W
+- Laptop Charger: 60-100W
+- Air Conditioner: 1000-1800W
+- Example: {"id": "load-2", "type": "ac-load", "name": "Microwave", "properties": {"watts": 1200}}
+
+Other Components:
+- battery: {"voltage": 12/24/48, "capacity": 200-800}
+- solar-panel: {"watts": 100-400}
+- mppt: {"maxCurrent": 30-100}
+- multiplus: {"powerRating": 1200-3000}
+
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
 ✓ No overlapping components (check dimensions + 300px spacing)
@@ -651,6 +674,7 @@ VALIDATION CHECKLIST:
 ✓ Proper polarity on all connections
 ✓ Appropriate wire gauges for current
 ✓ Logical component layout
+✓ ALL loads have realistic watts (NEVER use 0 or omit properties)
 
 ${feedbackContext}
 ${existingDesign ? `
@@ -881,6 +905,29 @@ CRITICAL WIRING RULES:
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
+⚠️ COMPONENT PROPERTIES - MUST USE REALISTIC VALUES (NEVER 0):
+DC Loads (dc-load) - properties MUST have watts or amps:
+- LED Lights: 10-50W (1-4A @ 12V)
+- Refrigerator: 50-150W (4-12A @ 12V)
+- Water Pump: 40-100W (3-8A @ 12V)
+- Fans/Ventilation: 10-30W (1-3A @ 12V)
+- Electronics/USB: 10-50W (1-4A @ 12V)
+- Example: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "properties": {"watts": 30}}
+
+AC Loads (ac-load) - properties MUST have watts or amps:
+- Microwave: 1000-1500W
+- Coffee Maker: 800-1200W
+- TV/Monitor: 100-300W
+- Laptop Charger: 60-100W
+- Air Conditioner: 1000-1800W
+- Example: {"id": "load-2", "type": "ac-load", "name": "Microwave", "properties": {"watts": 1200}}
+
+Other Components:
+- battery: {"voltage": 12/24/48, "capacity": 200-800}
+- solar-panel: {"watts": 100-400}
+- mppt: {"maxCurrent": 30-100}
+- multiplus: {"powerRating": 1200-3000}
+
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
 ✓ No overlapping components (check dimensions + 300px spacing)
@@ -889,6 +936,7 @@ VALIDATION CHECKLIST:
 ✓ Proper polarity on all connections
 ✓ Appropriate wire gauges for current
 ✓ Logical component layout
+✓ ALL loads have realistic watts (NEVER use 0 or omit properties)
 
 ${feedbackContext}
 ${existingDesign ? `
