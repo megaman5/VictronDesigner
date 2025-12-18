@@ -447,6 +447,12 @@ JSON RESPONSE FORMAT:
         componentCount: response.components?.length || 0,
         wireCount: response.wires?.length || 0,
         model: "gpt-5.1-chat-latest",
+        response: {
+          components: response.components,
+          wires: response.wires,
+          description: response.description,
+          recommendations: response.recommendations,
+        },
       });
 
       res.json(response);
@@ -601,6 +607,11 @@ JSON RESPONSE FORMAT:
         componentCount: components.length,
         wireCount: response.wires?.length || 0,
         model: "gpt-5.1-chat-latest",
+        response: {
+          wires: response.wires,
+          description: response.description,
+          recommendations: response.recommendations,
+        },
       });
 
       res.json(response);
@@ -1165,6 +1176,12 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
             componentCount: bestDesign.components?.length || 0,
             wireCount: bestDesign.wires?.length || 0,
             model: "gpt-5.1-chat-latest",
+            response: {
+              components: bestDesign.components,
+              wires: bestDesign.wires,
+              description: bestDesign.description,
+              recommendations: bestDesign.recommendations,
+            },
           });
           
           sendEvent('complete', {
@@ -1219,6 +1236,12 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         componentCount: bestDesign.components?.length || 0,
         wireCount: bestDesign.wires?.length || 0,
         model: "gpt-5.1-chat-latest",
+        response: {
+          components: bestDesign.components,
+          wires: bestDesign.wires,
+          description: bestDesign.description,
+          recommendations: bestDesign.recommendations,
+        },
       });
 
       sendEvent('complete', {

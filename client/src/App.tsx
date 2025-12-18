@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
+import { initTracking } from "@/lib/tracking";
 import SchematicDesigner from "@/pages/SchematicDesigner";
 import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
@@ -21,6 +23,11 @@ function Router() {
 }
 
 function App() {
+  // Initialize tracking on app load
+  useEffect(() => {
+    initTracking();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="dark">

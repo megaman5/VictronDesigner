@@ -1,93 +1,59 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { randomUUID } from "crypto";
+import { db } from "./db";
+import { feedback } from "@shared/schema";
+import { eq, desc, count } from "drizzle-orm";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FEEDBACK_DIR = path.join(__dirname, "..", "feedback-data");
-const FEEDBACK_FILE = path.join(FEEDBACK_DIR, "feedback.json");
-
-export interface Feedback {
-  id: string;
+export interface FeedbackData {
   message: string;
   email?: string;
   userAgent: string;
-  timestamp: string;
   state: {
     components: any[];
     wires: any[];
     systemVoltage: number;
   };
-  screenshot?: string; // base64 encoded image
+  screenshot?: string;
 }
 
 class FeedbackStorage {
-  constructor() {
-    this.ensureDirectoryExists();
+  async create(data: FeedbackData) {
+    const [result] = await db.insert(feedback)
+      .values({
+        message: data.message,
+        email: data.email,
+        userAgent: data.userAgent,
+        state: data.state,
+        screenshot: data.screenshot,
+      })
+      .returning();
+
+    return result;
   }
 
-  private ensureDirectoryExists() {
-    if (!fs.existsSync(FEEDBACK_DIR)) {
-      fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(FEEDBACK_FILE)) {
-      fs.writeFileSync(FEEDBACK_FILE, JSON.stringify([], null, 2));
-    }
+  async getAll() {
+    return db.select()
+      .from(feedback)
+      .orderBy(desc(feedback.createdAt));
   }
 
-  private readFeedback(): Feedback[] {
-    try {
-      const data = fs.readFileSync(FEEDBACK_FILE, "utf-8");
-      return JSON.parse(data);
-    } catch (error) {
-      console.error("Error reading feedback:", error);
-      return [];
-    }
-  }
+  async getById(id: string) {
+    const [result] = await db.select()
+      .from(feedback)
+      .where(eq(feedback.id, id));
 
-  private writeFeedback(feedback: Feedback[]) {
-    fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(feedback, null, 2));
-  }
-
-  async create(data: Omit<Feedback, "id" | "timestamp">): Promise<Feedback> {
-    const feedback: Feedback = {
-      id: randomUUID(),
-      timestamp: new Date().toISOString(),
-      ...data,
-    };
-
-    const allFeedback = this.readFeedback();
-    allFeedback.push(feedback);
-    this.writeFeedback(allFeedback);
-
-    return feedback;
-  }
-
-  async getAll(): Promise<Feedback[]> {
-    return this.readFeedback().sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  }
-
-  async getById(id: string): Promise<Feedback | undefined> {
-    const allFeedback = this.readFeedback();
-    return allFeedback.find(f => f.id === id);
+    return result || null;
   }
 
   async delete(id: string): Promise<boolean> {
-    const allFeedback = this.readFeedback();
-    const filtered = allFeedback.filter(f => f.id !== id);
-    
-    if (filtered.length === allFeedback.length) {
-      return false; // Nothing was deleted
-    }
+    const result = await db.delete(feedback)
+      .where(eq(feedback.id, id))
+      .returning({ id: feedback.id });
 
-    this.writeFeedback(filtered);
-    return true;
+    return result.length > 0;
   }
 
   async count(): Promise<number> {
-    return this.readFeedback().length;
+    const [result] = await db.select({ count: count() }).from(feedback);
+    return result?.count || 0;
   }
 }
 

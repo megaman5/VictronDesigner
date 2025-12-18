@@ -1,60 +1,21 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { randomUUID } from "crypto";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DESIGNS_DIR = path.join(__dirname, "..", "user-designs");
+import { db } from "./db";
+import { userDesigns } from "@shared/schema";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export interface SavedDesign {
   id: string;
   userId: string;
   name: string;
-  description?: string;
+  description: string | null;
   systemVoltage: number;
   components: any[];
   wires: any[];
-  thumbnail?: string; // base64 screenshot
-  createdAt: string;
-  updatedAt: string;
+  thumbnail: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 class UserDesignsStorage {
-  constructor() {
-    this.ensureDirectoryExists();
-  }
-
-  private ensureDirectoryExists() {
-    if (!fs.existsSync(DESIGNS_DIR)) {
-      fs.mkdirSync(DESIGNS_DIR, { recursive: true });
-    }
-  }
-
-  private getUserFile(userId: string): string {
-    // Sanitize userId to be safe for filenames
-    const safeId = userId.replace(/[^a-zA-Z0-9-_]/g, "_");
-    return path.join(DESIGNS_DIR, `${safeId}.json`);
-  }
-
-  private readUserDesigns(userId: string): SavedDesign[] {
-    const filePath = this.getUserFile(userId);
-    try {
-      if (!fs.existsSync(filePath)) {
-        return [];
-      }
-      const data = fs.readFileSync(filePath, "utf-8");
-      return JSON.parse(data);
-    } catch (error) {
-      console.error("Error reading user designs:", error);
-      return [];
-    }
-  }
-
-  private writeUserDesigns(userId: string, designs: SavedDesign[]) {
-    const filePath = this.getUserFile(userId);
-    fs.writeFileSync(filePath, JSON.stringify(designs, null, 2));
-  }
-
   async create(userId: string, data: {
     name: string;
     description?: string;
@@ -63,25 +24,19 @@ class UserDesignsStorage {
     wires: any[];
     thumbnail?: string;
   }): Promise<SavedDesign> {
-    const now = new Date().toISOString();
-    const design: SavedDesign = {
-      id: randomUUID(),
-      userId,
-      name: data.name,
-      description: data.description,
-      systemVoltage: data.systemVoltage,
-      components: data.components,
-      wires: data.wires,
-      thumbnail: data.thumbnail,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const [design] = await db.insert(userDesigns)
+      .values({
+        userId,
+        name: data.name,
+        description: data.description,
+        systemVoltage: data.systemVoltage,
+        components: data.components,
+        wires: data.wires,
+        thumbnail: data.thumbnail,
+      })
+      .returning();
 
-    const designs = this.readUserDesigns(userId);
-    designs.push(design);
-    this.writeUserDesigns(userId, designs);
-
-    return design;
+    return design as SavedDesign;
   }
 
   async update(userId: string, designId: string, data: {
@@ -92,57 +47,87 @@ class UserDesignsStorage {
     wires?: any[];
     thumbnail?: string;
   }): Promise<SavedDesign | null> {
-    const designs = this.readUserDesigns(userId);
-    const index = designs.findIndex(d => d.id === designId);
+    const updateData: any = { updatedAt: new Date() };
     
-    if (index === -1) {
-      return null;
-    }
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.systemVoltage !== undefined) updateData.systemVoltage = data.systemVoltage;
+    if (data.components !== undefined) updateData.components = data.components;
+    if (data.wires !== undefined) updateData.wires = data.wires;
+    if (data.thumbnail !== undefined) updateData.thumbnail = data.thumbnail;
 
-    const updated: SavedDesign = {
-      ...designs[index],
-      ...data,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    designs[index] = updated;
-    this.writeUserDesigns(userId, designs);
+    const [design] = await db.update(userDesigns)
+      .set(updateData)
+      .where(and(eq(userDesigns.id, designId), eq(userDesigns.userId, userId)))
+      .returning();
 
-    return updated;
+    return design as SavedDesign || null;
   }
 
-  async getAll(userId: string): Promise<Omit<SavedDesign, 'components' | 'wires' | 'thumbnail'>[]> {
-    const designs = this.readUserDesigns(userId);
-    // Return list without heavy data (components, wires, thumbnail)
-    return designs
-      .map(({ components, wires, thumbnail, ...rest }) => ({
-        ...rest,
-        componentCount: components.length,
-        wireCount: wires.length,
-        hasThumbnail: !!thumbnail,
-      }))
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  async getAll(userId: string): Promise<{
+    id: string;
+    userId: string;
+    name: string;
+    description: string | null;
+    systemVoltage: number;
+    createdAt: Date;
+    updatedAt: Date;
+    componentCount: number;
+    wireCount: number;
+    hasThumbnail: boolean;
+  }[]> {
+    const designs = await db.select({
+      id: userDesigns.id,
+      userId: userDesigns.userId,
+      name: userDesigns.name,
+      description: userDesigns.description,
+      systemVoltage: userDesigns.systemVoltage,
+      createdAt: userDesigns.createdAt,
+      updatedAt: userDesigns.updatedAt,
+      components: userDesigns.components,
+      wires: userDesigns.wires,
+      thumbnail: userDesigns.thumbnail,
+    })
+      .from(userDesigns)
+      .where(eq(userDesigns.userId, userId))
+      .orderBy(desc(userDesigns.updatedAt));
+
+    return designs.map(d => ({
+      id: d.id,
+      userId: d.userId,
+      name: d.name,
+      description: d.description,
+      systemVoltage: d.systemVoltage,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      componentCount: Array.isArray(d.components) ? d.components.length : 0,
+      wireCount: Array.isArray(d.wires) ? d.wires.length : 0,
+      hasThumbnail: !!d.thumbnail,
+    }));
   }
 
   async getById(userId: string, designId: string): Promise<SavedDesign | null> {
-    const designs = this.readUserDesigns(userId);
-    return designs.find(d => d.id === designId) || null;
+    const [design] = await db.select()
+      .from(userDesigns)
+      .where(and(eq(userDesigns.id, designId), eq(userDesigns.userId, userId)));
+
+    return design as SavedDesign || null;
   }
 
   async delete(userId: string, designId: string): Promise<boolean> {
-    const designs = this.readUserDesigns(userId);
-    const filtered = designs.filter(d => d.id !== designId);
-    
-    if (filtered.length === designs.length) {
-      return false;
-    }
+    const result = await db.delete(userDesigns)
+      .where(and(eq(userDesigns.id, designId), eq(userDesigns.userId, userId)))
+      .returning({ id: userDesigns.id });
 
-    this.writeUserDesigns(userId, filtered);
-    return true;
+    return result.length > 0;
   }
 
   async count(userId: string): Promise<number> {
-    return this.readUserDesigns(userId).length;
+    const designs = await db.select({ id: userDesigns.id })
+      .from(userDesigns)
+      .where(eq(userDesigns.userId, userId));
+
+    return designs.length;
   }
 }
 

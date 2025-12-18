@@ -6,3 +6,6 @@ vite.config.ts.*
 *.tar.gz
 .env
 sessions/*
+user-designs/*
+feedback-data/*
+observability-data/*

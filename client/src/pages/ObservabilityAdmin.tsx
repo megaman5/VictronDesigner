@@ -89,6 +89,13 @@ interface AILog {
   componentCount?: number;
   wireCount?: number;
   errorMessage?: string;
+  model?: string;
+  response?: {
+    components?: any[];
+    wires?: any[];
+    description?: string;
+    recommendations?: string[];
+  };
 }
 
 interface Session {
@@ -531,7 +538,7 @@ export default function ObservabilityAdmin() {
             <Card>
               <CardHeader>
                 <CardTitle>Recent AI Requests</CardTitle>
-                <CardDescription>Last 50 AI generation requests</CardDescription>
+                <CardDescription>Last 50 AI generation requests - click a row for details</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -549,7 +556,11 @@ export default function ObservabilityAdmin() {
                     </TableHeader>
                     <TableBody>
                       {aiLogs.map((log) => (
-                        <TableRow key={log.id}>
+                        <TableRow 
+                          key={log.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedAILog(log)}
+                        >
                           <TableCell className="text-xs whitespace-nowrap">
                             {formatDate(log.timestamp)}
                           </TableCell>
@@ -589,7 +600,7 @@ export default function ObservabilityAdmin() {
             <Card>
               <CardHeader>
                 <CardTitle>Recent Sessions</CardTitle>
-                <CardDescription>Last 50 user sessions</CardDescription>
+                <CardDescription>Last 50 user sessions - click a row for details</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -607,7 +618,11 @@ export default function ObservabilityAdmin() {
                     </TableHeader>
                     <TableBody>
                       {sessions.map((session) => (
-                        <TableRow key={session.id}>
+                        <TableRow 
+                          key={session.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedSession(session)}
+                        >
                           <TableCell className="text-xs whitespace-nowrap">
                             {formatDate(session.startTime)}
                           </TableCell>
@@ -683,7 +698,7 @@ export default function ObservabilityAdmin() {
             <Card>
               <CardHeader>
                 <CardTitle>Recent Errors</CardTitle>
-                <CardDescription>Last 50 errors logged</CardDescription>
+                <CardDescription>Last 50 errors logged - click a row for details</CardDescription>
               </CardHeader>
               <CardContent>
                 {errors.length === 0 ? (
@@ -705,7 +720,11 @@ export default function ObservabilityAdmin() {
                       </TableHeader>
                       <TableBody>
                         {errors.map((error) => (
-                          <TableRow key={error.id}>
+                          <TableRow 
+                            key={error.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => setSelectedError(error)}
+                          >
                             <TableCell className="text-xs whitespace-nowrap">
                               {formatDate(error.timestamp)}
                             </TableCell>
@@ -730,6 +749,337 @@ export default function ObservabilityAdmin() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* AI Log Detail Dialog */}
+      <Dialog open={!!selectedAILog} onOpenChange={() => setSelectedAILog(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              AI Request Details
+            </DialogTitle>
+            <DialogDescription>
+              {selectedAILog && formatDate(selectedAILog.timestamp)}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedAILog && (
+            <div className="space-y-6">
+              {/* Status and Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Status</div>
+                  <div className="mt-1">
+                    {selectedAILog.success ? (
+                      <Badge className="bg-green-500">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Success
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Failed
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Action</div>
+                  <div className="mt-1">
+                    <Badge variant="outline">{selectedAILog.action}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Duration</div>
+                  <div className="mt-1 font-medium">{formatDuration(selectedAILog.durationMs)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">System Voltage</div>
+                  <div className="mt-1 font-medium">{selectedAILog.systemVoltage}V</div>
+                </div>
+              </div>
+
+              {/* Results */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Quality Score</div>
+                  <div className="mt-1 font-medium">{selectedAILog.qualityScore || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Iterations</div>
+                  <div className="mt-1 font-medium">{selectedAILog.iterations || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Components</div>
+                  <div className="mt-1 font-medium">{selectedAILog.componentCount || 0}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Wires</div>
+                  <div className="mt-1 font-medium">{selectedAILog.wireCount || 0}</div>
+                </div>
+              </div>
+
+              {/* User Info */}
+              <div>
+                <h3 className="font-semibold mb-2">User Info</h3>
+                <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                  <div><span className="text-muted-foreground">Visitor ID:</span> {selectedAILog.visitorId || "-"}</div>
+                  <div><span className="text-muted-foreground">User ID:</span> {selectedAILog.userId || "Anonymous"}</div>
+                  <div><span className="text-muted-foreground">Model:</span> {selectedAILog.model || "-"}</div>
+                </div>
+              </div>
+
+              {/* Prompt */}
+              <div>
+                <h3 className="font-semibold mb-2">Prompt</h3>
+                <pre className="bg-muted p-4 rounded-lg text-sm whitespace-pre-wrap overflow-x-auto max-h-[200px] overflow-y-auto">
+                  {selectedAILog.prompt}
+                </pre>
+              </div>
+
+              {/* Error Message (if failed) */}
+              {selectedAILog.errorMessage && (
+                <div>
+                  <h3 className="font-semibold mb-2 text-destructive">Error Message</h3>
+                  <pre className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg text-sm text-destructive whitespace-pre-wrap overflow-x-auto">
+                    {selectedAILog.errorMessage}
+                  </pre>
+                </div>
+              )}
+
+              {/* Response (if successful) */}
+              {selectedAILog.response && (
+                <div className="space-y-4">
+                  {/* Description */}
+                  {selectedAILog.response.description && (
+                    <div>
+                      <h3 className="font-semibold mb-2">AI Description</h3>
+                      <p className="bg-muted p-3 rounded-lg text-sm">
+                        {selectedAILog.response.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {selectedAILog.response.recommendations && selectedAILog.response.recommendations.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-2">Recommendations</h3>
+                      <ul className="bg-muted p-3 rounded-lg text-sm list-disc list-inside space-y-1">
+                        {selectedAILog.response.recommendations.map((rec, i) => (
+                          <li key={i}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Components */}
+                  {selectedAILog.response.components && selectedAILog.response.components.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-2">
+                        Components Generated ({selectedAILog.response.components.length})
+                      </h3>
+                      <div className="bg-muted p-3 rounded-lg max-h-[200px] overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left p-1">ID</th>
+                              <th className="text-left p-1">Type</th>
+                              <th className="text-left p-1">Name</th>
+                              <th className="text-left p-1">Position</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedAILog.response.components.map((comp: any) => (
+                              <tr key={comp.id} className="border-b border-muted-foreground/20">
+                                <td className="p-1 font-mono">{comp.id}</td>
+                                <td className="p-1">{comp.type}</td>
+                                <td className="p-1">{comp.name}</td>
+                                <td className="p-1">({comp.x}, {comp.y})</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Wires */}
+                  {selectedAILog.response.wires && selectedAILog.response.wires.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-2">
+                        Wires Generated ({selectedAILog.response.wires.length})
+                      </h3>
+                      <div className="bg-muted p-3 rounded-lg max-h-[200px] overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left p-1">From</th>
+                              <th className="text-left p-1">To</th>
+                              <th className="text-left p-1">Polarity</th>
+                              <th className="text-left p-1">Gauge</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedAILog.response.wires.map((wire: any, i: number) => (
+                              <tr key={i} className="border-b border-muted-foreground/20">
+                                <td className="p-1 font-mono text-[10px]">
+                                  {wire.fromComponentId}:{wire.fromTerminal}
+                                </td>
+                                <td className="p-1 font-mono text-[10px]">
+                                  {wire.toComponentId}:{wire.toTerminal}
+                                </td>
+                                <td className="p-1">
+                                  <span className={wire.polarity === 'positive' ? 'text-red-500' : wire.polarity === 'negative' ? 'text-gray-700 dark:text-gray-300' : ''}>
+                                    {wire.polarity}
+                                  </span>
+                                </td>
+                                <td className="p-1">{wire.gauge}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Full JSON Response (collapsible) */}
+                  <details className="group">
+                    <summary className="font-semibold cursor-pointer hover:text-primary">
+                      Full JSON Response (click to expand)
+                    </summary>
+                    <pre className="mt-2 bg-muted p-4 rounded-lg text-xs whitespace-pre-wrap overflow-x-auto max-h-[300px] overflow-y-auto font-mono">
+                      {JSON.stringify(selectedAILog.response, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Session Detail Dialog */}
+      <Dialog open={!!selectedSession} onOpenChange={() => setSelectedSession(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Session Details
+            </DialogTitle>
+            <DialogDescription>
+              {selectedSession && `Started ${formatDate(selectedSession.startTime)}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedSession && (
+            <div className="space-y-6">
+              {/* Session Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Page Views</div>
+                  <div className="mt-1 text-2xl font-bold">{selectedSession.pageViews}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Actions</div>
+                  <div className="mt-1 text-2xl font-bold">{selectedSession.actions}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Started</div>
+                  <div className="mt-1 text-sm">{formatDate(selectedSession.startTime)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Last Activity</div>
+                  <div className="mt-1 text-sm">{formatDate(selectedSession.lastActivity)}</div>
+                </div>
+              </div>
+
+              {/* User Info */}
+              <div>
+                <h3 className="font-semibold mb-2">User</h3>
+                <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                  {selectedSession.userEmail ? (
+                    <>
+                      <div><span className="text-muted-foreground">Email:</span> {selectedSession.userEmail}</div>
+                      <div><span className="text-muted-foreground">User ID:</span> {selectedSession.userId}</div>
+                    </>
+                  ) : (
+                    <div className="text-muted-foreground">Anonymous user</div>
+                  )}
+                  <div><span className="text-muted-foreground">Visitor ID:</span> <span className="font-mono">{selectedSession.visitorId}</span></div>
+                </div>
+              </div>
+
+              {/* Technical Info */}
+              <div>
+                <h3 className="font-semibold mb-2">Technical Info</h3>
+                <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                  <div><span className="text-muted-foreground">IP Address:</span> <span className="font-mono">{selectedSession.ip}</span></div>
+                  <div><span className="text-muted-foreground">Session ID:</span> <span className="font-mono text-xs">{selectedSession.id}</span></div>
+                </div>
+              </div>
+
+              {/* User Agent */}
+              <div>
+                <h3 className="font-semibold mb-2">User Agent</h3>
+                <pre className="bg-muted p-3 rounded-lg text-xs whitespace-pre-wrap overflow-x-auto">
+                  {selectedSession.userAgent}
+                </pre>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Detail Dialog */}
+      <Dialog open={!!selectedError} onOpenChange={() => setSelectedError(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Error Details
+            </DialogTitle>
+            <DialogDescription>
+              {selectedError && formatDate(selectedError.timestamp)}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedError && (
+            <div className="space-y-6">
+              {/* Error Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Type</div>
+                  <div className="mt-1">
+                    <Badge variant="destructive">{selectedError.type}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Endpoint</div>
+                  <div className="mt-1 font-mono text-sm">{selectedError.endpoint || "-"}</div>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              <div>
+                <h3 className="font-semibold mb-2">Error Message</h3>
+                <pre className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg text-sm text-destructive whitespace-pre-wrap overflow-x-auto">
+                  {selectedError.message}
+                </pre>
+              </div>
+
+              {/* Stack Trace */}
+              {selectedError.stack && (
+                <div>
+                  <h3 className="font-semibold mb-2">Stack Trace</h3>
+                  <pre className="bg-muted p-4 rounded-lg text-xs whitespace-pre-wrap overflow-x-auto max-h-[300px] overflow-y-auto font-mono">
+                    {selectedError.stack}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
