@@ -139,36 +139,74 @@ export function ExportDialog({
       // Add logo watermark to bottom-right corner
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        const logo = new Image();
-        logo.crossOrigin = "anonymous";
-        
-        await new Promise<void>((resolve, reject) => {
-          logo.onload = () => {
-            // Calculate logo size (max 200px wide, maintain aspect ratio)
-            const maxWidth = 300;
-            const scale = maxWidth / logo.width;
-            const logoWidth = logo.width * scale;
-            const logoHeight = logo.height * scale;
-            
-            // Position in bottom-right corner with padding
-            const padding = 20;
-            const x = canvas.width - logoWidth - padding;
-            const y = canvas.height - logoHeight - padding;
-            
-            // Draw semi-transparent background for better visibility
-            ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-            ctx.fillRect(x - 10, y - 10, logoWidth + 20, logoHeight + 20);
-            
-            // Draw logo
-            ctx.drawImage(logo, x, y, logoWidth, logoHeight);
-            resolve();
-          };
-          logo.onerror = () => {
-            console.warn("Failed to load logo for watermark");
-            resolve(); // Continue without watermark
-          };
-          logo.src = "/logo.png";
-        });
+        try {
+          // Load both the icon and create text watermark
+          const icon = new Image();
+          icon.crossOrigin = "anonymous";
+          
+          await new Promise<void>((resolve) => {
+            icon.onload = () => {
+              // Calculate icon size
+              const iconHeight = 60;
+              const iconScale = iconHeight / icon.height;
+              const iconWidth = icon.width * iconScale;
+              
+              // Position in bottom-right corner with padding
+              const padding = 30;
+              const textWidth = 280; // Approximate width for "VictronDesigner.com"
+              const totalWidth = iconWidth + textWidth + 10;
+              const x = canvas.width - totalWidth - padding;
+              const y = canvas.height - iconHeight - padding;
+              
+              // Draw semi-transparent rounded background
+              const bgPadding = 15;
+              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+              ctx.beginPath();
+              const bgX = x - bgPadding;
+              const bgY = y - bgPadding;
+              const bgWidth = totalWidth + bgPadding * 2;
+              const bgHeight = iconHeight + bgPadding * 2;
+              const radius = 10;
+              ctx.moveTo(bgX + radius, bgY);
+              ctx.lineTo(bgX + bgWidth - radius, bgY);
+              ctx.quadraticCurveTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius);
+              ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
+              ctx.quadraticCurveTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight);
+              ctx.lineTo(bgX + radius, bgY + bgHeight);
+              ctx.quadraticCurveTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius);
+              ctx.lineTo(bgX, bgY + radius);
+              ctx.quadraticCurveTo(bgX, bgY, bgX + radius, bgY);
+              ctx.closePath();
+              ctx.fill();
+              
+              // Draw icon
+              ctx.drawImage(icon, x, y, iconWidth, iconHeight);
+              
+              // Draw text
+              ctx.fillStyle = "#1e3a5f";
+              ctx.font = "bold 28px Inter, system-ui, sans-serif";
+              ctx.textBaseline = "middle";
+              ctx.fillText("VictronDesigner.com", x + iconWidth + 10, y + iconHeight / 2);
+              
+              resolve();
+            };
+            icon.onerror = () => {
+              console.warn("Failed to load icon for watermark, using text only");
+              // Fallback: just add text watermark
+              const padding = 30;
+              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+              ctx.fillRect(canvas.width - 320, canvas.height - 60, 300, 40);
+              ctx.fillStyle = "#1e3a5f";
+              ctx.font = "bold 24px Inter, system-ui, sans-serif";
+              ctx.fillText("VictronDesigner.com", canvas.width - 300, canvas.height - 35);
+              resolve();
+            };
+            // Use full URL to ensure it loads correctly
+            icon.src = window.location.origin + "/icon-only.png";
+          });
+        } catch (err) {
+          console.warn("Watermark error:", err);
+        }
       }
 
       // Export as PNG

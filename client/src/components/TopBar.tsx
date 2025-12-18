@@ -67,10 +67,11 @@ export function TopBar({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <img 
-              src="/logo.png" 
-              alt="VictronDesigner.com" 
+              src="/icon-only.png" 
+              alt="VictronDesigner" 
               className="h-10 w-auto"
             />
+            <h1 className="text-xl font-semibold">VictronDesigner.com</h1>
           </div>
           {currentDesignName && (
             <span className="text-sm text-muted-foreground">
