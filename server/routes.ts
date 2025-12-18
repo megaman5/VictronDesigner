@@ -643,28 +643,33 @@ CRITICAL WIRING RULES:
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
-⚠️ COMPONENT PROPERTIES - MUST USE REALISTIC VALUES (NEVER 0):
-DC Loads (dc-load) - properties MUST have watts or amps:
-- LED Lights: 10-50W (1-4A @ 12V)
-- Refrigerator: 50-150W (4-12A @ 12V)
-- Water Pump: 40-100W (3-8A @ 12V)
-- Fans/Ventilation: 10-30W (1-3A @ 12V)
-- Electronics/USB: 10-50W (1-4A @ 12V)
-- Example: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "properties": {"watts": 30}}
+⚠️⚠️⚠️ COMPONENT PROPERTIES - REQUIRED FOR ALL COMPONENTS (VALIDATION WILL FAIL WITHOUT THEM):
+EVERY component MUST include a "properties" object. Missing properties = INVALID design.
 
-AC Loads (ac-load) - properties MUST have watts or amps:
+DC Loads (dc-load) - "properties": {"watts": <number>} REQUIRED:
+- LED Lights: 10-50W
+- Refrigerator: 50-150W
+- Water Pump: 40-100W
+- Fans/Ventilation: 10-30W
+- Electronics/USB: 10-50W
+- Cabin Outlets: 100-500W (multiple devices)
+✅ CORRECT: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "x": 100, "y": 100, "properties": {"watts": 30}}
+❌ WRONG: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "x": 100, "y": 100} (MISSING properties!)
+
+AC Loads (ac-load) - "properties": {"watts": <number>} REQUIRED:
 - Microwave: 1000-1500W
 - Coffee Maker: 800-1200W
 - TV/Monitor: 100-300W
-- Laptop Charger: 60-100W
+- AC Outlets: 500-2000W (multiple devices)
 - Air Conditioner: 1000-1800W
-- Example: {"id": "load-2", "type": "ac-load", "name": "Microwave", "properties": {"watts": 1200}}
+✅ CORRECT: {"id": "load-2", "type": "ac-load", "name": "Cabin AC Outlets", "x": 200, "y": 200, "properties": {"watts": 1500}}
+❌ WRONG: {"id": "load-2", "type": "ac-load", "name": "Cabin AC Outlets", "x": 200, "y": 200} (MISSING properties!)
 
-Other Components:
-- battery: {"voltage": 12/24/48, "capacity": 200-800}
-- solar-panel: {"watts": 100-400}
-- mppt: {"maxCurrent": 30-100}
-- multiplus: {"powerRating": 1200-3000}
+Other Components - ALL need properties:
+- battery: {"voltage": 12, "capacity": 400}
+- solar-panel: {"watts": 300}
+- mppt: {"maxCurrent": 50}
+- multiplus: {"powerRating": 3000}
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -683,11 +688,20 @@ BASE DESIGN: ${JSON.stringify({ components: existingDesign.components, wires: ex
 MODIFY based on user request. Keep existing component IDs. Return COMPLETE design with ALL components and wires.
 ` : ''}
 
-⚠️ CRITICAL: Respond with ONLY valid JSON. NO explanations. NO text outside the JSON structure:
-Respond with valid JSON only:
+⚠️ CRITICAL: Respond with ONLY valid JSON. NO explanations. NO text outside the JSON structure.
+⚠️ EVERY component MUST have a "properties" field with realistic values (watts for loads, capacity for batteries, etc.)
+
+JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 {
-  "components": [...],
-  "wires": [...],
+  "components": [
+    {"id": "battery-1", "type": "battery", "name": "House Battery Bank", "x": 150, "y": 400, "properties": {"voltage": 12, "capacity": 400}},
+    {"id": "solar-1", "type": "solar-panel", "name": "Solar Panel", "x": 150, "y": 100, "properties": {"watts": 300}},
+    {"id": "load-dc-1", "type": "dc-load", "name": "LED Cabin Lights", "x": 450, "y": 400, "properties": {"watts": 50}},
+    {"id": "load-ac-1", "type": "ac-load", "name": "Microwave", "x": 750, "y": 400, "properties": {"watts": 1200}}
+  ],
+  "wires": [
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+  ],
   "description": "Brief system description",
   "recommendations": ["recommendation 1", "recommendation 2"]
 }`;
@@ -905,28 +919,33 @@ CRITICAL WIRING RULES:
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
 
-⚠️ COMPONENT PROPERTIES - MUST USE REALISTIC VALUES (NEVER 0):
-DC Loads (dc-load) - properties MUST have watts or amps:
-- LED Lights: 10-50W (1-4A @ 12V)
-- Refrigerator: 50-150W (4-12A @ 12V)
-- Water Pump: 40-100W (3-8A @ 12V)
-- Fans/Ventilation: 10-30W (1-3A @ 12V)
-- Electronics/USB: 10-50W (1-4A @ 12V)
-- Example: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "properties": {"watts": 30}}
+⚠️⚠️⚠️ COMPONENT PROPERTIES - REQUIRED FOR ALL COMPONENTS (VALIDATION WILL FAIL WITHOUT THEM):
+EVERY component MUST include a "properties" object. Missing properties = INVALID design.
 
-AC Loads (ac-load) - properties MUST have watts or amps:
+DC Loads (dc-load) - "properties": {"watts": <number>} REQUIRED:
+- LED Lights: 10-50W
+- Refrigerator: 50-150W
+- Water Pump: 40-100W
+- Fans/Ventilation: 10-30W
+- Electronics/USB: 10-50W
+- Cabin Outlets: 100-500W (multiple devices)
+✅ CORRECT: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "x": 100, "y": 100, "properties": {"watts": 30}}
+❌ WRONG: {"id": "load-1", "type": "dc-load", "name": "LED Lights", "x": 100, "y": 100} (MISSING properties!)
+
+AC Loads (ac-load) - "properties": {"watts": <number>} REQUIRED:
 - Microwave: 1000-1500W
 - Coffee Maker: 800-1200W
 - TV/Monitor: 100-300W
-- Laptop Charger: 60-100W
+- AC Outlets: 500-2000W (multiple devices)
 - Air Conditioner: 1000-1800W
-- Example: {"id": "load-2", "type": "ac-load", "name": "Microwave", "properties": {"watts": 1200}}
+✅ CORRECT: {"id": "load-2", "type": "ac-load", "name": "Cabin AC Outlets", "x": 200, "y": 200, "properties": {"watts": 1500}}
+❌ WRONG: {"id": "load-2", "type": "ac-load", "name": "Cabin AC Outlets", "x": 200, "y": 200} (MISSING properties!)
 
-Other Components:
-- battery: {"voltage": 12/24/48, "capacity": 200-800}
-- solar-panel: {"watts": 100-400}
-- mppt: {"maxCurrent": 30-100}
-- multiplus: {"powerRating": 1200-3000}
+Other Components - ALL need properties:
+- battery: {"voltage": 12, "capacity": 400}
+- solar-panel: {"watts": 300}
+- mppt: {"maxCurrent": 50}
+- multiplus: {"powerRating": 3000}
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -945,11 +964,20 @@ BASE DESIGN: ${JSON.stringify({ components: existingDesign.components, wires: ex
 MODIFY based on user request. Keep existing component IDs. Return COMPLETE design with ALL components and wires.
 ` : ''}
 
-⚠️ CRITICAL: Respond with ONLY valid JSON. NO explanations. NO text outside the JSON structure:
-Respond with valid JSON only:
+⚠️ CRITICAL: Respond with ONLY valid JSON. NO explanations. NO text outside the JSON structure.
+⚠️ EVERY component MUST have a "properties" field with realistic values (watts for loads, capacity for batteries, etc.)
+
+JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 {
-  "components": [...],
-  "wires": [...],
+  "components": [
+    {"id": "battery-1", "type": "battery", "name": "House Battery Bank", "x": 150, "y": 400, "properties": {"voltage": 12, "capacity": 400}},
+    {"id": "solar-1", "type": "solar-panel", "name": "Solar Panel", "x": 150, "y": 100, "properties": {"watts": 300}},
+    {"id": "load-dc-1", "type": "dc-load", "name": "LED Cabin Lights", "x": 450, "y": 400, "properties": {"watts": 50}},
+    {"id": "load-ac-1", "type": "ac-load", "name": "Microwave", "x": 750, "y": 400, "properties": {"watts": 1200}}
+  ],
+  "wires": [
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+  ],
   "description": "Brief system description",
   "recommendations": ["recommendation 1", "recommendation 2"]
 }`;

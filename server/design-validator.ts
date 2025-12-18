@@ -626,6 +626,73 @@ export class DesignValidator {
       });
     }
 
+    // Check for missing or invalid properties on loads
+    const loadsWithoutProperties = this.components.filter(c => {
+      if (c.type === "dc-load" || c.type === "ac-load") {
+        const props = c.properties as Record<string, unknown> | undefined;
+        if (!props) return true;
+        const watts = props.watts as number | undefined;
+        const amps = props.amps as number | undefined;
+        // Check if both watts and amps are missing, zero, or undefined
+        const hasValidWatts = typeof watts === 'number' && watts > 0;
+        const hasValidAmps = typeof amps === 'number' && amps > 0;
+        return !hasValidWatts && !hasValidAmps;
+      }
+      return false;
+    });
+
+    if (loadsWithoutProperties.length > 0) {
+      this.issues.push({
+        severity: "error",
+        category: "ai-quality",
+        message: `${loadsWithoutProperties.length} load(s) missing required "properties" with watts/amps: ${loadsWithoutProperties.map(c => c.name).join(", ")}`,
+        componentIds: loadsWithoutProperties.map(c => c.id),
+        suggestion: 'Add properties: {"watts": <realistic value>} to each load. Example: LED Lights: 30W, Refrigerator: 100W, Microwave: 1200W',
+      });
+    }
+
+    // Check for batteries without capacity
+    const batteriesWithoutCapacity = this.components.filter(c => {
+      if (c.type === "battery") {
+        const props = c.properties as Record<string, unknown> | undefined;
+        if (!props) return true;
+        const capacity = props.capacity as number | undefined;
+        return typeof capacity !== 'number' || capacity <= 0;
+      }
+      return false;
+    });
+
+    if (batteriesWithoutCapacity.length > 0) {
+      this.issues.push({
+        severity: "warning",
+        category: "ai-quality",
+        message: `${batteriesWithoutCapacity.length} battery(ies) missing capacity property`,
+        componentIds: batteriesWithoutCapacity.map(c => c.id),
+        suggestion: 'Add properties: {"voltage": 12, "capacity": 400} to batteries',
+      });
+    }
+
+    // Check for solar panels without watts
+    const solarsWithoutWatts = this.components.filter(c => {
+      if (c.type === "solar-panel") {
+        const props = c.properties as Record<string, unknown> | undefined;
+        if (!props) return true;
+        const watts = props.watts as number | undefined;
+        return typeof watts !== 'number' || watts <= 0;
+      }
+      return false;
+    });
+
+    if (solarsWithoutWatts.length > 0) {
+      this.issues.push({
+        severity: "warning",
+        category: "ai-quality",
+        message: `${solarsWithoutWatts.length} solar panel(s) missing watts property`,
+        componentIds: solarsWithoutWatts.map(c => c.id),
+        suggestion: 'Add properties: {"watts": 300} to solar panels',
+      });
+    }
+
     // Check for orphaned components (no wires)
     const connectedComponents = new Set<string>();
     this.wires.forEach(wire => {
