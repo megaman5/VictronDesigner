@@ -1,4 +1,4 @@
-import { Zap, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2 } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -66,8 +66,11 @@ export function TopBar({
       <div className="h-16 border-b bg-card flex items-center justify-between px-4 gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Zap className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-semibold">VictronDesigner.com</h1>
+            <img 
+              src="/logo.png" 
+              alt="VictronDesigner.com" 
+              className="h-10 w-auto"
+            />
           </div>
           {currentDesignName && (
             <span className="text-sm text-muted-foreground">

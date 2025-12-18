@@ -136,6 +136,41 @@ export function ExportDialog({
         logging: false,
       });
 
+      // Add logo watermark to bottom-right corner
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        const logo = new Image();
+        logo.crossOrigin = "anonymous";
+        
+        await new Promise<void>((resolve, reject) => {
+          logo.onload = () => {
+            // Calculate logo size (max 200px wide, maintain aspect ratio)
+            const maxWidth = 300;
+            const scale = maxWidth / logo.width;
+            const logoWidth = logo.width * scale;
+            const logoHeight = logo.height * scale;
+            
+            // Position in bottom-right corner with padding
+            const padding = 20;
+            const x = canvas.width - logoWidth - padding;
+            const y = canvas.height - logoHeight - padding;
+            
+            // Draw semi-transparent background for better visibility
+            ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+            ctx.fillRect(x - 10, y - 10, logoWidth + 20, logoHeight + 20);
+            
+            // Draw logo
+            ctx.drawImage(logo, x, y, logoWidth, logoHeight);
+            resolve();
+          };
+          logo.onerror = () => {
+            console.warn("Failed to load logo for watermark");
+            resolve(); // Continue without watermark
+          };
+          logo.src = "/logo.png";
+        });
+      }
+
       // Export as PNG
       const dataUrl = canvas.toDataURL("image/png");
       const a = document.createElement("a");
