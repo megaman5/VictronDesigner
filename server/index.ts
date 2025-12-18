@@ -16,8 +16,9 @@ const app = express();
 // Trust proxy (nginx) - required for secure cookies behind reverse proxy
 app.set("trust proxy", 1);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Increase body size limit for feedback screenshots (base64 images)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Session configuration with file-based storage (survives restarts)
 app.use(

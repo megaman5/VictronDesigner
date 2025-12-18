@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { trackAction } from "@/lib/tracking";
 import { AlertTriangle } from "lucide-react";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 
@@ -145,6 +146,14 @@ export default function SchematicDesigner() {
     wires: any[];
     systemVoltage: number;
   }) => {
+    // Track load action
+    trackAction("load_design", "load", {
+      designId: design.id,
+      componentCount: design.components.length,
+      wireCount: design.wires.length,
+      systemVoltage: design.systemVoltage,
+    });
+    
     setComponents(design.components);
     setWires(design.wires);
     setSystemVoltage(design.systemVoltage);
@@ -156,6 +165,14 @@ export default function SchematicDesigner() {
 
   // Handle design saved
   const handleDesignSaved = (designId: string, name: string) => {
+    // Track save action
+    trackAction("save_design", "save", {
+      designId,
+      componentCount: components.length,
+      wireCount: wires.length,
+      systemVoltage,
+    });
+    
     setCurrentDesignId(designId);
     setCurrentDesignName(name);
   };
@@ -239,8 +256,15 @@ export default function SchematicDesigner() {
     setIsAiGenerating(true);
     setIterationProgress(null);
 
+    // Track AI generation action
+    const isIterating = components.length > 0;
+    trackAction(isIterating ? "ai_iterate_design" : "ai_generate_system", "action", {
+      promptLength: prompt.length,
+      systemVoltage,
+      existingComponents: components.length,
+    });
+
     try {
-      const isIterating = components.length > 0;
       const response = await fetch("/api/ai-generate-system-stream", {
         method: "POST",
         headers: {
@@ -576,6 +600,16 @@ export default function SchematicDesigner() {
   };
 
   const handleExport = async (options: { wiringDiagram: boolean; shoppingList: boolean; wireLabels: boolean; format: string }) => {
+    // Track export action
+    trackAction("export", "export", {
+      wiringDiagram: options.wiringDiagram,
+      shoppingList: options.shoppingList,
+      wireLabels: options.wireLabels,
+      format: options.format,
+      componentCount: components.length,
+      wireCount: wires.length,
+    });
+
     if (!currentSchematicId) {
       toast({
         title: "Error",
