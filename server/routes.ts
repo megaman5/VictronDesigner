@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { feedbackStorage } from "./feedback-storage";
+import { userDesignsStorage } from "./user-designs-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
@@ -1024,7 +1025,43 @@ Respond with valid JSON only:
     }
   });
 
-  // Export endpoints
+  // Export endpoints - POST versions for current design (no save required)
+  app.post("/api/export/shopping-list", async (req, res) => {
+    try {
+      const { components, wires, systemVoltage = 12, name = "Design" } = req.body;
+      const schematic = { components, wires, systemVoltage, name };
+      const items = generateShoppingList(schematic as any);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/export/wire-labels", async (req, res) => {
+    try {
+      const { components, wires, systemVoltage = 12, name = "Design" } = req.body;
+      const schematic = { components, wires, systemVoltage, name };
+      const labels = generateWireLabels(schematic as any);
+      res.json(labels);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/export/system-report", async (req, res) => {
+    try {
+      const { components, wires, systemVoltage = 12, name = "Design" } = req.body;
+      const schematic = { components, wires, systemVoltage, name };
+      const report = generateSystemReport(schematic as any);
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", `attachment; filename="${name}-report.txt"`);
+      res.send(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Export endpoints - GET versions (require saved schematic ID)
   app.get("/api/export/shopping-list/:id", async (req, res) => {
     try {
       const schematic = await storage.getSchematic(req.params.id);
@@ -1079,6 +1116,91 @@ Respond with valid JSON only:
       res.setHeader("Content-Type", "text/plain");
       res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-report.txt"`);
       res.send(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User designs endpoints (requires authentication)
+  app.get("/api/designs", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const designs = await userDesignsStorage.getAll(user.id);
+      res.json(designs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/designs/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const design = await userDesignsStorage.getById(user.id, req.params.id);
+      if (!design) {
+        return res.status(404).json({ error: "Design not found" });
+      }
+      res.json(design);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/designs", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const { name, description, systemVoltage, components, wires, thumbnail } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Design name is required" });
+      }
+
+      const design = await userDesignsStorage.create(user.id, {
+        name: name.trim(),
+        description: description?.trim(),
+        systemVoltage: systemVoltage || 12,
+        components: components || [],
+        wires: wires || [],
+        thumbnail,
+      });
+
+      res.json(design);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/designs/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const { name, description, systemVoltage, components, wires, thumbnail } = req.body;
+
+      const design = await userDesignsStorage.update(user.id, req.params.id, {
+        name: name?.trim(),
+        description: description?.trim(),
+        systemVoltage,
+        components,
+        wires,
+        thumbnail,
+      });
+
+      if (!design) {
+        return res.status(404).json({ error: "Design not found" });
+      }
+
+      res.json(design);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/designs/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const deleted = await userDesignsStorage.delete(user.id, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Design not found" });
+      }
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
