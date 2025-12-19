@@ -15,6 +15,8 @@ export interface AILogData {
   sessionId?: string;
   visitorId?: string;
   userId?: string;
+  userEmail?: string;
+  ip?: string;
   action: "generate-system" | "wire-components" | "iterate-design";
   prompt: string;
   systemVoltage: number;
@@ -135,6 +137,8 @@ class ObservabilityStorage {
         sessionId: data.sessionId,
         visitorId: data.visitorId,
         userId: data.userId,
+        userEmail: data.userEmail,
+        ip: data.ip,
         action: data.action,
         prompt: data.prompt,
         systemVoltage: data.systemVoltage,

@@ -75,6 +75,8 @@ export const aiLogs = pgTable("ai_logs", {
   sessionId: varchar("session_id"),
   visitorId: varchar("visitor_id"),
   userId: varchar("user_id"),
+  userEmail: text("user_email"),
+  ip: varchar("ip"),
   action: varchar("action").notNull(), // generate-system, wire-components, iterate-design
   prompt: text("prompt").notNull(),
   systemVoltage: integer("system_voltage").notNull().default(12),
