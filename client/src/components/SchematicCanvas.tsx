@@ -987,6 +987,7 @@ export function SchematicCanvas({
                 <SchematicComponent
                   type={component.type}
                   name={component.name}
+                  properties={component.properties}
                   selected={selectedIds.includes(component.id)}
                   onClick={(e) => handleComponentClick(component, e)}
                   onTerminalClick={(terminal, e) => handleTerminalClick(component, terminal, e)}
@@ -1013,6 +1014,7 @@ export function SchematicCanvas({
                 <SchematicComponent
                   type={draggedComp.type}
                   name={draggedComp.name}
+                  properties={draggedComp.properties}
                   selected={false}
                   onClick={() => {}}
                   onTerminalClick={() => {}}

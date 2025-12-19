@@ -113,6 +113,67 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     ],
   },
 
+  "orion-dc-dc": {
+    width: 160,
+    height: 120,
+    terminals: [
+      { id: "input-positive", type: "positive", label: "IN+", x: 10, y: 50, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "input-negative", type: "negative", label: "IN-", x: 10, y: 70, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "output-positive", type: "positive", label: "OUT+", x: 150, y: 50, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "output-negative", type: "negative", label: "OUT-", x: 150, y: 70, color: "hsl(var(--wire-negative))", orientation: "right" },
+      { id: "remote", type: "ground", label: "REM", x: 80, y: 110, color: "hsl(var(--muted))", orientation: "bottom" },
+    ],
+  },
+
+  "phoenix-inverter": {
+    width: 160,
+    height: 130,
+    terminals: [
+      { id: "dc-positive", type: "positive", label: "DC+", x: 10, y: 55, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "dc-negative", type: "negative", label: "DC-", x: 10, y: 75, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "ac-out-hot", type: "ac-out", label: "AC L", x: 150, y: 45, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
+      { id: "ac-out-neutral", type: "ac-out", label: "AC N", x: 150, y: 65, color: "hsl(var(--wire-neutral))", orientation: "right" },
+      { id: "ac-out-ground", type: "ground", label: "AC G", x: 150, y: 85, color: "hsl(var(--wire-ac-ground))", orientation: "right" },
+      { id: "remote", type: "ground", label: "REM", x: 80, y: 120, color: "hsl(var(--muted))", orientation: "bottom" },
+    ],
+  },
+
+  "lynx-distributor": {
+    width: 220,
+    height: 100,
+    terminals: [
+      { id: "main-positive", type: "positive", label: "BUS+", x: 10, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "main-negative", type: "negative", label: "BUS-", x: 10, y: 60, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "fuse-1", type: "positive", label: "F1", x: 60, y: 90, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "fuse-2", type: "positive", label: "F2", x: 100, y: 90, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "fuse-3", type: "positive", label: "F3", x: 140, y: 90, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "fuse-4", type: "positive", label: "F4", x: 180, y: 90, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+    ],
+  },
+
+  "battery-protect": {
+    width: 120,
+    height: 100,
+    terminals: [
+      { id: "input-positive", type: "positive", label: "IN", x: 10, y: 50, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "output-positive", type: "positive", label: "OUT", x: 110, y: 50, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "ground", type: "negative", label: "GND", x: 60, y: 90, color: "hsl(var(--wire-negative))", orientation: "bottom" },
+      { id: "remote", type: "ground", label: "REM", x: 90, y: 90, color: "hsl(var(--muted))", orientation: "bottom" },
+    ],
+  },
+
+  "blue-smart-charger": {
+    width: 140,
+    height: 120,
+    terminals: [
+      { id: "ac-in-hot", type: "ac-in", label: "AC L", x: 10, y: 40, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "ac-in-neutral", type: "ac-in", label: "AC N", x: 10, y: 60, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "ac-in-ground", type: "ground", label: "AC G", x: 10, y: 80, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
+      { id: "dc-positive", type: "positive", label: "DC+", x: 130, y: 50, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "dc-negative", type: "negative", label: "DC-", x: 130, y: 70, color: "hsl(var(--wire-negative))", orientation: "right" },
+    ],
+  },
+
   "busbar-positive": {
     width: 200,
     height: 60,
@@ -141,6 +202,18 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
 };
 
 export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> = {
+  inverter: {
+    width: 160,
+    height: 120,
+    terminals: [
+      { id: "dc-positive", type: "positive", label: "DC+", x: 10, y: 60, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "dc-negative", type: "negative", label: "DC-", x: 10, y: 80, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "ac-out-hot", type: "ac-out", label: "AC L", x: 150, y: 50, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
+      { id: "ac-out-neutral", type: "ac-out", label: "AC N", x: 150, y: 70, color: "hsl(var(--wire-neutral))", orientation: "right" },
+      { id: "ac-out-ground", type: "ground", label: "AC G", x: 150, y: 90, color: "hsl(var(--wire-ac-ground))", orientation: "right" },
+    ],
+  },
+
   fuse: {
     width: 80,
     height: 60,
