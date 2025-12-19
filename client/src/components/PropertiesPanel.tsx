@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calculator, Settings, ShoppingCart, Tag } from "lucide-react";
 
 interface WireCalculation {
@@ -20,10 +21,19 @@ interface WireCalculation {
 interface PropertiesPanelProps {
   selectedComponent?: {
     id: string;
+    type: string;
     name: string;
-    voltage?: number;
-    current?: number;
-    power?: number;
+    properties?: {
+      voltage?: number;
+      current?: number;
+      power?: number;
+      watts?: number;
+      amps?: number;
+      capacity?: number;
+      batteryType?: string;
+      fuseRating?: number;
+      [key: string]: any;
+    };
   };
   selectedWire?: {
     id: string;
@@ -45,15 +55,30 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
   const [power, setPower] = useState<number>(0);
+  
+  // Battery-specific state
+  const [batteryType, setBatteryType] = useState<string>('LiFePO4');
+  const [capacity, setCapacity] = useState<number>(200);
+  
+  // Fuse-specific state
+  const [fuseRating, setFuseRating] = useState<number>(400);
+  
+  // Inverter-specific state
+  const [watts, setWatts] = useState<number>(3000);
 
   // Sync state when selectedComponent changes
   useEffect(() => {
     if (selectedComponent) {
-      setVoltage(selectedComponent.voltage || 12);
-      setCurrent(selectedComponent.current || 0);
-      setPower(selectedComponent.power || 0);
+      const props = selectedComponent.properties || {};
+      setVoltage(props.voltage || 12);
+      setCurrent(props.current || props.amps || 0);
+      setPower(props.power || props.watts || 0);
+      setBatteryType(props.batteryType || 'LiFePO4');
+      setCapacity(props.capacity || 200);
+      setFuseRating(props.fuseRating || props.amps || 400);
+      setWatts(props.watts || props.powerRating || 3000);
     }
-  }, [selectedComponent?.id, selectedComponent?.voltage, selectedComponent?.current, selectedComponent?.power]);
+  }, [selectedComponent?.id, selectedComponent?.properties]);
 
   // Handle voltage change - recalculate current if power is set
   const handleVoltageChange = (newVoltage: number) => {
@@ -206,38 +231,196 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
                 <Separator />
 
-                <div className="space-y-4">
-                  <h3 className="text-sm font-medium">Specifications</h3>
-                  <div className="space-y-2">
-                    <Label>Voltage (V)</Label>
-                    <Input
-                      type="number"
-                      value={voltage}
-                      data-testid="input-voltage"
-                      onChange={(e) => handleVoltageChange(parseFloat(e.target.value))}
-                    />
+                {/* Battery-specific properties */}
+                {selectedComponent.type === 'battery' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Battery Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Battery Type</Label>
+                      <Select
+                        value={batteryType}
+                        onValueChange={(value) => {
+                          setBatteryType(value);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, batteryType: value }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select battery type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LiFePO4">LiFePO4 (Lithium Iron Phosphate)</SelectItem>
+                          <SelectItem value="AGM">AGM (Absorbed Glass Mat)</SelectItem>
+                          <SelectItem value="Lithium">Lithium Ion</SelectItem>
+                          <SelectItem value="GEL">GEL</SelectItem>
+                          <SelectItem value="FLA">Flooded Lead Acid</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          setVoltage(v);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, voltage: v }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12V</SelectItem>
+                          <SelectItem value="24">24V</SelectItem>
+                          <SelectItem value="48">48V</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Capacity (Ah)</Label>
+                      <Input
+                        type="number"
+                        value={capacity}
+                        data-testid="input-capacity"
+                        onChange={(e) => {
+                          const c = parseInt(e.target.value) || 0;
+                          setCapacity(c);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, capacity: c }
+                          });
+                        }}
+                        step="10"
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Total Energy: {voltage * capacity}Wh ({(voltage * capacity / 1000).toFixed(1)}kWh)
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Current (A)</Label>
-                    <Input
-                      type="number"
-                      value={current}
-                      data-testid="input-current"
-                      onChange={(e) => handleCurrentChange(parseFloat(e.target.value))}
-                      step="0.1"
-                    />
+                )}
+
+                {/* Inverter-specific properties */}
+                {selectedComponent.type === 'inverter' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Inverter Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Power Rating (W)</Label>
+                      <Input
+                        type="number"
+                        value={watts}
+                        data-testid="input-watts"
+                        onChange={(e) => {
+                          const w = parseInt(e.target.value) || 0;
+                          setWatts(w);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, watts: w }
+                          });
+                        }}
+                        step="100"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Input Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          setVoltage(v);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, voltage: v }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12V DC</SelectItem>
+                          <SelectItem value="24">24V DC</SelectItem>
+                          <SelectItem value="48">48V DC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Max DC Current: {Math.ceil(watts / voltage * 1.25)}A (with 25% safety margin)
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Power (W)</Label>
-                    <Input
-                      type="number"
-                      value={power}
-                      data-testid="input-power"
-                      onChange={(e) => handlePowerChange(parseFloat(e.target.value))}
-                      step="1"
-                    />
+                )}
+
+                {/* Fuse-specific properties */}
+                {selectedComponent.type === 'fuse' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Class T Fuse Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Fuse Rating (A)</Label>
+                      <Select
+                        value={fuseRating.toString()}
+                        onValueChange={(value) => {
+                          const r = parseInt(value);
+                          setFuseRating(r);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, fuseRating: r, amps: r }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select fuse rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="100">100A</SelectItem>
+                          <SelectItem value="150">150A</SelectItem>
+                          <SelectItem value="200">200A</SelectItem>
+                          <SelectItem value="250">250A</SelectItem>
+                          <SelectItem value="300">300A</SelectItem>
+                          <SelectItem value="400">400A</SelectItem>
+                          <SelectItem value="500">500A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Class T fuses provide 20,000A interrupt capacity for lithium battery protection.
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Generic component properties (for other component types) */}
+                {!['battery', 'inverter', 'fuse'].includes(selectedComponent.type) && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Voltage (V)</Label>
+                      <Input
+                        type="number"
+                        value={voltage}
+                        data-testid="input-voltage"
+                        onChange={(e) => handleVoltageChange(parseFloat(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Current (A)</Label>
+                      <Input
+                        type="number"
+                        value={current}
+                        data-testid="input-current"
+                        onChange={(e) => handleCurrentChange(parseFloat(e.target.value))}
+                        step="0.1"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Power (W)</Label>
+                      <Input
+                        type="number"
+                        value={power}
+                        data-testid="input-power"
+                        onChange={(e) => handlePowerChange(parseFloat(e.target.value))}
+                        step="1"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center text-muted-foreground py-8">

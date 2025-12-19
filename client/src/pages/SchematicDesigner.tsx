@@ -120,8 +120,49 @@ export default function SchematicDesigner() {
     }
   }, []);
 
+  // Restore diagram state after returning from OAuth login
+  useEffect(() => {
+    const pendingState = localStorage.getItem("pendingAuthDiagramState");
+    if (pendingState) {
+      try {
+        const state = JSON.parse(pendingState);
+        // Only restore if it was saved recently (within 5 minutes)
+        const savedAt = new Date(state.savedAt);
+        const now = new Date();
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        if (now.getTime() - savedAt.getTime() < fiveMinutes) {
+          setComponents(state.components || []);
+          setWires(state.wires || []);
+          setSystemVoltage(state.systemVoltage || 12);
+          
+          toast({
+            title: "Diagram restored",
+            description: `Your design with ${state.components?.length || 0} components has been restored`,
+          });
+        }
+        
+        // Clear the pending state
+        localStorage.removeItem("pendingAuthDiagramState");
+      } catch (error) {
+        console.error("Error restoring diagram state:", error);
+        localStorage.removeItem("pendingAuthDiagramState");
+      }
+    }
+  }, []);
+
   // Login/logout handlers
   const handleLogin = () => {
+    // Save current diagram state to localStorage before redirecting to OAuth
+    if (components.length > 0 || wires.length > 0) {
+      const diagramState = {
+        components,
+        wires,
+        systemVoltage,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem("pendingAuthDiagramState", JSON.stringify(diagramState));
+    }
     window.location.href = `/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`;
   };
 
@@ -720,10 +761,9 @@ export default function SchematicDesigner() {
         <PropertiesPanel
           selectedComponent={selectedComponent ? {
             id: selectedComponent.id,
+            type: selectedComponent.type,
             name: selectedComponent.name,
-            voltage: selectedComponent.properties?.voltage,
-            current: selectedComponent.properties?.current,
-            power: selectedComponent.properties?.power,
+            properties: selectedComponent.properties,
           } : undefined}
           selectedWire={selectedWire ? {
             id: selectedWire.id,

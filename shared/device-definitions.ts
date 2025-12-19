@@ -96,20 +96,143 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
         ],
         usageNotes: "Crucial for accurate battery monitoring. Acts as the system's fuel gauge."
     },
+    "orion-dc-dc": {
+        type: "orion-dc-dc",
+        name: "Orion-Tr Smart DC-DC",
+        description: "Isolated DC-DC charger for charging house batteries from alternator or starter battery. Smart version with Bluetooth.",
+        category: "source",
+        terminals: [
+            { id: "input-positive", type: "positive", label: "IN+", mandatory: true, description: "Input positive (from alternator/starter battery)" },
+            { id: "input-negative", type: "negative", label: "IN-", mandatory: true, description: "Input negative" },
+            { id: "output-positive", type: "positive", label: "OUT+", mandatory: true, description: "Output positive (to house battery)" },
+            { id: "output-negative", type: "negative", label: "OUT-", mandatory: true, description: "Output negative" },
+            { id: "remote", type: "data", label: "REM", mandatory: false, description: "Remote on/off and engine running detection" }
+        ],
+        wiringRules: [
+            "Input must be fused close to the starter battery.",
+            "Output should be fused close to the house battery.",
+            "Use engine running detection for proper alternator protection.",
+            "Ensure adequate ventilation - unit generates heat during charging."
+        ],
+        usageNotes: "Essential for dual-battery systems. Charges house bank from alternator while protecting both batteries."
+    },
+    "phoenix-inverter": {
+        type: "phoenix-inverter",
+        name: "Phoenix Inverter",
+        description: "Pure sine wave DC to AC inverter. Available in various power ratings.",
+        category: "source",
+        terminals: [
+            { id: "dc-positive", type: "positive", label: "DC+", mandatory: true, description: "Battery positive input" },
+            { id: "dc-negative", type: "negative", label: "DC-", mandatory: true, description: "Battery negative input" },
+            { id: "ac-out-hot", type: "ac-out", label: "AC L", mandatory: true, description: "AC output line" },
+            { id: "ac-out-neutral", type: "ac-out", label: "AC N", mandatory: true, description: "AC output neutral" },
+            { id: "ac-out-ground", type: "ground", label: "AC G", mandatory: true, description: "AC output ground" },
+            { id: "remote", type: "data", label: "REM", mandatory: false, description: "Remote on/off control" }
+        ],
+        wiringRules: [
+            "DC positive must be fused with Class T fuse close to battery.",
+            "Size DC cables for peak current (watts / voltage × 1.25).",
+            "Ground the AC output ground to chassis/system ground.",
+            "Use remote switch for easy on/off control."
+        ],
+        usageNotes: "Victron's standalone inverter. Use when AC charging capability is not needed."
+    },
+    "lynx-distributor": {
+        type: "lynx-distributor",
+        name: "Lynx Distributor",
+        description: "DC power distribution with integrated fuse holders. Part of the Lynx system for high-power installations.",
+        category: "distribution",
+        terminals: [
+            { id: "main-positive", type: "positive", label: "BUS+", mandatory: true, description: "Main positive busbar" },
+            { id: "main-negative", type: "negative", label: "BUS-", mandatory: true, description: "Main negative busbar" },
+            { id: "fuse-1", type: "positive", label: "F1", mandatory: false, description: "Fused output 1 (MEGA fuse)" },
+            { id: "fuse-2", type: "positive", label: "F2", mandatory: false, description: "Fused output 2 (MEGA fuse)" },
+            { id: "fuse-3", type: "positive", label: "F3", mandatory: false, description: "Fused output 3 (MEGA fuse)" },
+            { id: "fuse-4", type: "positive", label: "F4", mandatory: false, description: "Fused output 4 (MEGA fuse)" }
+        ],
+        wiringRules: [
+            "Connect to Lynx Shunt or battery via main busbars.",
+            "Each output requires appropriate MEGA fuse for connected device.",
+            "Can be daisy-chained with other Lynx modules.",
+            "Provides pre-alarm contacts for blown fuse detection."
+        ],
+        usageNotes: "Professional power distribution. Each slot accepts MEGA fuses up to 500A."
+    },
+    "battery-protect": {
+        type: "battery-protect",
+        name: "Battery Protect",
+        description: "Low voltage disconnect to protect batteries from deep discharge. Programmable disconnect/reconnect voltages.",
+        category: "control",
+        terminals: [
+            { id: "input-positive", type: "positive", label: "IN", mandatory: true, description: "Input from battery positive" },
+            { id: "output-positive", type: "positive", label: "OUT", mandatory: true, description: "Output to loads" },
+            { id: "ground", type: "negative", label: "GND", mandatory: true, description: "Ground/negative connection" },
+            { id: "remote", type: "data", label: "REM", mandatory: false, description: "Remote on/off control" }
+        ],
+        wiringRules: [
+            "Install in positive wire between battery and non-critical loads.",
+            "Do not use for charging circuits - only for load disconnect.",
+            "Program appropriate disconnect voltage for battery type.",
+            "Use for loads that can tolerate sudden disconnection."
+        ],
+        usageNotes: "Protects battery from over-discharge. Program settings via Bluetooth or DIP switches."
+    },
+    "blue-smart-charger": {
+        type: "blue-smart-charger",
+        name: "Blue Smart IP65 Charger",
+        description: "Waterproof AC to DC battery charger with Bluetooth. For shore power charging.",
+        category: "source",
+        terminals: [
+            { id: "ac-in-hot", type: "ac-in", label: "AC L", mandatory: true, description: "AC input line" },
+            { id: "ac-in-neutral", type: "ac-in", label: "AC N", mandatory: true, description: "AC input neutral" },
+            { id: "ac-in-ground", type: "ground", label: "AC G", mandatory: true, description: "AC input ground" },
+            { id: "dc-positive", type: "positive", label: "DC+", mandatory: true, description: "DC output positive" },
+            { id: "dc-negative", type: "negative", label: "DC-", mandatory: true, description: "DC output negative" }
+        ],
+        wiringRules: [
+            "AC input requires appropriate breaker protection.",
+            "DC output should be fused close to the battery.",
+            "Select correct charge profile for battery type via Bluetooth app.",
+            "IP65 rated - suitable for engine rooms and outdoor installation."
+        ],
+        usageNotes: "Dedicated shore power charger. Use when MultiPlus charging is not available or needed."
+    },
     battery: {
         type: "battery",
         name: "Battery Bank",
-        description: "Energy storage. Typically LiFePO4 or AGM.",
+        description: "Energy storage. Configurable type (LiFePO4, AGM, Lithium), voltage, and capacity.",
         category: "storage",
         terminals: [
             { id: "positive", type: "positive", label: "+", mandatory: true, description: "Main positive terminal" },
             { id: "negative", type: "negative", label: "-", mandatory: true, description: "Main negative terminal" }
         ],
         wiringRules: [
-            "Positive terminal connects to main fuse/switch then positive busbar.",
-            "Negative terminal connects ONLY to the Shunt (if present) or negative busbar."
+            "Positive terminal connects to Class T fuse then positive busbar.",
+            "Negative terminal connects ONLY to the Shunt (if present) or negative busbar.",
+            "LiFePO4 batteries require a BMS and Class T fuse protection.",
+            "AGM batteries should be charged at lower voltage settings than LiFePO4."
         ],
-        usageNotes: "Stores DC energy. Voltage (12V/24V/48V) must match system voltage."
+        usageNotes: "Stores DC energy. Set type (LiFePO4/AGM/Lithium), voltage (12V/24V/48V), and capacity (Ah) in properties."
+    },
+    inverter: {
+        type: "inverter",
+        name: "Inverter",
+        description: "Converts DC battery power to AC power. Generic inverter with configurable wattage.",
+        category: "source",
+        terminals: [
+            { id: "dc-positive", type: "positive", label: "DC+", mandatory: true, description: "Battery positive input" },
+            { id: "dc-negative", type: "negative", label: "DC-", mandatory: true, description: "Battery negative input" },
+            { id: "ac-out-hot", type: "ac-out", label: "AC L", mandatory: true, description: "AC output line/hot" },
+            { id: "ac-out-neutral", type: "ac-out", label: "AC N", mandatory: true, description: "AC output neutral" },
+            { id: "ac-out-ground", type: "ground", label: "AC G", mandatory: true, description: "AC output ground" }
+        ],
+        wiringRules: [
+            "DC positive must be fused with a Class T fuse close to the battery.",
+            "DC cables must be sized for the inverter's maximum DC current (watts / voltage * 1.25).",
+            "AC output should connect to an AC distribution panel or breaker.",
+            "Chassis ground should be bonded to the system ground."
+        ],
+        usageNotes: "Set the wattage in properties. DC current draw = watts / battery voltage."
     },
     "solar-panel": {
         type: "solar-panel",
@@ -187,18 +310,19 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
     },
     fuse: {
         type: "fuse",
-        name: "Fuse / Breaker",
-        description: "Overcurrent protection device. Essential for safety.",
+        name: "Class T Fuse",
+        description: "High-interrupt Class T fuse for battery and inverter protection. Essential for high-current DC systems.",
         category: "distribution",
         terminals: [
-            { id: "in", type: "positive", label: "IN", mandatory: true, description: "Line side" },
-            { id: "out", type: "positive", label: "OUT", mandatory: true, description: "Load side" }
+            { id: "in", type: "positive", label: "IN", mandatory: true, description: "Line side (battery)" },
+            { id: "out", type: "positive", label: "OUT", mandatory: true, description: "Load side (inverter/busbar)" }
         ],
         wiringRules: [
-            "Must be placed as close as possible to the power source (Battery/Busbar).",
-            "Size based on the wire's ampacity, not the load."
+            "Must be placed as close as possible to the battery positive terminal.",
+            "Size based on the inverter's maximum DC current draw plus 25% safety margin.",
+            "Class T fuses provide high-interrupt capacity (up to 20,000A) for lithium battery protection."
         ],
-        usageNotes: "Protects the wire from melting in case of a short circuit."
+        usageNotes: "Required for lithium battery systems. Protects against catastrophic short circuits."
     },
     switch: {
         type: "switch",

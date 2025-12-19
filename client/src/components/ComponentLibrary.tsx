@@ -18,14 +18,19 @@ interface Component {
 
 const victronComponents: Component[] = [
   { id: "multiplus", name: "MultiPlus Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "phoenix-inverter", name: "Phoenix Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
   { id: "mppt", name: "MPPT Controller", icon: <Sun className="h-5 w-5" />, category: "victron" },
+  { id: "orion-dc-dc", name: "Orion DC-DC Charger", icon: <Battery className="h-5 w-5" />, category: "victron" },
+  { id: "blue-smart-charger", name: "Blue Smart Charger", icon: <Battery className="h-5 w-5" />, category: "victron" },
   { id: "cerbo", name: "Cerbo GX", icon: <Cpu className="h-5 w-5" />, category: "victron" },
-  { id: "bmv", name: "BMV Monitor", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "smartshunt", name: "SmartShunt", icon: <Gauge className="h-5 w-5" />, category: "victron" },
-  { id: "battery", name: "Battery Bank", icon: <Battery className="h-5 w-5" />, category: "victron" },
+  { id: "battery-protect", name: "Battery Protect", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-distributor", name: "Lynx Distributor", icon: <Cable className="h-5 w-5" />, category: "victron" },
 ];
 
 const genericComponents: Component[] = [
+  { id: "battery", name: "Battery Bank", icon: <Battery className="h-5 w-5" />, category: "generic" },
+  { id: "inverter", name: "Inverter", icon: <Cable className="h-5 w-5" />, category: "generic" },
   { id: "solar-panel", name: "Solar Panel", icon: <Sun className="h-5 w-5" />, category: "generic" },
   { id: "ac-load", name: "AC Load", icon: <Gauge className="h-5 w-5" />, category: "generic" },
   { id: "dc-load", name: "DC Load", icon: <Cable className="h-5 w-5" />, category: "generic" },
@@ -34,7 +39,7 @@ const genericComponents: Component[] = [
 ];
 
 const safetyComponents: Component[] = [
-  { id: "fuse", name: "Fuse", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "fuse", name: "Class T Fuse", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "switch", name: "Battery Switch", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "breaker-panel", name: "Breaker Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
   { id: "ac-panel", name: "AC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
