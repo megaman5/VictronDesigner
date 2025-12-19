@@ -76,9 +76,11 @@ interface DailyAnalytics {
 
 interface AILog {
   id: string;
-  timestamp: string;
+  createdAt: string;
   visitorId?: string;
   userId?: string;
+  userEmail?: string;
+  ip?: string;
   action: string;
   prompt: string;
   systemVoltage: number;
@@ -113,7 +115,7 @@ interface Session {
 
 interface ErrorLog {
   id: string;
-  timestamp: string;
+  createdAt: string;
   type: string;
   endpoint?: string;
   message: string;
@@ -546,11 +548,12 @@ export default function ObservabilityAdmin() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>IP</TableHead>
                         <TableHead>Action</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Duration</TableHead>
                         <TableHead>Quality</TableHead>
-                        <TableHead>Components</TableHead>
                         <TableHead>Prompt</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -562,7 +565,19 @@ export default function ObservabilityAdmin() {
                           onClick={() => setSelectedAILog(log)}
                         >
                           <TableCell className="text-xs whitespace-nowrap">
-                            {formatDate(log.timestamp)}
+                            {formatDate(log.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {log.userEmail ? (
+                              <span className="font-medium" title={log.userEmail}>
+                                {log.userEmail.split('@')[0]}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Anonymous</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">
+                            {log.ip || "-"}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{log.action}</Badge>
@@ -582,7 +597,6 @@ export default function ObservabilityAdmin() {
                           </TableCell>
                           <TableCell>{formatDuration(log.durationMs)}</TableCell>
                           <TableCell>{log.qualityScore || "-"}</TableCell>
-                          <TableCell>{log.componentCount || 0}</TableCell>
                           <TableCell className="max-w-[200px] truncate" title={log.prompt}>
                             {log.prompt.substring(0, 50)}...
                           </TableCell>
@@ -726,7 +740,7 @@ export default function ObservabilityAdmin() {
                             onClick={() => setSelectedError(error)}
                           >
                             <TableCell className="text-xs whitespace-nowrap">
-                              {formatDate(error.timestamp)}
+                              {formatDate(error.createdAt)}
                             </TableCell>
                             <TableCell>
                               <Badge variant="destructive">{error.type}</Badge>
@@ -759,7 +773,7 @@ export default function ObservabilityAdmin() {
               AI Request Details
             </DialogTitle>
             <DialogDescription>
-              {selectedAILog && formatDate(selectedAILog.timestamp)}
+              {selectedAILog && formatDate(selectedAILog.createdAt)}
             </DialogDescription>
           </DialogHeader>
 
@@ -823,8 +837,10 @@ export default function ObservabilityAdmin() {
               <div>
                 <h3 className="font-semibold mb-2">User Info</h3>
                 <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
-                  <div><span className="text-muted-foreground">Visitor ID:</span> {selectedAILog.visitorId || "-"}</div>
-                  <div><span className="text-muted-foreground">User ID:</span> {selectedAILog.userId || "Anonymous"}</div>
+                  <div><span className="text-muted-foreground">Email:</span> {selectedAILog.userEmail || "Anonymous"}</div>
+                  <div><span className="text-muted-foreground">IP Address:</span> <span className="font-mono">{selectedAILog.ip || "-"}</span></div>
+                  <div><span className="text-muted-foreground">User ID:</span> {selectedAILog.userId || "-"}</div>
+                  <div><span className="text-muted-foreground">Visitor ID:</span> <span className="font-mono">{selectedAILog.visitorId || "-"}</span></div>
                   <div><span className="text-muted-foreground">Model:</span> {selectedAILog.model || "-"}</div>
                 </div>
               </div>
@@ -1039,7 +1055,7 @@ export default function ObservabilityAdmin() {
               Error Details
             </DialogTitle>
             <DialogDescription>
-              {selectedError && formatDate(selectedError.timestamp)}
+              {selectedError && formatDate(selectedError.createdAt)}
             </DialogDescription>
           </DialogHeader>
 

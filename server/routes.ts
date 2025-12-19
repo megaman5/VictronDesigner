@@ -225,6 +225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const startTime = Date.now();
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
+    const clientIP = getClientIP(req);
     
     try {
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
@@ -439,6 +440,8 @@ JSON RESPONSE FORMAT:
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
+        userEmail: user?.email,
+        ip: clientIP,
         action: "generate-system",
         prompt,
         systemVoltage,
@@ -463,6 +466,8 @@ JSON RESPONSE FORMAT:
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
+        userEmail: user?.email,
+        ip: clientIP,
         action: "generate-system",
         prompt: req.body.prompt || "",
         systemVoltage: req.body.systemVoltage || 12,
@@ -481,6 +486,7 @@ JSON RESPONSE FORMAT:
     const startTime = Date.now();
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
+    const clientIP = getClientIP(req);
     
     try {
       const { components, systemVoltage = 12 } = req.body;
@@ -599,6 +605,8 @@ JSON RESPONSE FORMAT:
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
+        userEmail: user?.email,
+        ip: clientIP,
         action: "wire-components",
         prompt: `Wire ${components.length} components`,
         systemVoltage,
@@ -622,6 +630,8 @@ JSON RESPONSE FORMAT:
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
+        userEmail: user?.email,
+        ip: clientIP,
         action: "wire-components",
         prompt: `Wire ${req.body.components?.length || 0} components`,
         systemVoltage: req.body.systemVoltage || 12,
@@ -899,6 +909,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
     const startTime = Date.now();
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
+    const clientIP = getClientIP(req);
     
     try {
       const {
@@ -1166,6 +1177,8 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           await observabilityStorage.logAIRequest({
             visitorId,
             userId: user?.id,
+            userEmail: user?.email,
+            ip: clientIP,
             action: "iterate-design",
             prompt,
             systemVoltage,
@@ -1203,6 +1216,8 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         await observabilityStorage.logAIRequest({
           visitorId,
           userId: user?.id,
+          userEmail: user?.email,
+          ip: clientIP,
           action: "iterate-design",
           prompt,
           systemVoltage,
@@ -1226,6 +1241,8 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
+        userEmail: user?.email,
+        ip: clientIP,
         action: "iterate-design",
         prompt,
         systemVoltage,
@@ -1259,6 +1276,8 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
+        userEmail: user?.email,
+        ip: clientIP,
         action: "iterate-design",
         prompt: req.body.prompt || "",
         systemVoltage: req.body.systemVoltage || 12,
