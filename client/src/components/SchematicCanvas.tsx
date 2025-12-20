@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
-import { snapPointToGrid, calculateRoute, calculateWireLength, type Obstacle } from "@/lib/wire-routing";
+import { snapPointToGrid, calculateRoute, type Obstacle } from "@/lib/wire-routing";
+import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 
 export interface WireConnectionData {
   fromComponentId: string;
@@ -32,6 +33,7 @@ interface SchematicCanvasProps {
   onWireEdit?: (wire: Wire) => void;
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
+  showWireLabels?: boolean;
 }
 
 export function SchematicCanvas({
@@ -52,6 +54,7 @@ export function SchematicCanvas({
   onWireEdit,
   wireConnectionMode = false,
   wireStartComponent = null,
+  showWireLabels = true,
 }: SchematicCanvasProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(100);
@@ -212,12 +215,14 @@ export function SchematicCanvas({
     } else {
       // Second click - complete wire connection
       if (wireStart.componentId !== component.id) {
-        // Calculate wire length based on distance
-        const wireLength = calculateWireLength(
-          wireStart.position.x,
-          wireStart.position.y,
-          terminalPos.x,
-          terminalPos.y
+        // Get default wire length based on component types
+        const fromComp = components.find(c => c.id === wireStart.componentId);
+        const toComp = components.find(c => c.id === component.id);
+        const wireLength = getDefaultWireLength(
+          fromComp,
+          toComp,
+          wireStart.terminal.id,
+          terminal.id
         );
 
         // Pass terminal information back to parent for wire creation
@@ -349,11 +354,12 @@ export function SchematicCanvas({
           const toTerm = endpoint === 'to' ? closestTerminal : TERMINAL_CONFIGS[toComp.type]?.terminals.find(t => t.id === wire.toTerminal);
 
           if (fromTerm && toTerm) {
-            const newLength = calculateWireLength(
-              fromComp.x + fromTerm.x,
-              fromComp.y + fromTerm.y,
-              toComp.x + toTerm.x,
-              toComp.y + toTerm.y
+            // Use default wire length based on component types
+            const newLength = getDefaultWireLength(
+              fromComp,
+              toComp,
+              fromTerm.id,
+              toTerm.id
             );
             updates.length = newLength;
           }
@@ -886,25 +892,30 @@ export function SchematicCanvas({
                     style={{ pointerEvents: 'none' }}
                   />
 
-                  <g transform={`translate(${labelX}, ${labelY}) rotate(${labelRotation})`} className="pointer-events-none">
-                    <rect
-                      x="-35"
-                      y="-12"
-                      width="70"
-                      height="24"
-                      fill="hsl(var(--background))"
-                      stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
-                      strokeWidth={isSelected ? 2 : 1}
-                      rx="4"
-                    />
-                    <text
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      className="fill-foreground text-xs font-semibold"
-                    >
-                      {polaritySymbol} {wire.gauge || "N/A"}
-                    </text>
-                  </g>
+                  {showWireLabels && (
+                    <g transform={`translate(${labelX}, ${labelY}) rotate(${labelRotation})`} className="pointer-events-none">
+                      <rect
+                        x={wire.length ? "-45" : "-35"}
+                        y="-12"
+                        width={wire.length ? "90" : "70"}
+                        height="24"
+                        fill="hsl(var(--background))"
+                        stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
+                        strokeWidth={isSelected ? 2 : 1}
+                        rx="4"
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        className="fill-foreground text-xs font-semibold"
+                      >
+                        {polaritySymbol} {wire.gauge || "N/A"}
+                        {wire.length && wire.length > 0 && (
+                          <tspan className="text-[10px] font-normal opacity-75"> • {wire.length.toFixed(1)}ft</tspan>
+                        )}
+                      </text>
+                    </g>
+                  )}
 
                   {/* Preview of dragged endpoint */}
                   {draggedWireEndpoint?.wireId === wire.id && draggedEndpointPos && (

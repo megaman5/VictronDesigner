@@ -397,15 +397,35 @@ export function calculateDistance(x1: number, y1: number, x2: number, y2: number
 
 /**
  * Calculate wire length in feet based on pixel distance
- * Assumes 1 pixel = 1 inch in real world (configurable)
+ * Assumes ~10 pixels per inch (realistic for schematic diagrams)
+ * Canvas is 2400x1600px, typical RV/boat systems are 20-30ft, so ~80-120px per foot
  */
-export function calculateWireLength(x1: number, y1: number, x2: number, y2: number, pixelsPerInch: number = 1): number {
+export function calculateWireLength(x1: number, y1: number, x2: number, y2: number, pixelsPerFoot: number = 80): number {
   const distancePixels = calculateDistance(x1, y1, x2, y2);
-  const distanceInches = distancePixels / pixelsPerInch;
-  const distanceFeet = distanceInches / 12;
+  const distanceFeet = distancePixels / pixelsPerFoot;
 
-  // Add 20% for routing and connections
-  return Math.ceil(distanceFeet * 1.2);
+  // Add 25% for routing, connections, and service loops
+  return Math.round(distanceFeet * 1.25 * 10) / 10; // Round to 1 decimal place
+}
+
+/**
+ * Calculate wire length from path segments (for actual routed paths)
+ */
+export function calculateWireLengthFromPath(pathSegments: Array<{x: number, y: number}>): number {
+  if (pathSegments.length < 2) return 0;
+  
+  let totalPixels = 0;
+  for (let i = 1; i < pathSegments.length; i++) {
+    const prev = pathSegments[i - 1];
+    const curr = pathSegments[i];
+    totalPixels += calculateDistance(prev.x, prev.y, curr.x, curr.y);
+  }
+  
+  const pixelsPerFoot = 80; // ~80px per foot for schematic scale
+  const distanceFeet = totalPixels / pixelsPerFoot;
+  
+  // Add 10% for connections and service loops (routing already accounted for)
+  return Math.round(distanceFeet * 1.1 * 10) / 10;
 }
 
 // Keep the old function signature for compatibility, but forward to new router if needed
