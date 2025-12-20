@@ -1,8 +1,19 @@
 import { TERMINAL_CONFIGS, Terminal } from "@/lib/terminal-config";
 
+interface ComponentProperties {
+  voltage?: number;
+  capacity?: number;
+  batteryType?: string;
+  watts?: number;
+  amps?: number;
+  fuseRating?: number;
+  [key: string]: any;
+}
+
 interface SchematicComponentProps {
   type: string;
   name: string;
+  properties?: ComponentProperties;
   selected?: boolean;
   onClick?: (e?: React.MouseEvent) => void;
   onTerminalClick?: (terminal: Terminal, e: React.MouseEvent) => void;
@@ -12,6 +23,7 @@ interface SchematicComponentProps {
 export function SchematicComponent({
   type,
   name,
+  properties = {},
   selected,
   onClick,
   onTerminalClick,
@@ -56,7 +68,8 @@ export function SchematicComponent({
           </svg>
         );
 
-      case "mppt":
+      case "mppt": {
+        const mpptAmps = properties.amps || properties.current || 30;
         return (
           <svg width="160" height="130" viewBox="0 0 160 130">
             {/* Main blue housing */}
@@ -69,11 +82,11 @@ export function SchematicComponent({
             {/* Display content */}
             <text x="80" y="42" textAnchor="middle" className="fill-cyan-300 text-xs font-mono">BULK</text>
             <text x="50" y="58" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">PV 45V</text>
-            <text x="110" y="58" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">30A</text>
+            <text x="110" y="58" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">{mpptAmps}A</text>
 
             {/* Product label */}
             <text x="80" y="85" textAnchor="middle" className="fill-white text-xs font-bold">SmartSolar</text>
-            <text x="80" y="98" textAnchor="middle" className="fill-white text-[10px]">MPPT 100|30</text>
+            <text x="80" y="98" textAnchor="middle" className="fill-white text-[10px]">MPPT 100|{mpptAmps}</text>
 
             {/* Connection terminals */}
             <circle cx="30" cy="108" r="4" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
@@ -85,6 +98,7 @@ export function SchematicComponent({
             <text x="120" y="122" textAnchor="middle" className="fill-white text-[8px]">BATT</text>
           </svg>
         );
+      }
 
       case "cerbo":
         return (
@@ -234,24 +248,43 @@ export function SchematicComponent({
           </svg>
         );
 
-      case "battery":
+      case "battery": {
+        const batteryType = properties.batteryType || 'LiFePO4';
+        const voltage = properties.voltage || 12;
+        const capacity = properties.capacity || 200;
+        const wattHours = voltage * capacity;
+        
+        // Color scheme based on battery type
+        const isLithium = batteryType === 'LiFePO4' || batteryType === 'Lithium';
+        const casingColor = isLithium ? '#1e3a5f' : '#1a1a2e';
+        const casingStroke = isLithium ? '#2a5a8f' : '#2a2a3e';
+        const typeColor = isLithium ? '#4ade80' : '#9ca3af';
+        
         return (
           <svg width="160" height="110" viewBox="0 0 160 110">
-            {/* Battery casing - gray/black */}
-            <rect x="20" y="25" width="120" height="70" fill="#1a1a2e" stroke="#2a2a3e" strokeWidth="2" rx="6" />
+            {/* Battery casing */}
+            <rect x="20" y="25" width="120" height="70" fill={casingColor} stroke={casingStroke} strokeWidth="2" rx="6" />
 
             {/* Terminal posts */}
-            <rect x="140" y="48" width="12" height="24" fill="#1a1a2e" stroke="#2a2a3e" strokeWidth="2" />
+            <rect x="140" y="48" width="12" height="24" fill={casingColor} stroke={casingStroke} strokeWidth="2" />
 
             {/* Battery label */}
-            <text x="80" y="15" textAnchor="middle" className="fill-foreground text-sm font-bold">Battery Bank</text>
-            <text x="80" y="48" textAnchor="middle" className="fill-gray-400 text-xs">AGM Deep Cycle</text>
-            <text x="80" y="63" textAnchor="middle" className="fill-gray-300 text-sm font-bold">12V 200Ah</text>
-            <text x="80" y="78" textAnchor="middle" className="fill-gray-400 text-[10px]">2400Wh</text>
+            <text x="80" y="15" textAnchor="middle" className="fill-foreground text-sm font-bold">{name || 'Battery Bank'}</text>
+            <text x="80" y="48" textAnchor="middle" style={{ fill: typeColor }} className="text-xs font-medium">{batteryType}</text>
+            <text x="80" y="63" textAnchor="middle" className="fill-gray-200 text-sm font-bold">{voltage}V {capacity}Ah</text>
+            <text x="80" y="78" textAnchor="middle" className="fill-gray-400 text-[10px]">{wattHours}Wh</text>
+
+            {/* Lithium indicator for LiFePO4 */}
+            {isLithium && (
+              <g>
+                <rect x="25" y="82" width="30" height="10" fill="#22c55e" opacity="0.3" rx="2" />
+                <text x="40" y="90" textAnchor="middle" className="fill-green-400 text-[7px] font-bold">BMS</text>
+              </g>
+            )}
 
             {/* Warning symbols */}
-            <path d="M 30 85 L 35 75 L 40 85 Z" fill="orange" stroke="orange" strokeWidth="1" />
-            <text x="32" y="83" className="fill-black text-[8px] font-bold">!</text>
+            <path d="M 60 85 L 65 75 L 70 85 Z" fill="orange" stroke="orange" strokeWidth="1" />
+            <text x="62" y="83" className="fill-black text-[8px] font-bold">!</text>
 
             {/* Terminal indicators */}
             <circle cx="10" cy="60" r="6" fill="hsl(var(--wire-negative))" stroke="hsl(var(--foreground))" strokeWidth="1" />
@@ -261,6 +294,7 @@ export function SchematicComponent({
             <text x="150" y="63" textAnchor="middle" className="fill-white text-xs font-bold">+</text>
           </svg>
         );
+      }
 
       case "solar-panel":
         return (
@@ -336,20 +370,30 @@ export function SchematicComponent({
           </svg>
         );
 
-      case "fuse":
+      case "fuse": {
+        const fuseRating = properties.fuseRating || properties.amps || 400;
         return (
           <svg width="80" height="60" viewBox="0 0 80 60">
-            {/* Fuse holder body */}
-            <rect x="10" y="15" width="60" height="30" fill="#333" stroke="#555" strokeWidth="2" rx="4" />
+            {/* Fuse holder body - blue for Class T */}
+            <rect x="10" y="15" width="60" height="30" fill="#1e3a5f" stroke="#2a5a8f" strokeWidth="2" rx="4" />
 
-            {/* Fuse window/symbol */}
-            <rect x="25" y="22" width="30" height="16" fill="#1a1a1a" rx="2" />
-            <path d="M 28 30 L 52 30" stroke="hsl(var(--wire-positive))" strokeWidth="2" strokeDasharray="4 2" />
+            {/* Fuse element window */}
+            <rect x="25" y="20" width="30" height="20" fill="#0a1a2e" rx="2" />
+            
+            {/* Class T indicator */}
+            <text x="40" y="28" textAnchor="middle" className="fill-cyan-400 text-[8px] font-bold">CLASS T</text>
+            <text x="40" y="37" textAnchor="middle" className="fill-white text-[9px] font-bold">{fuseRating}A</text>
+
+            {/* Connection terminals */}
+            <circle cx="10" cy="30" r="4" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" />
+            <circle cx="70" cy="30" r="4" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" />
 
             {/* Label */}
-            <text x="40" y="10" textAnchor="middle" className="fill-foreground text-[9px] font-bold">FUSE</text>
+            <text x="40" y="8" textAnchor="middle" className="fill-foreground text-[9px] font-bold">CLASS T FUSE</text>
+            <text x="40" y="55" textAnchor="middle" className="fill-muted-foreground text-[7px]">20kAIC</text>
           </svg>
         );
+      }
 
       case "switch":
         return (
@@ -438,11 +482,203 @@ export function SchematicComponent({
             <text x="80" y="223" textAnchor="middle" className="fill-muted-foreground text-[10px]">MAIN INPUT</text>
           </svg>
         );
+      case "orion-dc-dc": {
+        const orionAmps = properties.amps || 30;
+        return (
+          <svg width="160" height="120" viewBox="0 0 160 120">
+            {/* Main blue housing */}
+            <rect x="10" y="15" width="140" height="90" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Top label area */}
+            <rect x="20" y="22" width="120" height="28" fill="hsl(var(--victron-blue-light))" rx="4" />
+            <text x="80" y="34" textAnchor="middle" className="fill-white text-[10px] font-bold">Orion-Tr Smart</text>
+            <text x="80" y="45" textAnchor="middle" className="fill-white text-[9px]">DC-DC Charger</text>
+
+            {/* LED indicators */}
+            <circle cx="30" cy="62" r="4" fill="#00ff00" className="opacity-80" />
+            <circle cx="45" cy="62" r="4" fill="#0088ff" className="opacity-80" />
+            
+            {/* Current display */}
+            <rect x="60" y="55" width="80" height="20" fill="#0a1a2e" rx="3" />
+            <text x="100" y="68" textAnchor="middle" className="fill-cyan-300 text-xs font-mono">{orionAmps}A</text>
+
+            {/* Direction arrow */}
+            <text x="80" y="88" textAnchor="middle" className="fill-white text-sm">→</text>
+            <text x="30" y="92" textAnchor="middle" className="fill-white text-[8px]">IN</text>
+            <text x="130" y="92" textAnchor="middle" className="fill-white text-[8px]">OUT</text>
+
+            {/* Victron branding */}
+            <text x="80" y="112" textAnchor="middle" className="fill-foreground text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+      }
+
+      case "phoenix-inverter": {
+        const phoenixWatts = properties.watts || 1200;
+        const kw = phoenixWatts >= 1000 ? `${(phoenixWatts / 1000).toFixed(1)}kW` : `${phoenixWatts}W`;
+        return (
+          <svg width="160" height="130" viewBox="0 0 160 130">
+            {/* Main blue housing */}
+            <rect x="10" y="15" width="140" height="100" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Top label area */}
+            <rect x="20" y="22" width="120" height="30" fill="hsl(var(--victron-blue-light))" rx="4" />
+            <text x="80" y="34" textAnchor="middle" className="fill-white text-xs font-bold">Phoenix</text>
+            <text x="80" y="46" textAnchor="middle" className="fill-white text-[10px]">Inverter {kw}</text>
+
+            {/* LED indicators */}
+            <circle cx="30" cy="68" r="4" fill="#00ff00" className="opacity-80" />
+            <text x="45" y="70" className="fill-white text-[8px]">ON</text>
+            <circle cx="30" cy="82" r="4" fill="#ffaa00" className="opacity-50" />
+            <text x="45" y="84" className="fill-white text-[8px]">ECO</text>
+
+            {/* Power display */}
+            <rect x="70" y="60" width="70" height="28" fill="#0a1a2e" rx="3" />
+            <text x="105" y="72" textAnchor="middle" className="fill-green-400 text-[10px] font-mono">{phoenixWatts}W</text>
+            <text x="105" y="83" textAnchor="middle" className="fill-gray-400 text-[7px]">PURE SINE</text>
+
+            {/* DC/AC labels */}
+            <text x="20" y="102" className="fill-white text-[8px] font-bold">DC IN</text>
+            <text x="115" y="102" className="fill-white text-[8px] font-bold">AC OUT</text>
+
+            {/* Victron branding */}
+            <text x="80" y="122" textAnchor="middle" className="fill-foreground text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+      }
+
+      case "lynx-distributor":
+        return (
+          <svg width="220" height="100" viewBox="0 0 220 100">
+            {/* Main housing */}
+            <rect x="5" y="10" width="210" height="80" fill="#2a2a3a" stroke="#3a3a4a" strokeWidth="2" rx="6" />
+
+            {/* Top label */}
+            <rect x="15" y="15" width="190" height="22" fill="hsl(var(--victron-blue))" rx="3" />
+            <text x="110" y="30" textAnchor="middle" className="fill-white text-xs font-bold">LYNX DISTRIBUTOR</text>
+
+            {/* Busbar visualization */}
+            <rect x="15" y="42" width="190" height="12" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" rx="2" />
+            <rect x="17" y="44" width="186" height="3" fill="#d4a574" opacity="0.5" />
+
+            {/* Fuse slots */}
+            {[60, 100, 140, 180].map((x, i) => (
+              <g key={i}>
+                <rect x={x - 15} y="58" width="30" height="25" fill="#1a1a1a" stroke="#333" strokeWidth="1" rx="2" />
+                <rect x={x - 10} y="62" width="20" height="10" fill="#333" rx="1" />
+                <text x={x} y="80" textAnchor="middle" className="fill-gray-400 text-[7px]">F{i + 1}</text>
+              </g>
+            ))}
+
+            {/* Input label */}
+            <text x="25" y="75" textAnchor="middle" className="fill-gray-400 text-[8px]">BUS</text>
+
+            {/* Victron branding */}
+            <text x="110" y="96" textAnchor="middle" className="fill-foreground text-[7px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "battery-protect": {
+        const bpAmps = properties.amps || 100;
+        return (
+          <svg width="120" height="100" viewBox="0 0 120 100">
+            {/* Main blue housing */}
+            <rect x="10" y="15" width="100" height="70" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="6" />
+
+            {/* Label */}
+            <text x="60" y="30" textAnchor="middle" className="fill-white text-[9px] font-bold">Battery Protect</text>
+            <text x="60" y="42" textAnchor="middle" className="fill-white text-[10px]">{bpAmps}A</text>
+
+            {/* LED indicator */}
+            <circle cx="60" cy="55" r="5" fill="#00ff00" className="opacity-80" />
+
+            {/* Status text */}
+            <text x="60" y="70" textAnchor="middle" className="fill-white text-[8px]">ACTIVE</text>
+
+            {/* Direction arrow */}
+            <text x="60" y="82" textAnchor="middle" className="fill-white text-sm">→</text>
+            <text x="20" y="82" textAnchor="middle" className="fill-white text-[7px]">IN</text>
+            <text x="100" y="82" textAnchor="middle" className="fill-white text-[7px]">OUT</text>
+
+            {/* Victron branding */}
+            <text x="60" y="95" textAnchor="middle" className="fill-foreground text-[7px] opacity-70">victron energy</text>
+          </svg>
+        );
+      }
+
+      case "blue-smart-charger": {
+        const chargerAmps = properties.amps || 15;
+        return (
+          <svg width="140" height="120" viewBox="0 0 140 120">
+            {/* Main blue housing */}
+            <rect x="10" y="15" width="120" height="90" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Top label area */}
+            <rect x="20" y="22" width="100" height="28" fill="hsl(var(--victron-blue-light))" rx="4" />
+            <text x="70" y="34" textAnchor="middle" className="fill-white text-[9px] font-bold">Blue Smart IP65</text>
+            <text x="70" y="45" textAnchor="middle" className="fill-white text-[10px]">Charger {chargerAmps}A</text>
+
+            {/* LED indicator */}
+            <circle cx="70" cy="62" r="5" fill="#00ff00" className="opacity-80" />
+            <text x="70" y="75" textAnchor="middle" className="fill-white text-[8px]">CHARGING</text>
+
+            {/* AC/DC labels */}
+            <text x="25" y="92" textAnchor="middle" className="fill-white text-[8px] font-bold">AC IN</text>
+            <text x="115" y="92" textAnchor="middle" className="fill-white text-[8px] font-bold">DC OUT</text>
+
+            {/* Bluetooth icon */}
+            <circle cx="110" cy="60" r="8" fill="#0088ff" opacity="0.3" />
+            <text x="110" y="63" textAnchor="middle" className="fill-white text-[8px]">B</text>
+
+            {/* Victron branding */}
+            <text x="70" y="112" textAnchor="middle" className="fill-foreground text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+      }
+
+      case "inverter": {
+        const watts = properties.watts || properties.powerRating || 3000;
+        const kw = watts >= 1000 ? `${(watts / 1000).toFixed(1)}kW` : `${watts}W`;
+        
+        return (
+          <svg width="160" height="120" viewBox="0 0 160 120">
+            {/* Main housing */}
+            <rect x="10" y="15" width="140" height="90" fill="#2a2a3a" stroke="#3a3a4a" strokeWidth="2" rx="6" />
+
+            {/* Top panel */}
+            <rect x="15" y="20" width="130" height="25" fill="#1a1a2a" rx="3" />
+            <text x="80" y="30" textAnchor="middle" className="fill-cyan-400 text-xs font-bold">INVERTER</text>
+            <text x="80" y="40" textAnchor="middle" className="fill-white text-[10px]">{kw} Pure Sine</text>
+
+            {/* LED indicators */}
+            <circle cx="30" cy="58" r="4" fill="#00ff00" opacity="0.8" />
+            <text x="45" y="60" className="fill-gray-400 text-[8px]">ON</text>
+            <circle cx="30" cy="72" r="4" fill="#ffaa00" opacity="0.5" />
+            <text x="45" y="74" className="fill-gray-400 text-[8px]">FAULT</text>
+
+            {/* DC/AC labels */}
+            <rect x="15" y="85" width="50" height="15" fill="#1a1a1a" rx="2" />
+            <text x="40" y="95" textAnchor="middle" className="fill-red-400 text-[9px] font-bold">DC IN</text>
+            
+            <rect x="95" y="85" width="50" height="15" fill="#1a1a1a" rx="2" />
+            <text x="120" y="95" textAnchor="middle" className="fill-yellow-400 text-[9px] font-bold">AC OUT</text>
+
+            {/* Power display */}
+            <rect x="70" y="52" width="75" height="28" fill="#0a0a1a" rx="3" />
+            <text x="107" y="63" textAnchor="middle" className="fill-green-400 text-[10px] font-mono">{watts}W</text>
+            <text x="107" y="75" textAnchor="middle" className="fill-gray-400 text-[8px]">RATED</text>
+
+            {/* Label */}
+            <text x="80" y="10" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Inverter'}</text>
+          </svg>
+        );
+      }
+
       default:
         return (
           <svg width="140" height="100" viewBox="0 0 140 100">
             <rect x="10" y="15" width="120" height="70" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
-            <text x="70" y="55" textAnchor="middle" className="fill-white text-sm font-semibold">Component</text>
+            <text x="70" y="55" textAnchor="middle" className="fill-white text-sm font-semibold">{name || "Component"}</text>
           </svg>
         );
     }

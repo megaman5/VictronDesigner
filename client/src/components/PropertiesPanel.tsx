@@ -71,14 +71,21 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
     if (selectedComponent) {
       const props = selectedComponent.properties || {};
       setVoltage(props.voltage || 12);
-      setCurrent(props.current || props.amps || 0);
+      
+      // For components that use amps, prioritize amps over current
+      if (['mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect'].includes(selectedComponent.type)) {
+        setCurrent(props.amps || props.current || 0);
+      } else {
+        setCurrent(props.current || props.amps || 0);
+      }
+      
       setPower(props.power || props.watts || 0);
       setBatteryType(props.batteryType || 'LiFePO4');
       setCapacity(props.capacity || 200);
       setFuseRating(props.fuseRating || props.amps || 400);
       setWatts(props.watts || props.powerRating || 3000);
     }
-  }, [selectedComponent?.id, selectedComponent?.properties]);
+  }, [selectedComponent?.id, selectedComponent?.properties, selectedComponent?.type]);
 
   // Handle voltage change - recalculate current if power is set
   const handleVoltageChange = (newVoltage: number) => {
@@ -386,8 +393,236 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   </div>
                 )}
 
+                {/* MPPT-specific properties */}
+                {selectedComponent.type === 'mppt' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">MPPT Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Charge Current (A)</Label>
+                      <Input
+                        type="number"
+                        value={current || properties.amps || 30}
+                        data-testid="input-mppt-amps"
+                        onChange={(e) => {
+                          const amps = parseInt(e.target.value) || 0;
+                          setCurrent(amps);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, amps, current: amps }
+                          });
+                        }}
+                        step="5"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>System Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          setVoltage(v);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, voltage: v }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12V</SelectItem>
+                          <SelectItem value="24">24V</SelectItem>
+                          <SelectItem value="48">48V</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Max Charge Power: {(current || properties.amps || 30) * voltage}W
+                    </div>
+                  </div>
+                )}
+
+                {/* Blue Smart Charger-specific properties */}
+                {selectedComponent.type === 'blue-smart-charger' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Charger Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Charge Current (A)</Label>
+                      <Select
+                        value={(current || properties.amps || 15).toString()}
+                        onValueChange={(value) => {
+                          const amps = parseInt(value);
+                          setCurrent(amps);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, amps, current: amps }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select charge current" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5A</SelectItem>
+                          <SelectItem value="7">7A</SelectItem>
+                          <SelectItem value="10">10A</SelectItem>
+                          <SelectItem value="15">15A</SelectItem>
+                          <SelectItem value="20">20A</SelectItem>
+                          <SelectItem value="25">25A</SelectItem>
+                          <SelectItem value="30">30A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Battery Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          setVoltage(v);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, voltage: v }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12V</SelectItem>
+                          <SelectItem value="24">24V</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Charge Power: {(current || properties.amps || 15) * voltage}W
+                    </div>
+                  </div>
+                )}
+
+                {/* Orion DC-DC Charger-specific properties */}
+                {selectedComponent.type === 'orion-dc-dc' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">DC-DC Charger Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Charge Current (A)</Label>
+                      <Select
+                        value={(current || properties.amps || 30).toString()}
+                        onValueChange={(value) => {
+                          const amps = parseInt(value);
+                          setCurrent(amps);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, amps, current: amps }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select charge current" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12A</SelectItem>
+                          <SelectItem value="18">18A</SelectItem>
+                          <SelectItem value="30">30A</SelectItem>
+                          <SelectItem value="50">50A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Typical Orion-Tr Smart models: 12A, 18A, 30A, 50A
+                    </div>
+                  </div>
+                )}
+
+                {/* Battery Protect-specific properties */}
+                {selectedComponent.type === 'battery-protect' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Battery Protect Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Current Rating (A)</Label>
+                      <Select
+                        value={(current || properties.amps || 100).toString()}
+                        onValueChange={(value) => {
+                          const amps = parseInt(value);
+                          setCurrent(amps);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, amps, current: amps }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select current rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="65">65A</SelectItem>
+                          <SelectItem value="100">100A</SelectItem>
+                          <SelectItem value="220">220A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Protects loads from over-discharge and over-current
+                    </div>
+                  </div>
+                )}
+
+                {/* Phoenix Inverter-specific properties */}
+                {selectedComponent.type === 'phoenix-inverter' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Phoenix Inverter Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Power Rating (W)</Label>
+                      <Select
+                        value={(watts || properties.watts || 1200).toString()}
+                        onValueChange={(value) => {
+                          const w = parseInt(value);
+                          setWatts(w);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, watts: w, powerRating: w }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select power rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="375">375W</SelectItem>
+                          <SelectItem value="500">500W</SelectItem>
+                          <SelectItem value="800">800W</SelectItem>
+                          <SelectItem value="1200">1200W</SelectItem>
+                          <SelectItem value="1600">1600W</SelectItem>
+                          <SelectItem value="2000">2000W</SelectItem>
+                          <SelectItem value="3000">3000W</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Input Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          setVoltage(v);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, voltage: v }
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12V DC</SelectItem>
+                          <SelectItem value="24">24V DC</SelectItem>
+                          <SelectItem value="48">48V DC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                      Max DC Current: {Math.ceil((watts || properties.watts || 1200) / voltage * 1.25)}A (with 25% safety margin)
+                    </div>
+                  </div>
+                )}
+
                 {/* Generic component properties (for other component types) */}
-                {!['battery', 'inverter', 'fuse'].includes(selectedComponent.type) && (
+                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">
