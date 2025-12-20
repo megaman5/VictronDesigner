@@ -34,6 +34,25 @@ export interface AILogData {
     description?: string;
     recommendations?: string[];
   };
+  // Enhanced debugging fields
+  systemMessage?: string; // Full system prompt sent to AI
+  userMessage?: string; // Full user message sent to AI
+  rawResponse?: string; // Raw AI response before JSON extraction
+  validationFeedback?: {
+    score?: number;
+    errors?: string[];
+    warnings?: string[];
+    wireSizingIssues?: string[];
+    suggestions?: string[];
+  };
+  iterationHistory?: Array<{
+    iteration: number;
+    score: number;
+    errorCount: number;
+    warningCount: number;
+    validationIssues?: any[];
+    wireCalculations?: any[];
+  }>;
 }
 
 export interface EventData {
@@ -132,6 +151,18 @@ class ObservabilityStorage {
 
   // AI logging
   async logAIRequest(data: AILogData): Promise<{ id: string }> {
+    // Store enhanced debugging data in response metadata
+    const enhancedResponse = {
+      ...data.response,
+      _debug: {
+        systemMessage: data.systemMessage,
+        userMessage: data.userMessage,
+        rawResponse: data.rawResponse,
+        validationFeedback: data.validationFeedback,
+        iterationHistory: data.iterationHistory,
+      }
+    };
+
     const [log] = await db.insert(aiLogs)
       .values({
         sessionId: data.sessionId,
@@ -150,7 +181,7 @@ class ObservabilityStorage {
         wireCount: data.wireCount,
         errorMessage: data.errorMessage,
         model: data.model,
-        response: data.response,
+        response: enhancedResponse,
       })
       .returning({ id: aiLogs.id });
 

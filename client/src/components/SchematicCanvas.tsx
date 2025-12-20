@@ -34,6 +34,8 @@ interface SchematicCanvasProps {
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
   showWireLabels?: boolean;
+  onCopy?: (componentIds: string[]) => void;
+  onPaste?: () => void;
 }
 
 export function SchematicCanvas({
@@ -55,6 +57,8 @@ export function SchematicCanvas({
   wireConnectionMode = false,
   wireStartComponent = null,
   showWireLabels = true,
+  onCopy,
+  onPaste,
 }: SchematicCanvasProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(100);
@@ -496,6 +500,23 @@ export function SchematicCanvas({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Copy (Ctrl+C or Cmd+C)
+    if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+      if (selectedIds.length > 0) {
+        e.preventDefault();
+        onCopy?.(selectedIds);
+      }
+      return;
+    }
+    
+    // Paste (Ctrl+V or Cmd+V)
+    if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+      e.preventDefault();
+      onPaste?.();
+      return;
+    }
+    
+    // Delete
     if (e.key === "Delete" || e.key === "Backspace") {
       // Delete selected wire
       if (selectedWireId) {

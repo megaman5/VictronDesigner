@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -33,6 +33,7 @@ interface TopBarProps {
   onFeedback?: () => void;
   onLogin?: () => void;
   onLogout?: () => void;
+  onClear?: () => void;
   wireMode?: boolean;
   hasComponents?: boolean;
   designQualityScore?: number;
@@ -53,7 +54,8 @@ export function TopBar({
   onDesignQuality, 
   onFeedback,
   onLogin,
-  onLogout, 
+  onLogout,
+  onClear,
   wireMode = false, 
   hasComponents = false, 
   designQualityScore,
@@ -213,6 +215,26 @@ export function TopBar({
           >
             <Download className="h-5 w-5" />
           </Button>
+
+          {/* Clear All Button */}
+          {hasComponents && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClear}
+                  data-testid="button-clear-all"
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Clear all components and wires</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           <Button
             variant={showWireLabels ? "default" : "outline"}

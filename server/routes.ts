@@ -6,7 +6,7 @@ import { userDesignsStorage } from "./user-designs-storage";
 import { observabilityStorage } from "./observability-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
-import { calculateWireSize, calculateLoadRequirements } from "./wire-calculator";
+import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
 import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
@@ -691,12 +691,123 @@ JSON RESPONSE FORMAT:
         let feedbackContext = "";
         if (iteration > 0 && bestDesign) {
           const validation = bestDesign.validation;
+          
+          // Calculate wire sizing for all wires to provide detailed feedback
+          const wireCalculations: any[] = [];
+          if (bestDesign.wires) {
+            for (const wire of bestDesign.wires) {
+              try {
+                // Find connected components to determine current and voltage
+                const fromComp = bestDesign.components?.find((c: any) => c.id === wire.fromComponentId);
+                const toComp = bestDesign.components?.find((c: any) => c.id === wire.toComponentId);
+                
+                let current = wire.current || 0;
+                
+                // Determine if this is an AC wire based on polarity or component types
+                const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
+                                 toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
+                                 toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
+                                 toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
+                                 toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
+                                 toComp?.type === "inverter" || fromComp?.type === "inverter";
+                
+                // For AC wires, use AC voltage (110V/120V/220V/230V); for DC wires, use component voltage or system voltage
+                let voltage = isACWire ? getACVoltage(toComp || fromComp) : systemVoltage;
+                if (!isACWire) {
+                  if (fromComp?.properties?.voltage) {
+                    voltage = fromComp.properties.voltage;
+                  } else if (toComp?.properties?.voltage) {
+                    voltage = toComp.properties.voltage;
+                  }
+                }
+                
+                // Check if this is an inverter DC connection (dc-positive or dc-negative terminal)
+                const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+                                      (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
+                                      (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+                                      (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
+                
+                // Calculate current from load if not set
+                if (current === 0) {
+                  // For inverter DC connections, calculate from connected AC loads
+                  if (isInverterDC) {
+                    const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
+                      ? fromComp.id
+                      : toComp?.id;
+                    if (inverterId && bestDesign.components && bestDesign.wires) {
+                      const inverterDC = calculateInverterDCInput(inverterId, bestDesign.components, bestDesign.wires, systemVoltage);
+                      current = inverterDC.dcCurrent;
+                    }
+                  } else if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+                    const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
+                    const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      current = loadWatts / loadVoltage;
+                    }
+                  } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+                    const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
+                    const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      current = loadWatts / loadVoltage;
+                    }
+                  }
+                }
+                
+                if (current > 0 && wire.length) {
+                  const calc = calculateWireSize({
+                    current,
+                    length: wire.length,
+                    voltage,
+                    conductorMaterial: (wire as any).conductorMaterial || "copper",
+                  });
+                  
+                  wireCalculations.push({
+                    wireId: wire.id,
+                    fromComponent: fromComp?.name || wire.fromComponentId,
+                    toComponent: toComp?.name || wire.toComponentId,
+                    currentGauge: wire.gauge,
+                    recommendedGauge: calc.recommendedGauge,
+                    voltageDrop: calc.voltageDropPercent,
+                    current,
+                    length: wire.length,
+                    status: calc.status,
+                    message: calc.message,
+                  });
+                }
+              } catch (err) {
+                // Skip wires that can't be calculated
+              }
+            }
+          }
+          
+          // Build wire sizing feedback
+          const wireSizingIssues: string[] = [];
+          wireCalculations.forEach((calc: any) => {
+            if (calc.currentGauge !== calc.recommendedGauge) {
+              wireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% voltage drop)`
+              );
+            }
+            if (calc.voltageDrop > 3) {
+              wireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
+              );
+            } else if (calc.voltageDrop > 2.5) {
+              wireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
+              );
+            }
+          });
+          
           feedbackContext = `\n\nPREVIOUS ITERATION FEEDBACK (Score: ${validation.score}/100):
 - Errors: ${validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message).join(', ')}
 - Warnings: ${validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message).join(', ')}
+${wireSizingIssues.length > 0 ? `- Wire Sizing Issues:\n  ${wireSizingIssues.map(i => `  • ${i}`).join('\n')}` : ''}
 - Suggestions: ${validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion).join(', ')}
 
-Please address these issues in your next design.`;
+Please address these issues in your next design. Pay special attention to wire gauge sizing based on current and voltage drop calculations.`;
         }
 
         const systemMessage = `You are a Victron energy system design expert. Design a complete electrical schematic based on the user's requirements.
@@ -768,7 +879,25 @@ CRITICAL WIRING RULES:
 3. Use bus bars when 3+ connections needed (separate bars for positive/negative)
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
-6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
+6. Wire gauge sizing - CRITICAL: You MUST calculate gauge based on BOTH current AND voltage drop:
+   - Calculate current from load: I = P / V (watts / voltage)
+   - For each wire, calculate required gauge using: current, length, and 3% max voltage drop
+   - Example calculations:
+     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 35A, <3% drop)
+     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 115A, <3% drop)
+     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "1/0 AWG" (handles 150A, <3% drop)
+   - Quick reference (for SHORT runs <5ft only):
+     * 0-25A: "10 AWG"
+     * 25-40A: "8 AWG"
+     * 40-60A: "6 AWG"
+     * 60-100A: "4 AWG"
+     * 100-150A: "2 AWG"
+     * 150-200A: "1 AWG"
+     * 200-250A: "1/0 AWG"
+     * 250-300A: "2/0 AWG"
+   - For LONGER runs, use LARGER gauge to keep voltage drop <3%
+   - ALWAYS err on the side of larger gauge for safety
+   - Wire gauge format: "10 AWG" (with space between number and AWG)
 7. Wire length defaults (canvas is logical, not physical - use these defaults):
    - Battery to fuse: 2 feet
    - Battery to SmartShunt: 3 feet
@@ -982,6 +1111,10 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
       let bestDesign: any = null;
       let bestScore = 0;
       const iterationHistory: any[] = [];
+      
+      // Store full messages at the start for observability
+      let fullSystemMessage = "";
+      let fullUserMessage = "";
 
       console.log(`[SSE] Starting iteration loop: ${maxIterations} iterations`);
 
@@ -989,16 +1122,127 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         console.log(`[SSE] Iteration ${iteration + 1} of ${maxIterations} starting...`);
         sendEvent('iteration-start', { iteration: iteration + 1, maxIterations });
 
-        // Build feedback context from previous iteration
+        try {
+          // Build feedback context from previous iteration
         let feedbackContext = "";
         if (iteration > 0 && bestDesign) {
           const validation = bestDesign.validation;
+          // Calculate wire sizing for all wires to provide detailed feedback
+          const wireCalculations: any[] = [];
+          if (bestDesign.wires) {
+            for (const wire of bestDesign.wires) {
+              try {
+                // Find connected components to determine current and voltage
+                const fromComp = bestDesign.components?.find((c: any) => c.id === wire.fromComponentId);
+                const toComp = bestDesign.components?.find((c: any) => c.id === wire.toComponentId);
+                
+                let current = wire.current || 0;
+                
+                // Determine if this is an AC wire based on polarity or component types
+                const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
+                                 toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
+                                 toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
+                                 toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
+                                 toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
+                                 toComp?.type === "inverter" || fromComp?.type === "inverter";
+                
+                // For AC wires, use AC voltage (110V/120V/220V/230V); for DC wires, use component voltage or system voltage
+                let voltage = isACWire ? getACVoltage(toComp || fromComp) : systemVoltage;
+                if (!isACWire) {
+                  if (fromComp?.properties?.voltage) {
+                    voltage = fromComp.properties.voltage;
+                  } else if (toComp?.properties?.voltage) {
+                    voltage = toComp.properties.voltage;
+                  }
+                }
+                
+                // Check if this is an inverter DC connection (dc-positive or dc-negative terminal)
+                const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+                                      (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
+                                      (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+                                      (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
+                
+                // Calculate current from load if not set
+                if (current === 0) {
+                  // For inverter DC connections, calculate from connected AC loads
+                  if (isInverterDC) {
+                    const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
+                      ? fromComp.id
+                      : toComp?.id;
+                    if (inverterId && bestDesign.components && bestDesign.wires) {
+                      const inverterDC = calculateInverterDCInput(inverterId, bestDesign.components, bestDesign.wires, systemVoltage);
+                      current = inverterDC.dcCurrent;
+                    }
+                  } else if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+                    const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
+                    const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      current = loadWatts / loadVoltage;
+                    }
+                  } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+                    const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
+                    const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      current = loadWatts / loadVoltage;
+                    }
+                  }
+                }
+                
+                if (current > 0 && wire.length) {
+                  const calc = calculateWireSize({
+                    current,
+                    length: wire.length,
+                    voltage,
+                    conductorMaterial: (wire as any).conductorMaterial || "copper",
+                  });
+                  
+                  wireCalculations.push({
+                    wireId: wire.id,
+                    fromComponent: fromComp?.name || wire.fromComponentId,
+                    toComponent: toComp?.name || wire.toComponentId,
+                    currentGauge: wire.gauge,
+                    recommendedGauge: calc.recommendedGauge,
+                    voltageDrop: calc.voltageDropPercent,
+                    current,
+                    length: wire.length,
+                    status: calc.status,
+                    message: calc.message,
+                  });
+                }
+              } catch (err) {
+                // Skip wires that can't be calculated
+              }
+            }
+          }
+          
+          // Build wire sizing feedback
+          const wireSizingIssues: string[] = [];
+          wireCalculations.forEach((calc: any) => {
+            if (calc.currentGauge !== calc.recommendedGauge) {
+              wireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% voltage drop)`
+              );
+            }
+            if (calc.voltageDrop > 3) {
+              wireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
+              );
+            } else if (calc.voltageDrop > 2.5) {
+              wireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
+              );
+            }
+          });
+          
           feedbackContext = `\n\nPREVIOUS ITERATION FEEDBACK (Score: ${validation.score}/100):
 - Errors: ${validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message).join(', ')}
 - Warnings: ${validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message).join(', ')}
+${wireSizingIssues.length > 0 ? `- Wire Sizing Issues:\n  ${wireSizingIssues.map(i => `  • ${i}`).join('\n')}` : ''}
 - Suggestions: ${validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion).join(', ')}
 
-Please address these issues in your next design.`;
+Please address these issues in your next design. Pay special attention to wire gauge sizing based on current and voltage drop calculations.`;
         }
 
         const systemMessage = `You are a Victron energy system design expert. Design a complete electrical schematic based on the user's requirements.
@@ -1070,7 +1314,25 @@ CRITICAL WIRING RULES:
 3. Use bus bars when 3+ connections needed (separate bars for positive/negative)
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
-6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
+6. Wire gauge sizing - CRITICAL: You MUST calculate gauge based on BOTH current AND voltage drop:
+   - Calculate current from load: I = P / V (watts / voltage)
+   - For each wire, calculate required gauge using: current, length, and 3% max voltage drop
+   - Example calculations:
+     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 35A, <3% drop)
+     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 115A, <3% drop)
+     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "1/0 AWG" (handles 150A, <3% drop)
+   - Quick reference (for SHORT runs <5ft only):
+     * 0-25A: "10 AWG"
+     * 25-40A: "8 AWG"
+     * 40-60A: "6 AWG"
+     * 60-100A: "4 AWG"
+     * 100-150A: "2 AWG"
+     * 150-200A: "1 AWG"
+     * 200-250A: "1/0 AWG"
+     * 250-300A: "2/0 AWG"
+   - For LONGER runs, use LARGER gauge to keep voltage drop <3%
+   - ALWAYS err on the side of larger gauge for safety
+   - Wire gauge format: "10 AWG" (with space between number and AWG)
 7. Wire length defaults (canvas is logical, not physical - use these defaults):
    - Battery to fuse: 2 feet
    - Battery to SmartShunt: 3 feet
@@ -1160,35 +1422,145 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           ? prompt
           : `${prompt}\n\nImprove the previous design based on the feedback above.`;
 
-        const completion = await openai.chat.completions.create({
+        // Store full messages for observability (update on each iteration)
+        fullSystemMessage = systemMessage;
+        fullUserMessage = userMessage;
+
+        // Send event that we're starting AI request
+        sendEvent('ai-request-start', {
+          iteration: iteration + 1,
+          promptLength: userMessage.length,
+          systemMessageLength: systemMessage.length
+        });
+
+        // Stream the AI response
+        const stream = await openai.chat.completions.create({
           model: "gpt-5.1-chat-latest",
           messages: [
             { role: "system", content: systemMessage },
             { role: "user", content: userMessage }
           ],
           max_completion_tokens: 4000,
+          stream: true, // Enable streaming
         });
 
-        const content = completion.choices[0].message.content;
+        let content = "";
+        let rawResponse = ""; // Store raw response for debugging
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let lastTokenTime = Date.now();
+        let tokenBuffer = "";
+
+        // Stream tokens as they arrive
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+          if (delta?.content) {
+            content += delta.content;
+            rawResponse += delta.content; // Accumulate raw response
+            tokenBuffer += delta.content;
+            
+            // Send token update every 50ms to avoid overwhelming the client
+            const now = Date.now();
+            if (now - lastTokenTime > 50) {
+              sendEvent('ai-token', {
+                iteration: iteration + 1,
+                token: tokenBuffer,
+                accumulatedLength: content.length
+              });
+              tokenBuffer = "";
+              lastTokenTime = now;
+            }
+          }
+          
+          // Track token usage (may come in final chunk)
+          if (chunk.usage) {
+            promptTokens = chunk.usage.prompt_tokens || promptTokens;
+            completionTokens = chunk.usage.completion_tokens || completionTokens;
+          }
+        }
+
+        // Send any remaining buffered tokens
+        if (tokenBuffer) {
+          sendEvent('ai-token', {
+            iteration: iteration + 1,
+            token: tokenBuffer,
+            accumulatedLength: content.length
+          });
+        }
+
+        // Send final token count
+        sendEvent('ai-response-complete', {
+          iteration: iteration + 1,
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+          responseLength: content.length
+        });
+
         if (!content) {
-          throw new Error("Empty response from AI");
+          console.error(`[SSE] Iteration ${iteration + 1}: Empty response from AI`);
+          sendEvent('iteration-complete', {
+            iteration: iteration + 1,
+            score: 0,
+            errorCount: 1,
+            warningCount: 0,
+            isBest: false,
+            error: "Empty response from AI"
+          });
+          continue;
         }
 
         let response: AISystemResponse;
         try {
           const extracted = extractJSON(content);
           response = JSON.parse(extracted);
-        } catch (err) {
-          console.error(`Failed to parse AI response - AI returned: ${content.substring(0, 500)}...`);
-          throw new Error(`AI returned invalid JSON: ${content.substring(0, 100)}...`);
+        } catch (err: any) {
+          console.error(`[SSE] Iteration ${iteration + 1}: Failed to parse AI response - AI returned: ${content.substring(0, 500)}...`);
+          sendEvent('iteration-complete', {
+            iteration: iteration + 1,
+            score: 0,
+            errorCount: 1,
+            warningCount: 0,
+            isBest: false,
+            error: `Invalid JSON: ${err.message}`
+          });
+          continue;
+        }
+
+        // Check if response has components
+        if (!response.components || !Array.isArray(response.components) || response.components.length === 0) {
+          console.error(`[SSE] Iteration ${iteration + 1}: No components in response`);
+          sendEvent('iteration-complete', {
+            iteration: iteration + 1,
+            score: 0,
+            errorCount: 1,
+            warningCount: 0,
+            isBest: false,
+            error: "No components generated"
+          });
+          continue;
         }
 
         // Validate the design
-        const validation = validateDesign(
-          response.components,
-          response.wires,
-          systemVoltage
-        );
+        let validation;
+        try {
+          validation = validateDesign(
+            response.components,
+            response.wires || [],
+            systemVoltage
+          );
+        } catch (err: any) {
+          console.error(`[SSE] Iteration ${iteration + 1}: Validation error:`, err);
+          sendEvent('iteration-complete', {
+            iteration: iteration + 1,
+            score: 0,
+            errorCount: 1,
+            warningCount: 0,
+            isBest: false,
+            error: `Validation error: ${err.message}`
+          });
+          continue;
+        }
 
         // Generate visual feedback (optional, for debugging)
         let visualFeedback = null;
@@ -1216,8 +1588,8 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           console.log(`  No issues found`);
         }
 
-        // Update best design if this is better
-        if (validation.score > bestScore) {
+        // Update best design if this is better, or if we don't have one yet
+        if (validation.score > bestScore || !bestDesign) {
           bestScore = validation.score;
           bestDesign = {
             ...response,
@@ -1236,7 +1608,108 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
         // Check if we've achieved minimum quality
         if (validation.score >= minQualityScore) {
-          // Log success to observability
+          // Calculate wire sizing for observability (reuse same logic as feedback)
+          const wireCalculationsForObs: any[] = [];
+          if (response.wires) {
+            for (const wire of response.wires) {
+              try {
+                const fromComp = response.components?.find((c: any) => c.id === wire.fromComponentId);
+                const toComp = response.components?.find((c: any) => c.id === wire.toComponentId);
+                
+                let current = wire.current || 0;
+                let voltage = systemVoltage;
+                
+                if (fromComp?.properties?.voltage) {
+                  voltage = fromComp.properties.voltage;
+                } else if (toComp?.properties?.voltage) {
+                  voltage = toComp.properties.voltage;
+                }
+                
+                // Determine if this is an AC wire
+                const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
+                                 toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
+                                 toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
+                                 toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
+                                 toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
+                                 toComp?.type === "inverter" || fromComp?.type === "inverter";
+                
+                // For AC wires, use 120V
+                if (isACWire) {
+                  voltage = 120;
+                }
+                
+                if (current === 0) {
+                  if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+                    const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+                    // AC loads use 120V, DC loads use component voltage or system voltage
+                    const loadVoltage = toComp.type === "ac-load" ? 120 : (toComp.properties?.voltage as number || voltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      current = loadWatts / loadVoltage;
+                    }
+                  } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+                    const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+                    // AC loads use 120V, DC loads use component voltage or system voltage
+                    const loadVoltage = fromComp.type === "ac-load" ? 120 : (fromComp.properties?.voltage as number || voltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      current = loadWatts / loadVoltage;
+                    }
+                  }
+                }
+                
+                if (current > 0 && wire.length) {
+                  const calc = calculateWireSize({
+                    current,
+                    length: wire.length,
+                    voltage,
+                    conductorMaterial: (wire as any).conductorMaterial || "copper",
+                  });
+                  
+                  wireCalculationsForObs.push({
+                    wireId: wire.id,
+                    fromComponent: fromComp?.name || wire.fromComponentId,
+                    toComponent: toComp?.name || wire.toComponentId,
+                    currentGauge: wire.gauge,
+                    recommendedGauge: calc.recommendedGauge,
+                    voltageDrop: calc.voltageDropPercent,
+                    current,
+                    length: wire.length,
+                  });
+                }
+              } catch (err) {
+                // Skip wires that can't be calculated
+              }
+            }
+          }
+
+          // Build wire sizing issues for observability
+          const currentWireSizingIssues: string[] = [];
+          wireCalculationsForObs.forEach((calc: any) => {
+            if (calc.currentGauge !== calc.recommendedGauge) {
+              currentWireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% voltage drop)`
+              );
+            }
+            if (calc.voltageDrop > 3) {
+              currentWireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
+              );
+            } else if (calc.voltageDrop > 2.5) {
+              currentWireSizingIssues.push(
+                `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
+              );
+            }
+          });
+
+          // Build validation feedback for observability
+          const validationFeedback = {
+            score: validation.score,
+            errors: validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message),
+            warnings: validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message),
+            wireSizingIssues: currentWireSizingIssues,
+            suggestions: validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion),
+          };
+
+          // Log success to observability with full debugging info
           await observabilityStorage.logAIRequest({
             visitorId,
             userId: user?.id,
@@ -1252,6 +1725,16 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
             componentCount: bestDesign.components?.length || 0,
             wireCount: bestDesign.wires?.length || 0,
             model: "gpt-5.1-chat-latest",
+            systemMessage: fullSystemMessage,
+            userMessage: fullUserMessage,
+            rawResponse: rawResponse,
+            validationFeedback,
+            iterationHistory: iterationHistory.map((h: any) => ({
+              iteration: h.iteration,
+              score: h.score,
+              errorCount: h.errorCount,
+              warningCount: h.warningCount,
+            })),
             response: {
               components: bestDesign.components,
               wires: bestDesign.wires,
@@ -1269,13 +1752,27 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           res.end();
           return;
         }
+        } catch (iterationError: any) {
+          // Log iteration error but continue to next iteration
+          console.error(`[SSE] Iteration ${iteration + 1} failed:`, iterationError);
+          sendEvent('iteration-complete', {
+            iteration: iteration + 1,
+            score: 0,
+            errorCount: 1,
+            warningCount: 0,
+            isBest: false,
+            error: iterationError.message || "Iteration failed"
+          });
+          // Continue to next iteration - don't break the loop
+        }
       }
 
       // Return best design after max iterations
       if (!bestDesign || !bestDesign.components || bestDesign.components.length === 0) {
         console.log('[SSE] All iterations failed - no valid design generated');
+        console.log('[SSE] Iteration history:', JSON.stringify(iterationHistory, null, 2));
         
-        // Log failure to observability
+        // Log failure to observability with full debugging info
         await observabilityStorage.logAIRequest({
           visitorId,
           userId: user?.id,
@@ -1287,12 +1784,15 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           success: false,
           durationMs: Date.now() - startTime,
           iterations: maxIterations,
-          errorMessage: "All iterations failed - no valid design generated",
+          errorMessage: "All iterations failed - no valid design generated. Check iteration history for details.",
           model: "gpt-5.1-chat-latest",
+          systemMessage: fullSystemMessage,
+          userMessage: fullUserMessage,
+          iterationHistory: iterationHistory,
         });
         
         sendEvent('error', {
-          error: 'Failed to generate a valid design after all iterations. All attempts had validation errors.',
+          error: 'Failed to generate a valid design after all iterations. Check iteration history for details.',
           iterationHistory,
           finalIteration: maxIterations
         });
@@ -1300,7 +1800,108 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         return;
       }
 
-      // Log success to observability
+      // Calculate wire sizing for final observability log
+      const finalWireCalculations: any[] = [];
+      if (bestDesign.wires) {
+        for (const wire of bestDesign.wires) {
+          try {
+            const fromComp = bestDesign.components?.find((c: any) => c.id === wire.fromComponentId);
+            const toComp = bestDesign.components?.find((c: any) => c.id === wire.toComponentId);
+            
+            let current = wire.current || 0;
+            let voltage = systemVoltage;
+            
+            if (fromComp?.properties?.voltage) {
+              voltage = fromComp.properties.voltage;
+            } else if (toComp?.properties?.voltage) {
+              voltage = toComp.properties.voltage;
+            }
+            
+            // Determine if this is an AC wire
+            const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
+                             toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
+                             toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
+                             toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
+                             toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
+                             toComp?.type === "inverter" || fromComp?.type === "inverter";
+            
+            // For AC wires, use 120V
+            if (isACWire) {
+              voltage = 120;
+            }
+            
+            if (current === 0) {
+              if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+                const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+                // AC loads use 120V, DC loads use component voltage or system voltage
+                const loadVoltage = toComp.type === "ac-load" ? 120 : (toComp.properties?.voltage as number || voltage);
+                if (loadWatts > 0 && loadVoltage > 0) {
+                  current = loadWatts / loadVoltage;
+                }
+              } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+                const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+                // AC loads use 120V, DC loads use component voltage or system voltage
+                const loadVoltage = fromComp.type === "ac-load" ? 120 : (fromComp.properties?.voltage as number || voltage);
+                if (loadWatts > 0 && loadVoltage > 0) {
+                  current = loadWatts / loadVoltage;
+                }
+              }
+            }
+            
+            if (current > 0 && wire.length) {
+              const calc = calculateWireSize({
+                current,
+                length: wire.length,
+                voltage,
+                conductorMaterial: (wire as any).conductorMaterial || "copper",
+              });
+              
+              finalWireCalculations.push({
+                wireId: wire.id,
+                fromComponent: fromComp?.name || wire.fromComponentId,
+                toComponent: toComp?.name || wire.toComponentId,
+                currentGauge: wire.gauge,
+                recommendedGauge: calc.recommendedGauge,
+                voltageDrop: calc.voltageDropPercent,
+                current,
+                length: wire.length,
+              });
+            }
+          } catch (err) {
+            // Skip wires that can't be calculated
+          }
+        }
+      }
+
+      // Build final wire sizing issues
+      const finalWireSizingIssues: string[] = [];
+      finalWireCalculations.forEach((calc: any) => {
+        if (calc.currentGauge !== calc.recommendedGauge) {
+          finalWireSizingIssues.push(
+            `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% voltage drop)`
+          );
+        }
+        if (calc.voltageDrop > 3) {
+          finalWireSizingIssues.push(
+            `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
+          );
+        } else if (calc.voltageDrop > 2.5) {
+          finalWireSizingIssues.push(
+            `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
+          );
+        }
+      });
+
+      // Build final validation feedback
+      const finalValidationFeedback = bestDesign.validation ? {
+        score: bestDesign.validation.score,
+        errors: bestDesign.validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message),
+        warnings: bestDesign.validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message),
+        wireSizingIssues: finalWireSizingIssues,
+        suggestions: bestDesign.validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion),
+      } : undefined;
+
+      // Log success to observability with full debugging info
       await observabilityStorage.logAIRequest({
         visitorId,
         userId: user?.id,
@@ -1316,6 +1917,10 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         componentCount: bestDesign.components?.length || 0,
         wireCount: bestDesign.wires?.length || 0,
         model: "gpt-5.1-chat-latest",
+        systemMessage: fullSystemMessage,
+        userMessage: fullUserMessage,
+        validationFeedback: finalValidationFeedback,
+        iterationHistory: iterationHistory,
         response: {
           components: bestDesign.components,
           wires: bestDesign.wires,
