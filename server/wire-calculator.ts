@@ -183,14 +183,14 @@ export function calculateLoadRequirements(components: any[]): {
   let solarPower = 0;
 
   components.forEach((comp) => {
-    const power = comp.properties?.power || 0;
+    const watts = comp.properties?.watts || comp.properties?.power || 0;
     
     if (comp.type === "dc-load") {
-      dcLoads += power;
+      dcLoads += watts;
     } else if (comp.type === "ac-load") {
-      acLoads += power;
+      acLoads += watts;
     } else if (comp.type === "solar-panel") {
-      solarPower += power;
+      solarPower += watts;
     }
   });
 

@@ -57,6 +57,7 @@ export class DesignValidator {
     this.validateLayout();
     this.validateTerminalConnections();
     this.validateAIQuality();
+    this.validatePowerCapacity();
 
     // Calculate metrics
     const metrics = this.calculateMetrics();
@@ -836,6 +837,164 @@ export class DesignValidator {
         suggestion: "Ensure all components are properly wired",
       });
     }
+  }
+
+  /**
+   * Validate power capacity limits
+   */
+  private validatePowerCapacity(): void {
+    // Get system voltage
+    const battery = this.components.find(c => c.type === "battery");
+    const batteryVoltage = battery?.properties?.voltage as number | undefined;
+    const systemVoltage = batteryVoltage || this.systemVoltage;
+
+    // Calculate total loads
+    let totalDCLoads = 0;
+    let totalACLoads = 0;
+    let totalSolarWatts = 0;
+
+    this.components.forEach(comp => {
+      const watts = (comp.properties?.watts || comp.properties?.power || 0) as number;
+      
+      if (comp.type === "dc-load") {
+        totalDCLoads += watts;
+      } else if (comp.type === "ac-load") {
+        totalACLoads += watts;
+      } else if (comp.type === "solar-panel") {
+        totalSolarWatts += watts;
+      }
+    });
+
+    // Check DC loads vs battery capacity
+    if (battery && systemVoltage) {
+      const batteryCapacity = (battery.properties?.capacity as number || 0);
+      const batteryWh = batteryCapacity * systemVoltage;
+      
+      // Calculate peak DC load current
+      const peakDCCurrent = totalDCLoads / systemVoltage;
+      
+      // Check if loads exceed battery capacity (assuming 50% depth of discharge)
+      const usableCapacity = batteryWh * 0.5; // 50% DOD for safety
+      const loadEnergyPerHour = totalDCLoads; // watts = watt-hours per hour
+      const hoursAtFullLoad = usableCapacity / loadEnergyPerHour;
+      
+      if (loadEnergyPerHour > 0 && hoursAtFullLoad < 1) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: `DC loads (${totalDCLoads}W) exceed usable battery capacity (${usableCapacity.toFixed(0)}Wh usable from ${batteryWh.toFixed(0)}Wh total)`,
+          componentIds: this.components.filter(c => c.type === "dc-load").map(c => c.id),
+          suggestion: `Reduce DC loads or increase battery capacity. Current battery provides ${hoursAtFullLoad.toFixed(1)} hours at full load.`,
+        });
+      } else if (hoursAtFullLoad < 4) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `DC loads (${totalDCLoads}W) will drain battery quickly (${hoursAtFullLoad.toFixed(1)} hours at full load)`,
+          componentIds: this.components.filter(c => c.type === "dc-load").map(c => c.id),
+          suggestion: `Consider increasing battery capacity or reducing loads for longer runtime.`,
+        });
+      }
+    }
+
+    // Check AC loads vs inverter capacity
+    const inverters = this.components.filter(c => c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter");
+    
+    if (inverters.length > 0 && totalACLoads > 0) {
+      const totalInverterCapacity = inverters.reduce((sum, inv) => {
+        const watts = (inv.properties?.watts || inv.properties?.powerRating || inv.properties?.power || 0) as number;
+        return sum + watts;
+      }, 0);
+
+      if (totalACLoads > totalInverterCapacity) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: `AC loads (${totalACLoads}W) exceed inverter capacity (${totalInverterCapacity}W)`,
+          componentIds: [
+            ...this.components.filter(c => c.type === "ac-load").map(c => c.id),
+            ...inverters.map(c => c.id)
+          ],
+          suggestion: `Reduce AC loads or add/increase inverter capacity. Need ${totalACLoads}W, have ${totalInverterCapacity}W.`,
+        });
+      } else if (totalACLoads > totalInverterCapacity * 0.8) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `AC loads (${totalACLoads}W) are ${((totalACLoads / totalInverterCapacity) * 100).toFixed(0)}% of inverter capacity`,
+          componentIds: this.components.filter(c => c.type === "ac-load").map(c => c.id),
+          suggestion: `Consider larger inverter for safety margin or reduce peak loads.`,
+        });
+      }
+    } else if (totalACLoads > 0 && inverters.length === 0) {
+      this.issues.push({
+        severity: "error",
+        category: "electrical",
+        message: `AC loads (${totalACLoads}W) present but no inverter found`,
+        componentIds: this.components.filter(c => c.type === "ac-load").map(c => c.id),
+        suggestion: `Add an inverter to power AC loads.`,
+      });
+    }
+
+    // Check solar panel output vs charging needs
+    if (battery && systemVoltage && totalSolarWatts > 0) {
+      const batteryCapacity = (battery.properties?.capacity as number || 0);
+      const batteryAh = batteryCapacity;
+      
+      // Estimate charging current needed (assume 0.2C charge rate for lithium, 0.1C for lead-acid)
+      const batteryType = (battery.properties?.batteryType as string || "").toLowerCase();
+      const chargeRate = batteryType.includes("lifepo4") || batteryType.includes("lithium") ? 0.2 : 0.1;
+      const recommendedChargeCurrent = batteryAh * chargeRate;
+      const recommendedSolarWatts = recommendedChargeCurrent * systemVoltage;
+      
+      // Check if solar is sufficient for charging
+      if (totalSolarWatts < recommendedSolarWatts * 0.5) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `Solar panel output (${totalSolarWatts}W) may be insufficient for battery charging`,
+          componentIds: this.components.filter(c => c.type === "solar-panel").map(c => c.id),
+          suggestion: `Recommended: ${recommendedSolarWatts.toFixed(0)}W solar for ${batteryAh}Ah battery. Current: ${totalSolarWatts}W.`,
+        });
+      }
+    }
+
+    // Check wire capacity vs load current (enhanced check)
+    this.wires.forEach(wire => {
+      const fromComp = this.components.find(c => c.id === wire.fromComponentId);
+      const toComp = this.components.find(c => c.id === wire.toComponentId);
+      
+      if (!fromComp || !toComp) return;
+      
+      // Calculate expected current based on connected load
+      let expectedCurrent = wire.current || 0;
+      
+      // If wire connects to a load, calculate current from load watts
+      if (toComp.type === "dc-load" || toComp.type === "ac-load") {
+        const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+        const loadVoltage = (toComp.properties?.voltage as number || systemVoltage || 12);
+        if (loadWatts > 0 && loadVoltage > 0) {
+          expectedCurrent = loadWatts / loadVoltage;
+        }
+      }
+      
+      // Check wire gauge capacity
+      if (wire.gauge && expectedCurrent > 0) {
+        const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
+        const maxAmpacity = getWireAmpacity(normalizedGauge, "75C", 30, 1.0);
+        
+        if (maxAmpacity > 0 && expectedCurrent > maxAmpacity) {
+          this.issues.push({
+            severity: "error",
+            category: "wire-sizing",
+            message: `Wire to ${this.getComponentName(toComp.id)} carries ${expectedCurrent.toFixed(1)}A but ${wire.gauge} is rated for ${maxAmpacity.toFixed(1)}A max`,
+            wireId: wire.id,
+            componentIds: [toComp.id],
+            suggestion: `Upgrade wire to larger gauge (e.g., ${this.suggestWireGauge(expectedCurrent)}) or reduce load.`,
+          });
+        }
+      }
+    });
   }
 
   /**
