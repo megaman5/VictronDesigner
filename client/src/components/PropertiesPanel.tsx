@@ -401,7 +401,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       <Label>Charge Current (A)</Label>
                       <Input
                         type="number"
-                        value={current || properties.amps || 30}
+                        value={current || 30}
                         data-testid="input-mppt-amps"
                         onChange={(e) => {
                           const amps = parseInt(e.target.value) || 0;
@@ -436,7 +436,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Max Charge Power: {(current || properties.amps || 30) * voltage}W
+                      Max Charge Power: {(current || 30) * voltage}W
                     </div>
                   </div>
                 )}
@@ -448,7 +448,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <div className="space-y-2">
                       <Label>Charge Current (A)</Label>
                       <Select
-                        value={(current || properties.amps || 15).toString()}
+                        value={(current || 15).toString()}
                         onValueChange={(value) => {
                           const amps = parseInt(value);
                           setCurrent(amps);
@@ -493,7 +493,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Charge Power: {(current || properties.amps || 15) * voltage}W
+                      Charge Power: {(current || 15) * voltage}W
                     </div>
                   </div>
                 )}
@@ -505,7 +505,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <div className="space-y-2">
                       <Label>Charge Current (A)</Label>
                       <Select
-                        value={(current || properties.amps || 30).toString()}
+                        value={(current || 30).toString()}
                         onValueChange={(value) => {
                           const amps = parseInt(value);
                           setCurrent(amps);
@@ -538,7 +538,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <div className="space-y-2">
                       <Label>Current Rating (A)</Label>
                       <Select
-                        value={(current || properties.amps || 100).toString()}
+                        value={(current || 100).toString()}
                         onValueChange={(value) => {
                           const amps = parseInt(value);
                           setCurrent(amps);
@@ -570,7 +570,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <div className="space-y-2">
                       <Label>Power Rating (W)</Label>
                       <Select
-                        value={(watts || properties.watts || 1200).toString()}
+                        value={(watts || 1200).toString()}
                         onValueChange={(value) => {
                           const w = parseInt(value);
                           setWatts(w);
@@ -616,7 +616,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Max DC Current: {Math.ceil((watts || properties.watts || 1200) / voltage * 1.25)}A (with 25% safety margin)
+                      Max DC Current: {Math.ceil((watts || 1200) / voltage * 1.25)}A (with 25% safety margin)
                     </div>
                   </div>
                 )}
