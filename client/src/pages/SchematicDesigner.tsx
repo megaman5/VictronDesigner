@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { trackAction } from "@/lib/tracking";
+import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 import { AlertTriangle } from "lucide-react";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 
@@ -41,10 +42,11 @@ export default function SchematicDesigner() {
   const [currentDesignName, setCurrentDesignName] = useState<string | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
-  const [wireCalculation, setWireCalculation] = useState<WireCalculation | undefined>();
+  const [wireCalculations, setWireCalculations] = useState<Record<string, WireCalculation>>({});
   const [draggedComponentType, setDraggedComponentType] = useState<string | null>(null);
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
+  const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
 
   // Initialize state from localStorage if available (lazy initialization)
   const initializeState = () => {
@@ -584,16 +586,71 @@ export default function SchematicDesigner() {
     },
   });
 
-  // Wire calculation
-  const calculateWire = async (wire: Wire) => {
+  // Wire calculation - uses actual wire properties and connected load data
+  const calculateWire = async (wire: Wire, overrideVoltage?: number) => {
     try {
+      // Calculate current from connected load if not set
+      let current = wire.current || 0;
+      let voltage = overrideVoltage || systemVoltage;
+      
+      if (current === 0) {
+        // Find connected components to calculate current
+        const fromComp = components.find(c => c.id === wire.fromComponentId);
+        const toComp = components.find(c => c.id === wire.toComponentId);
+        
+        // Use component voltage if available
+        if (fromComp?.properties?.voltage) {
+          voltage = fromComp.properties.voltage as number;
+        } else if (toComp?.properties?.voltage) {
+          voltage = toComp.properties.voltage as number;
+        }
+        
+        // Calculate current from load watts
+        if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+          const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+          const loadVoltage = (toComp.properties?.voltage as number || voltage);
+          if (loadWatts > 0 && loadVoltage > 0) {
+            current = loadWatts / loadVoltage;
+            voltage = loadVoltage; // Use load's voltage
+          }
+        } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+          const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+          const loadVoltage = (fromComp.properties?.voltage as number || voltage);
+          if (loadWatts > 0 && loadVoltage > 0) {
+            current = loadWatts / loadVoltage;
+            voltage = loadVoltage; // Use load's voltage
+          }
+        } else if (fromComp?.properties?.current) {
+          current = fromComp.properties.current as number;
+        } else if (toComp?.properties?.current) {
+          current = toComp.properties.current as number;
+        } else if (fromComp?.properties?.amps) {
+          current = fromComp.properties.amps as number;
+        } else if (toComp?.properties?.amps) {
+          current = toComp.properties.amps as number;
+        }
+      }
+
+      // Default to 10A if still no current found
+      if (current === 0) {
+        current = 10;
+      }
+
+      // Use actual wire length and gauge if available
+      const wireLength = wire.length || 10;
+      const wireGauge = wire.gauge ? wire.gauge.replace(" AWG", "").replace(/\\0/g, "/0") : undefined;
+
       const res = await apiRequest("POST", "/api/calculate-wire", {
-        current: wire.current || 10,
-        length: wire.length,
-        voltage: systemVoltage,
+        current,
+        length: wireLength,
+        voltage: voltage,
+        conductorMaterial: (wire as any).conductorMaterial || "copper",
       });
       const result = await res.json();
-      setWireCalculation(result);
+      setWireCalculations(prev => ({
+        ...prev,
+        [wire.id]: result
+      }));
     } catch (error: any) {
       console.error("Wire calculation error:", error);
     }
@@ -609,16 +666,27 @@ export default function SchematicDesigner() {
     );
 
     if (connectedWires.length > 0) {
-      calculateWire(connectedWires[0]);
+      // Use component's voltage if available, otherwise system voltage
+      const componentVoltage = comp.properties?.voltage || systemVoltage;
+      // Calculate all connected wires
+      connectedWires.forEach(wire => {
+        calculateWire(wire, componentVoltage);
+      });
     } else {
-      setWireCalculation(undefined);
+      setWireCalculations({});
     }
   };
 
-  const handleWireSelect = (wire: Wire) => {
-    setSelectedWire(wire);
-    setSelectedComponent(null); // Clear component selection
-    calculateWire(wire);
+  const handleWireSelect = (wire: Wire | null) => {
+    if (wire) {
+      setSelectedWire(wire);
+      // Don't clear component selection - keep it so we can go back
+      // Calculate this specific wire
+      calculateWire(wire);
+    } else {
+      // Clear wire selection (go back to component view)
+      setSelectedWire(null);
+    }
   };
 
   const handleComponentDrop = (x: number, y: number) => {
@@ -707,21 +775,34 @@ export default function SchematicDesigner() {
       const fromComp = components.find(c => c.id === wireData.fromComponentId);
       const toComp = components.find(c => c.id === wireData.toComponentId);
 
+      // Get default wire length based on component types
+      let wireLength = wireData.length;
+      if (!wireLength || wireLength === 0) {
+        wireLength = getDefaultWireLength(
+          fromComp!,
+          toComp!,
+          wireData.fromTerminal.id,
+          wireData.toTerminal.id
+        );
+      }
+
       // Estimate current based on component type and properties
       let estimatedCurrent = 10; // Default 10A
       if (fromComp?.properties.current) {
         estimatedCurrent = fromComp.properties.current;
       } else if (toComp?.properties.current) {
         estimatedCurrent = toComp.properties.current;
-      } else if (fromComp?.properties.power && fromComp?.properties.voltage) {
-        estimatedCurrent = fromComp.properties.power / fromComp.properties.voltage;
+      } else if (fromComp?.properties.watts && fromComp?.properties.voltage) {
+        estimatedCurrent = fromComp.properties.watts / fromComp.properties.voltage;
+      } else if (toComp?.properties.watts && toComp?.properties.voltage) {
+        estimatedCurrent = toComp.properties.watts / toComp.properties.voltage;
       }
 
       // Call wire calculation API
       const response = await apiRequest("POST", "/api/calculate-wire", {
         current: estimatedCurrent,
-        length: wireData.length,
-        voltage: 12, // Default to 12V, could be from schematic settings
+        length: wireLength,
+        voltage: systemVoltage,
         temperatureC: 30,
         conductorMaterial: "copper",
         insulationType: "75C",
@@ -744,7 +825,7 @@ export default function SchematicDesigner() {
       fromTerminal: wireData.fromTerminal.id,
       toTerminal: wireData.toTerminal.id,
       polarity,
-      length: wireData.length,
+      length: wireLength,
       gauge: calculatedGauge,
     };
 
@@ -758,9 +839,20 @@ export default function SchematicDesigner() {
   };
 
   const handleWireUpdate = (wireId: string, updates: Partial<Wire>) => {
-    setWires(prev => prev.map(w => w.id === wireId ? { ...w, ...updates } : w));
+    setWires(prev => prev.map(w => {
+      if (w.id === wireId) {
+        const updated = { ...w, ...updates };
+        // Recalculate if this wire is selected and length/gauge changed
+        if (selectedWire?.id === wireId && (updates.length !== undefined || updates.gauge !== undefined)) {
+          setTimeout(() => calculateWire(updated), 100);
+        }
+        return updated;
+      }
+      return w;
+    }));
     if (selectedWire?.id === wireId) {
-      setSelectedWire(prev => prev ? { ...prev, ...updates } : null);
+      const updated = selectedWire ? { ...selectedWire, ...updates } : null;
+      setSelectedWire(updated);
     }
   };
 
@@ -868,6 +960,8 @@ export default function SchematicDesigner() {
         user={user}
         currentDesignName={currentDesignName || undefined}
         isAIWiring={aiWireMutation.isPending}
+        showWireLabels={showWireLabels}
+        onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
       />
 
       {/* Alpha Warning Banner */}
@@ -904,6 +998,7 @@ export default function SchematicDesigner() {
           onWireUpdate={handleWireUpdate}
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}
+          showWireLabels={showWireLabels}
         />
 
         <PropertiesPanel
@@ -923,16 +1018,26 @@ export default function SchematicDesigner() {
             gauge: selectedWire.gauge,
             length: selectedWire.length,
           } : undefined}
-          wireCalculation={wireCalculation ? {
-            current: wireCalculation.current,
-            length: wireCalculation.length,
-            voltage: wireCalculation.voltage,
-            recommendedGauge: wireCalculation.recommendedGauge,
-            voltageDrop: wireCalculation.actualVoltageDrop,
-            status: wireCalculation.status,
-          } : undefined}
+          wireCalculations={Object.fromEntries(
+            Object.entries(wireCalculations).map(([id, calc]) => [
+              id,
+              {
+                current: calc.current,
+                length: calc.length,
+                voltage: calc.voltage,
+                recommendedGauge: calc.recommendedGauge,
+                voltageDrop: calc.voltageDropPercent ?? calc.actualVoltageDrop,
+                voltageDropPercent: calc.voltageDropPercent,
+                status: calc.status,
+              }
+            ])
+          )}
           validationResult={validationResult}
+          wires={wires}
+          components={components}
           onUpdateWire={handleWireUpdate}
+          onWireSelect={handleWireSelect}
+          onComponentSelect={handleComponentSelect}
           onUpdateComponent={(id, updates) => {
             setComponents(prev => prev.map(comp => {
               if (comp.id === id) {

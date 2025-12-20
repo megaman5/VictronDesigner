@@ -577,7 +577,28 @@ WIRE GAUGE SELECTION:
 - 100-150A: 2 AWG
 - 150-200A: 1 AWG
 
-Calculate wire length based on component positions (use Euclidean distance / 100 as rough estimate).
+Calculate wire length using logical defaults based on component types (canvas is logical, not physical):
+- Battery to fuse: 2 feet
+- Battery to SmartShunt: 3 feet
+- Battery to bus bar: 5 feet
+- Battery to other: 8 feet
+- Solar panel to MPPT: 25 feet
+- Solar panel to other: 15 feet
+- Fuse to bus bar: 10 feet
+- Fuse to other: 5 feet
+- Bus bar to loads: 10 feet
+- Bus bar to other: 8 feet
+- MPPT to bus bar: 8 feet
+- MPPT to battery: 5 feet
+- Loads to bus bar: 10 feet
+- Loads to inverter: 5 feet
+- Inverter to bus bar: 8 feet
+- Inverter to battery: 5 feet
+- Charger to battery: 5 feet
+- Charger to bus bar: 8 feet
+- SmartShunt to bus bar: 8 feet
+- Default for other connections: 10 feet
+- Use these logical defaults, NOT pixel-based calculations
 
 JSON RESPONSE FORMAT:
 {
@@ -748,6 +769,27 @@ CRITICAL WIRING RULES:
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
+7. Wire length defaults (canvas is logical, not physical - use these defaults):
+   - Battery to fuse: 2 feet
+   - Battery to SmartShunt: 3 feet
+   - Battery to bus bar: 5 feet
+   - Battery to other: 8 feet
+   - Solar panel to MPPT: 25 feet
+   - Solar panel to other: 15 feet
+   - Fuse to bus bar: 10 feet
+   - Fuse to other: 5 feet
+   - Bus bar to loads: 10 feet
+   - Bus bar to other: 8 feet
+   - MPPT to bus bar: 8 feet
+   - MPPT to battery: 5 feet
+   - Loads to bus bar: 10 feet
+   - Loads to inverter: 5 feet
+   - Inverter to bus bar: 8 feet
+   - Inverter to battery: 5 feet
+   - Charger to battery: 5 feet
+   - Charger to bus bar: 8 feet
+   - SmartShunt to bus bar: 8 feet
+   - Default for other connections: 10 feet
 
 ⚠️⚠️⚠️ COMPONENT PROPERTIES - REQUIRED FOR ALL COMPONENTS (VALIDATION WILL FAIL WITHOUT THEM):
 EVERY component MUST include a "properties" object. Missing properties = INVALID design.
@@ -1029,6 +1071,27 @@ CRITICAL WIRING RULES:
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge format: "10 AWG" (with space), based on current: 0-25A="10 AWG", 25-40A="8 AWG", 40-60A="6 AWG", 60-100A="4 AWG", 100-150A="2 AWG", 150-200A="1 AWG"
+7. Wire length defaults (canvas is logical, not physical - use these defaults):
+   - Battery to fuse: 2 feet
+   - Battery to SmartShunt: 3 feet
+   - Battery to bus bar: 5 feet
+   - Battery to other: 8 feet
+   - Solar panel to MPPT: 25 feet
+   - Solar panel to other: 15 feet
+   - Fuse to bus bar: 10 feet
+   - Fuse to other: 5 feet
+   - Bus bar to loads: 10 feet
+   - Bus bar to other: 8 feet
+   - MPPT to bus bar: 8 feet
+   - MPPT to battery: 5 feet
+   - Loads to bus bar: 10 feet
+   - Loads to inverter: 5 feet
+   - Inverter to bus bar: 8 feet
+   - Inverter to battery: 5 feet
+   - Charger to battery: 5 feet
+   - Charger to bus bar: 8 feet
+   - SmartShunt to bus bar: 8 feet
+   - Default for other connections: 10 feet
 
 ⚠️⚠️⚠️ COMPONENT PROPERTIES - REQUIRED FOR ALL COMPONENTS (VALIDATION WILL FAIL WITHOUT THEM):
 EVERY component MUST include a "properties" object. Missing properties = INVALID design.

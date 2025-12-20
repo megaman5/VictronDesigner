@@ -8,17 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info } from "lucide-react";
-import type { ValidationResult, Wire } from "@shared/schema";
+import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft } from "lucide-react";
+import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
 import { SaveFeedback } from "@/components/SaveFeedback";
 
 interface WireCalculation {
-  current: number;
-  length: number;
-  voltage: number;
-  recommendedGauge: string;
-  voltageDrop: number;
-  status: "valid" | "warning" | "error";
+  current?: number;
+  length?: number;
+  voltage?: number;
+  recommendedGauge?: string;
+  voltageDrop?: number;
+  voltageDropPercent?: number;
+  status?: "valid" | "warning" | "error";
 }
 
 interface PropertiesPanelProps {
@@ -48,11 +49,16 @@ interface PropertiesPanelProps {
     gauge?: string;
     length: number;
   };
-  wireCalculation?: WireCalculation;
+  wireCalculation?: WireCalculation; // For backward compatibility when wire is selected
+  wireCalculations?: Record<string, WireCalculation>; // Map of wireId -> calculation
   validationResult?: ValidationResult | null;
+  wires?: Wire[];
+  components?: SchematicComponent[];
   onEditWire?: (wire: any) => void;
   onUpdateComponent?: (id: string, updates: any) => void;
   onUpdateWire?: (wireId: string, updates: Partial<Wire>) => void;
+  onWireSelect?: (wire: Wire | null) => void;
+  onComponentSelect?: (component: SchematicComponent | null) => void;
 }
 
 // Helper function to get available voltages for a component type
@@ -78,7 +84,73 @@ function getAvailableVoltages(componentType: string): number[] {
 
 // All components now use 'watts' consistently
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, validationResult, onEditWire, onUpdateComponent, onUpdateWire }: PropertiesPanelProps) {
+// Calculate bus bar totals from connected components
+function calculateBusBarTotals(
+  busBarId: string,
+  busBarType: string,
+  wires: Wire[] = [],
+  components: SchematicComponent[] = []
+): { totalCurrent: number; totalWatts: number; voltage: number } {
+  // Find all wires connected to this bus bar
+  const connectedWires = wires.filter(
+    w => w.fromComponentId === busBarId || w.toComponentId === busBarId
+  );
+
+  let totalCurrent = 0;
+  let totalWatts = 0;
+  let voltage = 12; // Default
+
+  // For each connected wire, find the component on the other end
+  connectedWires.forEach(wire => {
+    const otherComponentId = wire.fromComponentId === busBarId 
+      ? wire.toComponentId 
+      : wire.fromComponentId;
+    
+    const otherComponent = components.find(c => c.id === otherComponentId);
+    if (!otherComponent) return;
+
+    const props = otherComponent.properties || {};
+    
+    // Get voltage from bus bar or connected component
+    if (props.voltage) {
+      voltage = props.voltage;
+    }
+
+    // Calculate current/watts from the component
+    // For loads: use their watts/current
+    // For sources (chargers, inverters): use their output
+    if (otherComponent.type === 'dc-load' || otherComponent.type === 'ac-load') {
+      const loadWatts = props.watts || props.power || 0;
+      const loadCurrent = props.current || props.amps || 0;
+      
+      if (loadWatts > 0) {
+        totalWatts += loadWatts;
+        totalCurrent += loadWatts / (props.voltage || voltage);
+      } else if (loadCurrent > 0) {
+        totalCurrent += loadCurrent;
+        totalWatts += loadCurrent * (props.voltage || voltage);
+      }
+    } else if (otherComponent.type === 'inverter' || otherComponent.type === 'phoenix-inverter') {
+      // Inverters draw current from DC side
+      const inverterWatts = props.watts || props.powerRating || 0;
+      if (inverterWatts > 0) {
+        totalWatts += inverterWatts;
+        totalCurrent += inverterWatts / (props.voltage || voltage);
+      }
+    } else if (otherComponent.type === 'mppt' || otherComponent.type === 'blue-smart-charger' || otherComponent.type === 'orion-dc-dc') {
+      // Chargers output current to bus bar
+      const chargeCurrent = props.amps || props.current || 0;
+      if (chargeCurrent > 0) {
+        totalCurrent += chargeCurrent;
+        totalWatts += chargeCurrent * (props.voltage || voltage);
+      }
+    }
+  });
+
+  return { totalCurrent, totalWatts, voltage };
+}
+
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
@@ -808,8 +880,43 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   </div>
                 )}
 
+                {/* Bus bar properties - calculated from connected components */}
+                {(selectedComponent.type === 'busbar-positive' || selectedComponent.type === 'busbar-negative') && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Bus Bar Specifications</h3>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded mb-2">
+                      Bus bar current and power are automatically calculated from connected components.
+                    </div>
+                    {(() => {
+                      const totals = calculateBusBarTotals(selectedComponent.id, selectedComponent.type, wires, components);
+                      return (
+                        <>
+                          <div className="space-y-2">
+                            <Label>System Voltage (V)</Label>
+                            <div className="text-sm font-mono bg-muted p-2 rounded">
+                              {totals.voltage}V
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Total Current (A)</Label>
+                            <div className="text-sm font-mono bg-muted p-2 rounded">
+                              {totals.totalCurrent.toFixed(1)}A
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Total Power (W)</Label>
+                            <div className="text-sm font-mono bg-muted p-2 rounded">
+                              {totals.totalWatts.toFixed(0)}W
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 {/* Generic component properties (for other component types) */}
-                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter'].includes(selectedComponent.type) && (
+                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'busbar-positive', 'busbar-negative'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">
@@ -865,56 +972,419 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
           </TabsContent>
 
           <TabsContent value="calculations" className="p-4 space-y-4 mt-0 pr-2">
-            {wireCalculation ? (
-              <>
-                <div className="space-y-3">
-                  <h3 className="text-sm font-medium">Wire Sizing</h3>
+            {(() => {
+              // When component is selected, show all connected wires
+              if (selectedComponent && !selectedWire) {
+                const connectedWires = wires.filter(
+                  w => w.fromComponentId === selectedComponent.id || w.toComponentId === selectedComponent.id
+                );
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Current</span>
-                      <span className="font-mono font-medium">{wireCalculation.current}A</span>
+                if (connectedWires.length === 0) {
+                  return (
+                    <div className="text-center text-muted-foreground py-8">
+                      <Calculator className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p className="text-sm">No wires connected to this component</p>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Length</span>
-                      <span className="font-mono font-medium">{wireCalculation.length}ft</span>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Connected Wires ({connectedWires.length})</h3>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded mb-3">
+                        Click a wire to view detailed calculations
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Voltage</span>
-                      <span className="font-mono font-medium">{wireCalculation.voltage}V</span>
+                    <div className="space-y-3">
+                      {connectedWires.map((wire) => {
+                        const calc = wireCalculations[wire.id];
+                        const otherComponentId = wire.fromComponentId === selectedComponent.id 
+                          ? wire.toComponentId 
+                          : wire.fromComponentId;
+                        const otherComponent = components.find(c => c.id === otherComponentId);
+                        const otherComponentName = otherComponent?.name || otherComponentId;
+
+                        return (
+                          <div
+                            key={wire.id}
+                            className="border rounded-lg p-3 space-y-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                            onClick={() => {
+                              onWireSelect?.(wire);
+                            }}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="text-sm font-medium">
+                                  {selectedComponent.name} → {otherComponentName}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {wire.polarity} • {wire.length.toFixed(1)}ft
+                                </div>
+                              </div>
+                              {wire.gauge && (
+                                <Badge 
+                                  variant={calc && calc.status === "error" ? "destructive" : calc && calc.status === "warning" ? "secondary" : "default"}
+                                  className="ml-2"
+                                >
+                                  {wire.gauge}
+                                </Badge>
+                              )}
+                            </div>
+                            {calc ? (
+                              <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                                <div>
+                                  <span className="text-muted-foreground">Current:</span>{" "}
+                                  <span className="font-mono">
+                                    {calc.current != null ? calc.current.toFixed(1) : '—'}A
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Voltage Drop:</span>{" "}
+                                  <span className={`font-mono ${
+                                    (() => {
+                                      // Calculate voltage drop for actual wire gauge
+                                      if (wire.gauge && calc.current != null && calc.length != null && calc.voltage != null) {
+                                        const WIRE_DATA: Record<string, { resistance: number }> = {
+                                          "18 AWG": { resistance: 6.385 },
+                                          "16 AWG": { resistance: 4.016 },
+                                          "14 AWG": { resistance: 2.525 },
+                                          "12 AWG": { resistance: 1.588 },
+                                          "10 AWG": { resistance: 0.9989 },
+                                          "8 AWG": { resistance: 0.6282 },
+                                          "6 AWG": { resistance: 0.3951 },
+                                          "4 AWG": { resistance: 0.2485 },
+                                          "2 AWG": { resistance: 0.1563 },
+                                          "1 AWG": { resistance: 0.1240 },
+                                          "1/0 AWG": { resistance: 0.0983 },
+                                          "2/0 AWG": { resistance: 0.0779 },
+                                          "3/0 AWG": { resistance: 0.0618 },
+                                          "4/0 AWG": { resistance: 0.0490 },
+                                        };
+                                        const wireData = WIRE_DATA[wire.gauge];
+                                        if (wireData) {
+                                          const resistancePerFoot = wireData.resistance / 1000;
+                                          const voltageDrop = 2 * calc.current * resistancePerFoot * calc.length;
+                                          const voltageDropPercent = (voltageDrop / calc.voltage) * 100;
+                                          return voltageDropPercent;
+                                        }
+                                      }
+                                      return calc.voltageDropPercent ?? calc.voltageDrop ?? 0;
+                                    })() > 3 
+                                      ? "text-destructive" 
+                                      : (() => {
+                                        if (wire.gauge && calc.current != null && calc.length != null && calc.voltage != null) {
+                                          const WIRE_DATA: Record<string, { resistance: number }> = {
+                                            "18 AWG": { resistance: 6.385 },
+                                            "16 AWG": { resistance: 4.016 },
+                                            "14 AWG": { resistance: 2.525 },
+                                            "12 AWG": { resistance: 1.588 },
+                                            "10 AWG": { resistance: 0.9989 },
+                                            "8 AWG": { resistance: 0.6282 },
+                                            "6 AWG": { resistance: 0.3951 },
+                                            "4 AWG": { resistance: 0.2485 },
+                                            "2 AWG": { resistance: 0.1563 },
+                                            "1 AWG": { resistance: 0.1240 },
+                                            "1/0 AWG": { resistance: 0.0983 },
+                                            "2/0 AWG": { resistance: 0.0779 },
+                                            "3/0 AWG": { resistance: 0.0618 },
+                                            "4/0 AWG": { resistance: 0.0490 },
+                                          };
+                                          const wireData = WIRE_DATA[wire.gauge];
+                                          if (wireData) {
+                                            const resistancePerFoot = wireData.resistance / 1000;
+                                            const voltageDrop = 2 * calc.current * resistancePerFoot * calc.length;
+                                            const voltageDropPercent = (voltageDrop / calc.voltage) * 100;
+                                            return voltageDropPercent;
+                                          }
+                                        }
+                                        return calc.voltageDropPercent ?? calc.voltageDrop ?? 0;
+                                      })() > 2.5 
+                                        ? "text-amber-600 dark:text-amber-400" 
+                                        : "text-chart-2"
+                                  }`}>
+                                    {(() => {
+                                      // Calculate voltage drop for actual wire gauge
+                                      if (wire.gauge && calc.current != null && calc.length != null && calc.voltage != null) {
+                                        const WIRE_DATA: Record<string, { resistance: number }> = {
+                                          "18 AWG": { resistance: 6.385 },
+                                          "16 AWG": { resistance: 4.016 },
+                                          "14 AWG": { resistance: 2.525 },
+                                          "12 AWG": { resistance: 1.588 },
+                                          "10 AWG": { resistance: 0.9989 },
+                                          "8 AWG": { resistance: 0.6282 },
+                                          "6 AWG": { resistance: 0.3951 },
+                                          "4 AWG": { resistance: 0.2485 },
+                                          "2 AWG": { resistance: 0.1563 },
+                                          "1 AWG": { resistance: 0.1240 },
+                                          "1/0 AWG": { resistance: 0.0983 },
+                                          "2/0 AWG": { resistance: 0.0779 },
+                                          "3/0 AWG": { resistance: 0.0618 },
+                                          "4/0 AWG": { resistance: 0.0490 },
+                                        };
+                                        const wireData = WIRE_DATA[wire.gauge];
+                                        if (wireData) {
+                                          const resistancePerFoot = wireData.resistance / 1000;
+                                          const voltageDrop = 2 * calc.current * resistancePerFoot * calc.length;
+                                          const voltageDropPercent = (voltageDrop / calc.voltage) * 100;
+                                          return voltageDropPercent.toFixed(2);
+                                        }
+                                      }
+                                      return ((calc.voltageDropPercent ?? calc.voltageDrop) != null) 
+                                        ? (calc.voltageDropPercent ?? calc.voltageDrop ?? 0).toFixed(2) 
+                                        : '—';
+                                    })()}%
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground mt-2">
+                                Calculating...
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
+                );
+              }
 
-                  <Separator />
+              // When wire is selected, show detailed calculation
+              if (selectedWire) {
+                const calc = wireCalculation || wireCalculations[selectedWire.id];
+                
+                if (!calc) {
+                  return (
+                    <div className="text-center text-muted-foreground py-8">
+                      <Calculator className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p className="text-sm">Calculating wire sizing...</p>
+                    </div>
+                  );
+                }
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Recommended Gauge</span>
-                      <Badge variant={wireCalculation.status === "valid" ? "default" : "destructive"}>
-                        {wireCalculation.recommendedGauge} AWG
-                      </Badge>
+                return (
+                  <div className="space-y-3">
+                    {selectedComponent && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mb-2 -ml-2"
+                        onClick={() => {
+                          // Clear wire selection and restore component selection
+                          if (onWireSelect) {
+                            onWireSelect(null);
+                          }
+                          if (onComponentSelect && selectedComponent) {
+                            onComponentSelect(selectedComponent);
+                          }
+                        }}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Back to wires
+                      </Button>
+                    )}
+                    <h3 className="text-sm font-medium">Wire Sizing Calculation</h3>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Current</span>
+                        <span className="font-mono font-medium">
+                          {calc.current != null ? calc.current.toFixed(1) : '—'}A
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Length</span>
+                        <span className="font-mono font-medium">
+                          {calc.length != null ? calc.length.toFixed(1) : '—'}ft
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Voltage</span>
+                        <span className="font-mono font-medium">
+                          {calc.voltage != null ? calc.voltage : '—'}V
+                        </span>
+                      </div>
+                      {selectedWire?.gauge && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Current Gauge</span>
+                          <span className="font-mono font-medium">{selectedWire.gauge}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Voltage Drop</span>
-                      <span className={`font-mono font-medium ${wireCalculation.voltageDrop > 3 ? "text-destructive" : "text-chart-2"}`}>
-                        {wireCalculation.voltageDrop.toFixed(2)}%
-                      </span>
+
+                    <Separator />
+
+                    <div className="space-y-2">
+                      {calc.recommendedGauge && (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">Recommended Gauge</span>
+                            <Badge variant={calc.status === "valid" ? "default" : "destructive"}>
+                              {calc.recommendedGauge}
+                            </Badge>
+                          </div>
+                          {selectedWire?.gauge && selectedWire.gauge !== calc.recommendedGauge && (
+                            <>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-muted-foreground">Current Gauge</span>
+                                <Badge variant={calc.status === "error" ? "destructive" : "secondary"}>
+                                  {selectedWire.gauge}
+                                </Badge>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full mt-2"
+                                onClick={() => {
+                                  if (selectedWire && onUpdateWire && calc.recommendedGauge) {
+                                    onUpdateWire(selectedWire.id, { gauge: calc.recommendedGauge });
+                                    triggerSaveFeedback();
+                                  }
+                                }}
+                              >
+                                Update to {calc.recommendedGauge}
+                              </Button>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {/* Show voltage drop for actual wire gauge if different from recommended */}
+                      {selectedWire?.gauge && selectedWire.gauge !== calc.recommendedGauge && (() => {
+                        // Calculate voltage drop for actual wire gauge
+                        const WIRE_DATA: Record<string, { resistance: number }> = {
+                          "18 AWG": { resistance: 6.385 },
+                          "16 AWG": { resistance: 4.016 },
+                          "14 AWG": { resistance: 2.525 },
+                          "12 AWG": { resistance: 1.588 },
+                          "10 AWG": { resistance: 0.9989 },
+                          "8 AWG": { resistance: 0.6282 },
+                          "6 AWG": { resistance: 0.3951 },
+                          "4 AWG": { resistance: 0.2485 },
+                          "2 AWG": { resistance: 0.1563 },
+                          "1 AWG": { resistance: 0.1240 },
+                          "1/0 AWG": { resistance: 0.0983 },
+                          "2/0 AWG": { resistance: 0.0779 },
+                          "3/0 AWG": { resistance: 0.0618 },
+                          "4/0 AWG": { resistance: 0.0490 },
+                        };
+                        
+                        const actualGauge = selectedWire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
+                        const wireData = WIRE_DATA[selectedWire.gauge];
+                        if (wireData && calc.current != null && calc.length != null && calc.voltage != null) {
+                          const resistancePerFoot = wireData.resistance / 1000;
+                          const voltageDrop = 2 * calc.current * resistancePerFoot * calc.length;
+                          const voltageDropPercent = (voltageDrop / calc.voltage) * 100;
+                          
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-medium">Voltage Drop ({selectedWire.gauge})</span>
+                                <span className={`font-mono font-medium ${
+                                  voltageDropPercent > 3 
+                                    ? "text-destructive" 
+                                    : voltageDropPercent > 2.5 
+                                      ? "text-amber-600 dark:text-amber-400" 
+                                      : "text-chart-2"
+                                }`}>
+                                  {voltageDropPercent.toFixed(2)}%
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-muted-foreground">Voltage Drop ({calc.recommendedGauge})</span>
+                                <span className={`font-mono text-sm ${
+                                  (calc.voltageDropPercent ?? calc.voltageDrop ?? 0) > 3 
+                                    ? "text-destructive" 
+                                    : (calc.voltageDropPercent ?? calc.voltageDrop ?? 0) > 2.5 
+                                      ? "text-amber-600 dark:text-amber-400" 
+                                      : "text-chart-2"
+                                }`}>
+                                  {((calc.voltageDropPercent ?? calc.voltageDrop) != null) 
+                                    ? (calc.voltageDropPercent ?? calc.voltageDrop ?? 0).toFixed(2) 
+                                    : '—'}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {/* Show recommended gauge voltage drop if actual gauge matches recommended */}
+                      {(!selectedWire?.gauge || selectedWire.gauge === calc.recommendedGauge) && (calc.voltageDrop != null || calc.voltageDropPercent != null) && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">Voltage Drop</span>
+                          <span className={`font-mono font-medium ${
+                            (calc.voltageDropPercent ?? calc.voltageDrop ?? 0) > 3 
+                              ? "text-destructive" 
+                              : (calc.voltageDropPercent ?? calc.voltageDrop ?? 0) > 2.5 
+                                ? "text-amber-600 dark:text-amber-400" 
+                                : "text-chart-2"
+                          }`}>
+                            {((calc.voltageDropPercent ?? calc.voltageDrop) != null) 
+                              ? (calc.voltageDropPercent ?? calc.voltageDrop ?? 0).toFixed(2) 
+                              : '—'}%
+                          </span>
+                        </div>
+                      )}
                     </div>
+
+                    {calc.status === "warning" && (
+                      <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-3 rounded-md">
+                        {(() => {
+                          // Check actual voltage drop to determine warning message
+                          const actualVoltageDrop = (() => {
+                            if (selectedWire?.gauge && calc.current != null && calc.length != null && calc.voltage != null) {
+                              const WIRE_DATA: Record<string, { resistance: number }> = {
+                                "18 AWG": { resistance: 6.385 },
+                                "16 AWG": { resistance: 4.016 },
+                                "14 AWG": { resistance: 2.525 },
+                                "12 AWG": { resistance: 1.588 },
+                                "10 AWG": { resistance: 0.9989 },
+                                "8 AWG": { resistance: 0.6282 },
+                                "6 AWG": { resistance: 0.3951 },
+                                "4 AWG": { resistance: 0.2485 },
+                                "2 AWG": { resistance: 0.1563 },
+                                "1 AWG": { resistance: 0.1240 },
+                                "1/0 AWG": { resistance: 0.0983 },
+                                "2/0 AWG": { resistance: 0.0779 },
+                                "3/0 AWG": { resistance: 0.0618 },
+                                "4/0 AWG": { resistance: 0.0490 },
+                              };
+                              const wireData = WIRE_DATA[selectedWire.gauge];
+                              if (wireData) {
+                                const resistancePerFoot = wireData.resistance / 1000;
+                                const voltageDrop = 2 * calc.current * resistancePerFoot * calc.length;
+                                return (voltageDrop / calc.voltage) * 100;
+                              }
+                            }
+                            return calc.voltageDropPercent ?? calc.voltageDrop ?? 0;
+                          })();
+                          
+                          if (actualVoltageDrop > 3) {
+                            return `Warning: Voltage drop (${actualVoltageDrop.toFixed(2)}%) exceeds 3% recommendation`;
+                          } else {
+                            return `Warning: Voltage drop (${actualVoltageDrop.toFixed(2)}%) is approaching 3% limit. Consider larger gauge for better safety margin.`;
+                          }
+                        })()}
+                      </div>
+                    )}
+                    {calc.status === "error" && (
+                      <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 p-3 rounded-md">
+                        {calc.message || "Error: Wire gauge insufficient or voltage drop too high"}
+                      </div>
+                    )}
                   </div>
+                );
+              }
 
-                  {wireCalculation.status === "warning" && (
-                    <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-3 rounded-md">
-                      Warning: Voltage drop exceeds 3% recommendation
-                    </div>
-                  )}
+              // No selection
+              return (
+                <div className="text-center text-muted-foreground py-8">
+                  <Calculator className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">Select a component or wire to view calculations</p>
                 </div>
-              </>
-            ) : (
-              <div className="text-center text-muted-foreground py-8">
-                <Calculator className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Connect components to calculate wire sizing</p>
-              </div>
-            )}
+              );
+            })()}
           </TabsContent>
         </ScrollArea>
       </Tabs>

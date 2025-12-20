@@ -393,19 +393,60 @@ export class DesignValidator {
         return;
       }
 
-      const wireData = WIRE_DATA[wire.gauge];
+      // Normalize gauge format - remove duplicate " AWG" suffixes and normalize
+      let normalizedGaugeForLookup = wire.gauge.trim();
+      // Remove trailing " AWG" if present (handle cases like "1/0 AWG AWG")
+      normalizedGaugeForLookup = normalizedGaugeForLookup.replace(/\s+AWG\s*AWG\s*$/i, " AWG");
+      // Ensure it ends with " AWG" for lookup
+      if (!normalizedGaugeForLookup.endsWith(" AWG")) {
+        normalizedGaugeForLookup = normalizedGaugeForLookup + " AWG";
+      }
+      
+      const wireData = WIRE_DATA[normalizedGaugeForLookup];
       if (!wireData) {
         this.issues.push({
           severity: "warning",
           category: "wire-sizing",
           message: `Wire has unknown gauge: ${wire.gauge}`,
           wireId: wire.id,
+          suggestion: `Normalized to: ${normalizedGaugeForLookup}. Please use standard gauge format (e.g., "10 AWG", "1/0 AWG").`,
         });
         return;
       }
 
+      // Calculate current from connected components if not set
+      let current = wire.current || 0;
+      
+      // If current not set, calculate from connected load
+      if (current === 0) {
+        const fromComp = this.components.find(c => c.id === wire.fromComponentId);
+        const toComp = this.components.find(c => c.id === wire.toComponentId);
+        
+        // Calculate current from load watts
+        if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+          const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+          const loadVoltage = (toComp.properties?.voltage as number || this.systemVoltage);
+          if (loadWatts > 0 && loadVoltage > 0) {
+            current = loadWatts / loadVoltage;
+          }
+        } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+          const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+          const loadVoltage = (fromComp.properties?.voltage as number || this.systemVoltage);
+          if (loadWatts > 0 && loadVoltage > 0) {
+            current = loadWatts / loadVoltage;
+          }
+        } else if (fromComp?.properties?.current) {
+          current = fromComp.properties.current as number;
+        } else if (toComp?.properties?.current) {
+          current = toComp.properties.current as number;
+        } else if (fromComp?.properties?.amps) {
+          current = fromComp.properties.amps as number;
+        } else if (toComp?.properties?.amps) {
+          current = toComp.properties.amps as number;
+        }
+      }
+
       // Check ampacity using proper temperature-adjusted calculations
-      const current = wire.current || 0;
       if (current > 0) {
         // Normalize gauge format (remove " AWG" suffix if present)
         const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
@@ -424,6 +465,7 @@ export class DesignValidator {
             category: "wire-sizing",
             message: `Wire gauge ${wire.gauge} insufficient for ${current.toFixed(1)}A (max ${maxAmpacity.toFixed(1)}A at 75°C)`,
             wireId: wire.id,
+            componentIds: [wire.fromComponentId, wire.toComponentId],
             suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGauge(current)})`,
           });
         } else if (current > maxAmpacity * 0.8) {
@@ -433,33 +475,57 @@ export class DesignValidator {
             category: "wire-sizing",
             message: `Wire gauge ${wire.gauge} running at ${((current / maxAmpacity) * 100).toFixed(0)}% capacity (${current.toFixed(1)}A of ${maxAmpacity.toFixed(1)}A max)`,
             wireId: wire.id,
+            componentIds: [wire.fromComponentId, wire.toComponentId],
             suggestion: `Consider using larger gauge for better safety margin`,
           });
         }
+      } else {
+        // Warn if we can't determine current
+        this.issues.push({
+          severity: "warning",
+          category: "wire-sizing",
+          message: `Cannot determine current for wire - gauge validation skipped`,
+          wireId: wire.id,
+          suggestion: `Set load properties (watts/amps) or wire current for accurate gauge validation`,
+        });
       }
 
       // Check voltage drop (voltage drop calculations are separate from ampacity)
       const length = wire.length || 0;
-      const resistancePerFoot = wireData.resistance / 1000;
-      const voltageDrop = 2 * current * resistancePerFoot * length; // 2 for round trip
-      const voltageDropPercent = (voltageDrop / this.systemVoltage) * 100;
+      if (length > 0 && current > 0) {
+        // Use component voltage if available, otherwise system voltage
+        let voltage = this.systemVoltage;
+        const fromComp = this.components.find(c => c.id === wire.fromComponentId);
+        const toComp = this.components.find(c => c.id === wire.toComponentId);
+        if (fromComp?.properties?.voltage) {
+          voltage = fromComp.properties.voltage as number;
+        } else if (toComp?.properties?.voltage) {
+          voltage = toComp.properties.voltage as number;
+        }
+        
+        const resistancePerFoot = wireData.resistance / 1000;
+        const voltageDrop = 2 * current * resistancePerFoot * length; // 2 for round trip
+        const voltageDropPercent = (voltageDrop / voltage) * 100;
 
-      if (voltageDropPercent > 3) {
-        this.issues.push({
-          severity: "error",
-          category: "wire-sizing",
-          message: `Excessive voltage drop: ${voltageDropPercent.toFixed(1)}% (max 3% per ABYC)`,
-          wireId: wire.id,
-          suggestion: `Use larger gauge wire or shorten run (current: ${length}ft)`,
-        });
-      } else if (voltageDropPercent > 2.5) {
-        this.issues.push({
-          severity: "warning",
-          category: "wire-sizing",
-          message: `High voltage drop: ${voltageDropPercent.toFixed(1)}%`,
-          wireId: wire.id,
-          suggestion: "Consider larger gauge to reduce losses",
-        });
+        if (voltageDropPercent > 3) {
+          this.issues.push({
+            severity: "error",
+            category: "wire-sizing",
+            message: `Excessive voltage drop: ${voltageDropPercent.toFixed(1)}% (max 3% per ABYC)`,
+            wireId: wire.id,
+            componentIds: [wire.fromComponentId, wire.toComponentId],
+            suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length)}) or shorten run (current: ${length}ft)`,
+          });
+        } else if (voltageDropPercent > 2.5) {
+          this.issues.push({
+            severity: "warning",
+            category: "wire-sizing",
+            message: `High voltage drop: ${voltageDropPercent.toFixed(1)}%`,
+            wireId: wire.id,
+            componentIds: [wire.fromComponentId, wire.toComponentId],
+            suggestion: `Consider larger gauge (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length)}) to reduce losses`,
+          });
+        }
       }
     });
   }
@@ -470,7 +536,42 @@ export class DesignValidator {
     if (current <= 60) return "6 AWG";
     if (current <= 100) return "4 AWG";
     if (current <= 150) return "2 AWG";
-    return "1/0 AWG or larger";
+    if (current <= 200) return "1 AWG";
+    if (current <= 250) return "1/0 AWG";
+    if (current <= 300) return "2/0 AWG";
+    if (current <= 350) return "3/0 AWG";
+    return "4/0 AWG or larger";
+  }
+
+  private suggestWireGaugeForVoltageDrop(current: number, length: number): string {
+    // Calculate required gauge based on voltage drop (3% max)
+    const maxVDropVolts = (this.systemVoltage * 3) / 100;
+    
+    // Try gauges from smallest to largest until we find one that works
+    const gauges = ["10", "8", "6", "4", "2", "1", "1/0", "2/0", "3/0", "4/0"];
+    const WIRE_RESISTANCE: Record<string, number> = {
+      "10": 0.9989,
+      "8": 0.6282,
+      "6": 0.3951,
+      "4": 0.2485,
+      "2": 0.1563,
+      "1": 0.1240,
+      "1/0": 0.0983,
+      "2/0": 0.0779,
+      "3/0": 0.0618,
+      "4/0": 0.0490,
+    };
+
+    for (const gauge of gauges) {
+      const resistancePerFoot = (WIRE_RESISTANCE[gauge] || 0.9989) / 1000;
+      const vDrop = 2 * current * resistancePerFoot * length;
+      if (vDrop <= maxVDropVolts) {
+        return `${gauge} AWG`;
+      }
+    }
+    
+    // If none work, suggest based on current
+    return this.suggestWireGauge(current);
   }
 
   /**
@@ -959,42 +1060,6 @@ export class DesignValidator {
       }
     }
 
-    // Check wire capacity vs load current (enhanced check)
-    this.wires.forEach(wire => {
-      const fromComp = this.components.find(c => c.id === wire.fromComponentId);
-      const toComp = this.components.find(c => c.id === wire.toComponentId);
-      
-      if (!fromComp || !toComp) return;
-      
-      // Calculate expected current based on connected load
-      let expectedCurrent = wire.current || 0;
-      
-      // If wire connects to a load, calculate current from load watts
-      if (toComp.type === "dc-load" || toComp.type === "ac-load") {
-        const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-        const loadVoltage = (toComp.properties?.voltage as number || systemVoltage || 12);
-        if (loadWatts > 0 && loadVoltage > 0) {
-          expectedCurrent = loadWatts / loadVoltage;
-        }
-      }
-      
-      // Check wire gauge capacity
-      if (wire.gauge && expectedCurrent > 0) {
-        const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
-        const maxAmpacity = getWireAmpacity(normalizedGauge, "75C", 30, 1.0);
-        
-        if (maxAmpacity > 0 && expectedCurrent > maxAmpacity) {
-          this.issues.push({
-            severity: "error",
-            category: "wire-sizing",
-            message: `Wire to ${this.getComponentName(toComp.id)} carries ${expectedCurrent.toFixed(1)}A but ${wire.gauge} is rated for ${maxAmpacity.toFixed(1)}A max`,
-            wireId: wire.id,
-            componentIds: [toComp.id],
-            suggestion: `Upgrade wire to larger gauge (e.g., ${this.suggestWireGauge(expectedCurrent)}) or reduce load.`,
-          });
-        }
-      }
-    });
   }
 
   /**

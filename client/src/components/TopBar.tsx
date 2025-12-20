@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -39,6 +39,8 @@ interface TopBarProps {
   user?: AuthUser | null;
   currentDesignName?: string;
   isAIWiring?: boolean;
+  showWireLabels?: boolean;
+  onToggleWireLabels?: () => void;
 }
 
 export function TopBar({ 
@@ -57,7 +59,9 @@ export function TopBar({
   designQualityScore,
   user,
   currentDesignName,
-  isAIWiring = false
+  isAIWiring = false,
+  showWireLabels = true,
+  onToggleWireLabels
 }: TopBarProps) {
   const isLoggedIn = !!user;
 
@@ -208,6 +212,17 @@ export function TopBar({
             data-testid="button-export"
           >
             <Download className="h-5 w-5" />
+          </Button>
+
+          <Button
+            variant={showWireLabels ? "default" : "outline"}
+            size="sm"
+            onClick={onToggleWireLabels}
+            data-testid="button-toggle-wire-labels"
+            className="gap-2"
+          >
+            <Tag className="h-4 w-4" />
+            Labels
           </Button>
 
           <Button
