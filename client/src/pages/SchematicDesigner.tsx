@@ -48,10 +48,53 @@ export default function SchematicDesigner() {
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [editingWire, setEditingWire] = useState<Wire | null>(null);
 
-  // Local state for editing
-  const [components, setComponents] = useState<SchematicComponent[]>([]);
-  const [wires, setWires] = useState<Wire[]>([]);
-  const [systemVoltage, setSystemVoltage] = useState(12);
+  // Initialize state from localStorage if available (lazy initialization)
+  const initializeState = () => {
+    // Only restore if no other design is being loaded
+    const hasFeedbackState = localStorage.getItem("loadedFeedbackState");
+    const hasPendingAuth = localStorage.getItem("pendingAuthDiagramState");
+    
+    if (hasFeedbackState || hasPendingAuth) {
+      return { components: [], wires: [], systemVoltage: 12 };
+    }
+    
+    const autoSavedState = localStorage.getItem("autoSavedDiagramState");
+    if (autoSavedState) {
+      try {
+        const state = JSON.parse(autoSavedState);
+        // Only restore if it was saved within the last 24 hours
+        const savedAt = new Date(state.savedAt);
+        const now = new Date();
+        const oneDay = 24 * 60 * 60 * 1000;
+        
+        if (now.getTime() - savedAt.getTime() < oneDay) {
+          console.log("Restoring auto-saved diagram state on mount:", {
+            components: state.components?.length || 0,
+            wires: state.wires?.length || 0,
+          });
+          return {
+            components: state.components || [],
+            wires: state.wires || [],
+            systemVoltage: state.systemVoltage || 12,
+          };
+        } else {
+          console.log("Auto-saved state is too old, clearing");
+          localStorage.removeItem("autoSavedDiagramState");
+        }
+      } catch (error) {
+        console.error("Error parsing auto-saved state:", error);
+        localStorage.removeItem("autoSavedDiagramState");
+      }
+    }
+    
+    return { components: [], wires: [], systemVoltage: 12 };
+  };
+
+  // Local state for editing - initialized from localStorage if available
+  const initialState = initializeState();
+  const [components, setComponents] = useState<SchematicComponent[]>(initialState.components);
+  const [wires, setWires] = useState<Wire[]>(initialState.wires);
+  const [systemVoltage, setSystemVoltage] = useState(initialState.systemVoltage);
 
   // Validation state
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
@@ -151,6 +194,84 @@ export default function SchematicDesigner() {
     }
   }, []);
 
+  // Auto-save diagram state to localStorage periodically
+  useEffect(() => {
+    // Only auto-save if there's actual content
+    if (components.length === 0 && wires.length === 0) {
+      // Clear auto-save if diagram is empty
+      localStorage.removeItem("autoSavedDiagramState");
+      return;
+    }
+
+    // Debounce the save to avoid too many writes
+    const timeoutId = setTimeout(() => {
+      const diagramState = {
+        components,
+        wires,
+        systemVoltage,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem("autoSavedDiagramState", JSON.stringify(diagramState));
+      console.log("Auto-saved diagram state:", { 
+        components: components.length, 
+        wires: wires.length,
+        systemVoltage 
+      });
+    }, 2000); // Save 2 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [components, wires, systemVoltage]);
+
+  // Force immediate save before page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (components.length > 0 || wires.length > 0) {
+        const diagramState = {
+          components,
+          wires,
+          systemVoltage,
+          savedAt: new Date().toISOString(),
+        };
+        // Use synchronous storage API for beforeunload
+        try {
+          localStorage.setItem("autoSavedDiagramState", JSON.stringify(diagramState));
+          console.log("Force-saved diagram state before unload");
+        } catch (e) {
+          console.error("Failed to save before unload:", e);
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [components, wires, systemVoltage]);
+
+  // Show toast notification if state was restored from localStorage
+  useEffect(() => {
+    // Only show toast if we have components/wires on initial mount and no schematic is being loaded
+    if (components.length > 0 && !currentSchematicId) {
+      // Check if there's a matching auto-save (likely what we just restored)
+      const autoSavedState = localStorage.getItem("autoSavedDiagramState");
+      if (autoSavedState) {
+        try {
+          const state = JSON.parse(autoSavedState);
+          // If the counts match, we likely restored this
+          if (state.components?.length === components.length && state.wires?.length === wires.length) {
+            // Use a small delay to ensure toast system is ready
+            setTimeout(() => {
+              toast({
+                title: "Auto-saved design restored",
+                description: `Restored your previous work with ${components.length} components`,
+              });
+            }, 100);
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    }
+  }, []); // Only run once on mount
+
   // Login/logout handlers
   const handleLogin = () => {
     // Save current diagram state to localStorage before redirecting to OAuth
@@ -194,6 +315,9 @@ export default function SchematicDesigner() {
       wireCount: design.wires.length,
       systemVoltage: design.systemVoltage,
     });
+    
+    // Clear auto-save when explicitly loading a saved design
+    localStorage.removeItem("autoSavedDiagramState");
     
     setComponents(design.components);
     setWires(design.wires);
@@ -299,6 +423,12 @@ export default function SchematicDesigner() {
 
     // Track AI generation action
     const isIterating = components.length > 0;
+    
+    // Clear auto-save when starting a completely new design (not iterating)
+    if (!isIterating) {
+      localStorage.removeItem("autoSavedDiagramState");
+    }
+    
     trackAction(isIterating ? "ai_iterate_design" : "ai_generate_system", "action", {
       promptLength: prompt.length,
       systemVoltage,
