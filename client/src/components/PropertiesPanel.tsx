@@ -50,6 +50,27 @@ interface PropertiesPanelProps {
   onUpdateComponent?: (id: string, updates: any) => void;
 }
 
+// Helper function to get available voltages for a component type
+function getAvailableVoltages(componentType: string): number[] {
+  switch (componentType) {
+    case 'multiplus':
+    case 'phoenix-inverter':
+    case 'mppt':
+    case 'battery-protect':
+    case 'inverter':
+    case 'cerbo':
+    case 'smartshunt':
+    case 'battery':
+      return [12, 24, 48];
+    case 'blue-smart-charger':
+    case 'orion-dc-dc':
+      return [12, 24];
+    default:
+      // Generic components - common voltages
+      return [12, 24, 48];
+  }
+}
+
 export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, onEditWire, onUpdateComponent }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
@@ -345,9 +366,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           <SelectValue placeholder="Select voltage" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="12">12V DC</SelectItem>
-                          <SelectItem value="24">24V DC</SelectItem>
-                          <SelectItem value="48">48V DC</SelectItem>
+                          {getAvailableVoltages(selectedComponent.type).map((v) => (
+                            <SelectItem key={v} value={v.toString()}>
+                              {v}V DC
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -429,9 +452,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           <SelectValue placeholder="Select voltage" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="12">12V</SelectItem>
-                          <SelectItem value="24">24V</SelectItem>
-                          <SelectItem value="48">48V</SelectItem>
+                          {getAvailableVoltages(selectedComponent.type).map((v) => (
+                            <SelectItem key={v} value={v.toString()}>
+                              {v}V
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -486,10 +511,13 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         <SelectTrigger>
                           <SelectValue placeholder="Select voltage" />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="12">12V</SelectItem>
-                          <SelectItem value="24">24V</SelectItem>
-                        </SelectContent>
+                      <SelectContent>
+                        {getAvailableVoltages(selectedComponent.type).map((v) => (
+                          <SelectItem key={v} value={v.toString()}>
+                            {v}V
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
@@ -609,9 +637,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           <SelectValue placeholder="Select voltage" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="12">12V DC</SelectItem>
-                          <SelectItem value="24">24V DC</SelectItem>
-                          <SelectItem value="48">48V DC</SelectItem>
+                          {getAvailableVoltages(selectedComponent.type).map((v) => (
+                            <SelectItem key={v} value={v.toString()}>
+                              {v}V DC
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -627,12 +657,24 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">
                       <Label>Voltage (V)</Label>
-                      <Input
-                        type="number"
-                        value={voltage}
-                        data-testid="input-voltage"
-                        onChange={(e) => handleVoltageChange(parseFloat(e.target.value))}
-                      />
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          handleVoltageChange(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableVoltages(selectedComponent.type).map((v) => (
+                            <SelectItem key={v} value={v.toString()}>
+                              {v}V
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Current (A)</Label>
