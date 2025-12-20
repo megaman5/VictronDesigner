@@ -9,7 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info } from "lucide-react";
-import type { ValidationResult } from "@shared/schema";
+import type { ValidationResult, Wire } from "@shared/schema";
+import { SaveFeedback } from "@/components/SaveFeedback";
 
 interface WireCalculation {
   current: number;
@@ -51,6 +52,7 @@ interface PropertiesPanelProps {
   validationResult?: ValidationResult | null;
   onEditWire?: (wire: any) => void;
   onUpdateComponent?: (id: string, updates: any) => void;
+  onUpdateWire?: (wireId: string, updates: Partial<Wire>) => void;
 }
 
 // Helper function to get available voltages for a component type
@@ -74,11 +76,13 @@ function getAvailableVoltages(componentType: string): number[] {
   }
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, validationResult, onEditWire, onUpdateComponent }: PropertiesPanelProps) {
+// All components now use 'watts' consistently
+
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, validationResult, onEditWire, onUpdateComponent, onUpdateWire }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
-  const [power, setPower] = useState<number>(0);
+  const [watts, setWatts] = useState<number>(0);
   
   // Battery-specific state
   const [batteryType, setBatteryType] = useState<string>('LiFePO4');
@@ -87,8 +91,17 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
   // Fuse-specific state
   const [fuseRating, setFuseRating] = useState<number>(400);
   
-  // Inverter-specific state
-  const [watts, setWatts] = useState<number>(3000);
+  // Inverter-specific state (separate from generic watts)
+  const [inverterWatts, setInverterWatts] = useState<number>(3000);
+
+  // Wire editing state
+  const [wireGauge, setWireGauge] = useState<string>("");
+  const [wirePolarity, setWirePolarity] = useState<string>("positive");
+  const [wireLength, setWireLength] = useState<string>("0");
+  const [wireMaterial, setWireMaterial] = useState<string>("copper");
+
+  // Save feedback state
+  const [showSaveFeedback, setShowSaveFeedback] = useState(false);
 
   // Sync state when selectedComponent changes
   useEffect(() => {
@@ -103,78 +116,135 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
         setCurrent(props.current || props.amps || 0);
       }
       
-      setPower(props.power || props.watts || 0);
+      setWatts(props.watts || props.power || 0);
       setBatteryType(props.batteryType || 'LiFePO4');
       setCapacity(props.capacity || 200);
       setFuseRating(props.fuseRating || props.amps || 400);
-      setWatts(props.watts || props.powerRating || 3000);
+      setInverterWatts(props.watts || props.powerRating || 3000);
     }
   }, [selectedComponent?.id, selectedComponent?.properties, selectedComponent?.type]);
 
-  // Handle voltage change - recalculate current if power is set
+  // Sync wire state when selectedWire changes
+  useEffect(() => {
+    if (selectedWire) {
+      const gaugeValue = selectedWire.gauge ? selectedWire.gauge.replace(" AWG", "") : "10";
+      setWireGauge(gaugeValue);
+      setWirePolarity(selectedWire.polarity || "positive");
+      setWireLength(selectedWire.length?.toString() || "0");
+      setWireMaterial((selectedWire as any).conductorMaterial || "copper");
+    }
+  }, [selectedWire?.id, selectedWire?.gauge, selectedWire?.polarity, selectedWire?.length]);
+
+  // Handle voltage change - recalculate current if watts is set
   const handleVoltageChange = (newVoltage: number) => {
     if (isNaN(newVoltage) || newVoltage <= 0) return;
 
     setVoltage(newVoltage);
 
-    // Recalculate current based on power if power is non-zero
-    if (power > 0) {
-      const newCurrent = power / newVoltage;
+    // Recalculate current based on watts if watts is non-zero
+    if (watts > 0) {
+      const newCurrent = watts / newVoltage;
       setCurrent(newCurrent);
       onUpdateComponent?.(selectedComponent!.id, {
-        properties: { voltage: newVoltage, current: newCurrent, power }
+        properties: { ...selectedComponent!.properties, voltage: newVoltage, current: newCurrent, watts }
       });
+      triggerSaveFeedback();
     } else {
       onUpdateComponent?.(selectedComponent!.id, {
-        properties: { voltage: newVoltage, current, power }
+        properties: { ...selectedComponent!.properties, voltage: newVoltage, current, watts }
       });
+      triggerSaveFeedback();
     }
   };
 
-  // Handle current (amps) change - auto-calculate power
+  // Handle current (amps) change - auto-calculate watts
   const handleCurrentChange = (newCurrent: number) => {
     if (isNaN(newCurrent)) return;
 
     setCurrent(newCurrent);
 
-    // Auto-calculate power: P = V × I
-    const newPower = voltage * newCurrent;
-    setPower(newPower);
+    // Auto-calculate watts: P = V × I
+    const newWatts = voltage * newCurrent;
+    setWatts(newWatts);
 
     onUpdateComponent?.(selectedComponent!.id, {
-      properties: { voltage, current: newCurrent, power: newPower }
+      properties: { ...selectedComponent!.properties, voltage, current: newCurrent, watts: newWatts }
     });
+    triggerSaveFeedback();
   };
 
-  // Handle power (watts) change - auto-calculate current
-  const handlePowerChange = (newPower: number) => {
-    if (isNaN(newPower)) return;
+  // Handle watts change - auto-calculate current
+  const handleWattsChange = (newWatts: number) => {
+    if (isNaN(newWatts)) return;
 
-    setPower(newPower);
+    setWatts(newWatts);
 
     // Auto-calculate current: I = P / V
     if (voltage > 0) {
-      const newCurrent = newPower / voltage;
+      const newCurrent = newWatts / voltage;
       setCurrent(newCurrent);
 
       onUpdateComponent?.(selectedComponent!.id, {
-        properties: { voltage, current: newCurrent, power: newPower }
+        properties: { ...selectedComponent!.properties, voltage, current: newCurrent, watts: newWatts }
       });
+      triggerSaveFeedback();
     } else {
       onUpdateComponent?.(selectedComponent!.id, {
-        properties: { voltage, current, power: newPower }
+        properties: { ...selectedComponent!.properties, voltage, current, watts: newWatts }
       });
+      triggerSaveFeedback();
     }
   };
 
+  // Trigger save feedback - reset first to ensure animation triggers
+  const triggerSaveFeedback = () => {
+    setShowSaveFeedback(false);
+    // Use setTimeout to ensure state reset happens before setting to true
+    setTimeout(() => {
+      setShowSaveFeedback(true);
+    }, 10);
+  };
+
+  // Handle wire property updates
+  const handleWireGaugeChange = (value: string) => {
+    if (!selectedWire || !onUpdateWire) return;
+    const formattedGauge = value && !value.endsWith("AWG") ? `${value} AWG` : value;
+    setWireGauge(value);
+    onUpdateWire(selectedWire.id, { gauge: formattedGauge });
+    triggerSaveFeedback();
+  };
+
+  const handleWirePolarityChange = (value: string) => {
+    if (!selectedWire || !onUpdateWire) return;
+    setWirePolarity(value);
+    onUpdateWire(selectedWire.id, { polarity: value as "positive" | "negative" | "ground" });
+    triggerSaveFeedback();
+  };
+
+  const handleWireLengthChange = (value: string) => {
+    if (!selectedWire || !onUpdateWire) return;
+    const length = parseFloat(value) || 0;
+    setWireLength(value);
+    onUpdateWire(selectedWire.id, { length });
+    triggerSaveFeedback();
+  };
+
+  const handleWireMaterialChange = (value: string) => {
+    if (!selectedWire || !onUpdateWire) return;
+    setWireMaterial(value);
+    onUpdateWire(selectedWire.id, { conductorMaterial: value as "copper" | "aluminum" });
+    triggerSaveFeedback();
+  };
+
   return (
-    <div className="w-80 border-l bg-card flex flex-col h-full">
+    <div className="w-80 border-l bg-card flex flex-col h-full relative">
+      <SaveFeedback show={showSaveFeedback} />
       <div className="p-4 border-b">
         <h2 className="font-semibold text-lg">Properties</h2>
       </div>
 
-      <Tabs defaultValue="properties" className="flex-1 flex flex-col">
-        <TabsList className="mx-4 mt-4">
+      <Tabs defaultValue="properties" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="mx-4 mt-4 flex-shrink-0">
           <TabsTrigger value="properties" className="flex-1 gap-2" data-testid="tab-properties">
             <Settings className="h-4 w-4" />
             Settings
@@ -185,8 +255,8 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
           </TabsTrigger>
         </TabsList>
 
-        <ScrollArea className="flex-1">
-          <TabsContent value="properties" className="p-4 space-y-4 mt-0">
+        <ScrollArea className="flex-1 min-h-0">
+          <TabsContent value="properties" className="p-4 space-y-4 mt-0 pr-2">
             {/* Display issues for selected component or wire */}
             {(() => {
               const relevantIssues = validationResult?.issues.filter(issue => {
@@ -243,57 +313,77 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   <div className="text-sm text-muted-foreground p-2 bg-muted rounded-md">
                     {selectedWire.fromComponentId} → {selectedWire.toComponentId}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-2"
-                    onClick={() => onEditWire?.(selectedWire)}
-                  >
-                    Edit Wire Properties
-                  </Button>
                 </div>
 
                 <Separator />
 
                 <div className="space-y-4">
-                  <h3 className="text-sm font-medium">Wire Details</h3>
+                  <h3 className="text-sm font-medium">Wire Properties</h3>
                   <div className="space-y-2">
                     <Label>Polarity</Label>
-                    <Badge variant={selectedWire.polarity === "positive" ? "default" : "secondary"}>
-                      {selectedWire.polarity.toUpperCase()}
-                    </Badge>
+                    <Select value={wirePolarity} onValueChange={handleWirePolarityChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select polarity" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="positive">Positive (+)</SelectItem>
+                        <SelectItem value="negative">Negative (-)</SelectItem>
+                        <SelectItem value="ground">Ground</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Wire Gauge</Label>
-                    <Input
-                      defaultValue={selectedWire.gauge || "N/A"}
-                      data-testid="input-wire-gauge"
-                      readOnly
-                    />
+                    <Select value={wireGauge} onValueChange={handleWireGaugeChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select gauge" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["4/0", "2/0", "1/0", "2", "4", "6", "8", "10", "12", "14", "16"].map(g => (
+                          <SelectItem key={g} value={g}>{g} AWG</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Length (ft)</Label>
                     <Input
                       type="number"
-                      defaultValue={selectedWire.length}
+                      value={wireLength}
+                      onChange={(e) => handleWireLengthChange(e.target.value)}
                       data-testid="input-wire-length"
-                      readOnly
+                      step="0.1"
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label>Conductor Material</Label>
+                    <Select value={wireMaterial} onValueChange={handleWireMaterialChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select material" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="copper">Copper</SelectItem>
+                        <SelectItem value="aluminum">Aluminum</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Separator />
+                  <div className="space-y-2">
                     <Label>From Terminal</Label>
                     <Input
-                      defaultValue={selectedWire.fromTerminal}
+                      value={selectedWire.fromTerminal}
                       data-testid="input-from-terminal"
                       readOnly
+                      className="bg-muted"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>To Terminal</Label>
                     <Input
-                      defaultValue={selectedWire.toTerminal}
+                      value={selectedWire.toTerminal}
                       data-testid="input-to-terminal"
                       readOnly
+                      className="bg-muted"
                     />
                   </div>
                 </div>
@@ -305,7 +395,10 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   <Input
                     defaultValue={selectedComponent.name}
                     data-testid="input-component-name"
-                    onChange={(e) => onUpdateComponent?.(selectedComponent.id, { name: e.target.value })}
+                    onChange={(e) => {
+                      onUpdateComponent?.(selectedComponent.id, { name: e.target.value });
+                      triggerSaveFeedback();
+                    }}
                   />
                 </div>
 
@@ -324,6 +417,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, batteryType: value }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -348,6 +442,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, voltage: v }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -372,6 +467,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, capacity: c }
                           });
+                          triggerSaveFeedback();
                         }}
                         step="10"
                       />
@@ -390,14 +486,15 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       <Label>Power Rating (W)</Label>
                       <Input
                         type="number"
-                        value={watts}
+                        value={inverterWatts}
                         data-testid="input-watts"
                         onChange={(e) => {
                           const w = parseInt(e.target.value) || 0;
-                          setWatts(w);
+                          setInverterWatts(w);
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, watts: w }
                           });
+                          triggerSaveFeedback();
                         }}
                         step="100"
                       />
@@ -412,6 +509,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, voltage: v }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -446,6 +544,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, fuseRating: r, amps: r }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -484,6 +583,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, amps, current: amps }
                           });
+                          triggerSaveFeedback();
                         }}
                         step="5"
                       />
@@ -532,6 +632,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, amps, current: amps }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -592,6 +693,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, amps, current: amps }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -625,6 +727,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, amps, current: amps }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -650,13 +753,14 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <div className="space-y-2">
                       <Label>Power Rating (W)</Label>
                       <Select
-                        value={(watts || 1200).toString()}
+                        value={(inverterWatts || 1200).toString()}
                         onValueChange={(value) => {
                           const w = parseInt(value);
-                          setWatts(w);
+                          setInverterWatts(w);
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, watts: w, powerRating: w }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -683,6 +787,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, voltage: v }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -698,7 +803,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Max DC Current: {Math.ceil((watts || 1200) / voltage * 1.25)}A (with 25% safety margin)
+                      Max DC Current: {Math.ceil((inverterWatts || 1200) / voltage * 1.25)}A (with 25% safety margin)
                     </div>
                   </div>
                 )}
@@ -742,9 +847,9 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       <Label>Power (W)</Label>
                       <Input
                         type="number"
-                        value={power}
+                        value={watts}
                         data-testid="input-power"
-                        onChange={(e) => handlePowerChange(parseFloat(e.target.value))}
+                        onChange={(e) => handleWattsChange(parseFloat(e.target.value))}
                         step="1"
                       />
                     </div>
@@ -759,7 +864,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
             )}
           </TabsContent>
 
-          <TabsContent value="calculations" className="p-4 space-y-4 mt-0">
+          <TabsContent value="calculations" className="p-4 space-y-4 mt-0 pr-2">
             {wireCalculation ? (
               <>
                 <div className="space-y-3">
@@ -813,6 +918,6 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
           </TabsContent>
         </ScrollArea>
       </Tabs>
-    </div >
+    </div>
   );
 }

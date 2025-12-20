@@ -7,7 +7,6 @@ import { PropertiesPanel } from "@/components/PropertiesPanel";
 import { DesignReviewPanel } from "@/components/DesignReviewPanel";
 import { AIPromptDialog } from "@/components/AIPromptDialog";
 import { ExportDialog } from "@/components/ExportDialog";
-import { WireEditDialog } from "@/components/WireEditDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { SaveDesignDialog } from "@/components/SaveDesignDialog";
 import { OpenDesignDialog } from "@/components/OpenDesignDialog";
@@ -46,7 +45,6 @@ export default function SchematicDesigner() {
   const [draggedComponentType, setDraggedComponentType] = useState<string | null>(null);
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
-  const [editingWire, setEditingWire] = useState<Wire | null>(null);
 
   // Initialize state from localStorage if available (lazy initialization)
   const initializeState = () => {
@@ -766,9 +764,6 @@ export default function SchematicDesigner() {
     }
   };
 
-  const handleWireEdit = (wire: Wire) => {
-    setEditingWire(wire);
-  };
 
   const handleExport = async (options: { wiringDiagram: boolean; shoppingList: boolean; wireLabels: boolean; format: string }) => {
     // Track export action
@@ -907,7 +902,6 @@ export default function SchematicDesigner() {
           onWireConnectionComplete={handleWireConnectionComplete}
           onWireDelete={handleWireDelete}
           onWireUpdate={handleWireUpdate}
-          onWireEdit={handleWireEdit}
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}
         />
@@ -938,7 +932,7 @@ export default function SchematicDesigner() {
             status: wireCalculation.status,
           } : undefined}
           validationResult={validationResult}
-          onEditWire={handleWireEdit}
+          onUpdateWire={handleWireUpdate}
           onUpdateComponent={(id, updates) => {
             setComponents(prev => prev.map(comp => {
               if (comp.id === id) {
@@ -1010,12 +1004,6 @@ export default function SchematicDesigner() {
         onLoad={handleLoadDesign}
       />
 
-      <WireEditDialog
-        wire={editingWire}
-        open={!!editingWire}
-        onOpenChange={(open) => !open && setEditingWire(null)}
-        onSave={(id, updates) => handleWireUpdate(id, updates)}
-      />
 
       <Sheet open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
         <SheetContent side="right" className="w-full sm:w-[700px] overflow-y-auto">
