@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calculator, Settings, ShoppingCart, Tag } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info } from "lucide-react";
+import type { ValidationResult } from "@shared/schema";
 
 interface WireCalculation {
   current: number;
@@ -46,6 +48,7 @@ interface PropertiesPanelProps {
     length: number;
   };
   wireCalculation?: WireCalculation;
+  validationResult?: ValidationResult | null;
   onEditWire?: (wire: any) => void;
   onUpdateComponent?: (id: string, updates: any) => void;
 }
@@ -71,7 +74,7 @@ function getAvailableVoltages(componentType: string): number[] {
   }
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, onEditWire, onUpdateComponent }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, validationResult, onEditWire, onUpdateComponent }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
@@ -184,6 +187,55 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
         <ScrollArea className="flex-1">
           <TabsContent value="properties" className="p-4 space-y-4 mt-0">
+            {/* Display issues for selected component or wire */}
+            {(() => {
+              const relevantIssues = validationResult?.issues.filter(issue => {
+                if (selectedComponent && issue.componentIds?.includes(selectedComponent.id)) {
+                  return true;
+                }
+                if (selectedWire && (issue.wireId === selectedWire.id || issue.wireIds?.includes(selectedWire.id))) {
+                  return true;
+                }
+                return false;
+              }) || [];
+
+              if (relevantIssues.length > 0) {
+                return (
+                  <div className="space-y-2 mb-4">
+                    <Label className="text-sm font-semibold">Issues</Label>
+                    {relevantIssues.map((issue, idx) => (
+                      <Alert
+                        key={idx}
+                        variant={issue.severity === "error" ? "destructive" : issue.severity === "warning" ? "default" : "default"}
+                        className={issue.severity === "warning" ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-950/30" : ""}
+                      >
+                        {issue.severity === "error" ? (
+                          <AlertCircle className="h-4 w-4 text-red-600" />
+                        ) : issue.severity === "warning" ? (
+                          <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        ) : (
+                          <Info className="h-4 w-4 text-blue-600" />
+                        )}
+                        <AlertTitle className="text-sm font-semibold">
+                          {issue.severity === "error" ? "Error" : issue.severity === "warning" ? "Warning" : "Info"}
+                        </AlertTitle>
+                        <AlertDescription className="text-sm">
+                          <div className="mt-1">{issue.message}</div>
+                          {issue.suggestion && (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              <strong>Suggestion:</strong> {issue.suggestion}
+                            </div>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    ))}
+                    <Separator className="my-4" />
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {selectedWire ? (
               <div key={selectedWire.id}>
                 <div className="space-y-2">

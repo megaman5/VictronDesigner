@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SchematicComponent } from "./SchematicComponent";
@@ -18,6 +18,7 @@ interface SchematicCanvasProps {
   components?: SchematicComponentType[];
   wires?: Wire[];
   wireValidationStatus?: Map<string, "error" | "warning">;
+  componentValidationStatus?: Map<string, "error" | "warning">;
   onComponentsChange?: (components: SchematicComponentType[]) => void;
   onWiresChange?: (wires: Wire[]) => void;
   onComponentSelect?: (component: SchematicComponentType) => void;
@@ -37,6 +38,7 @@ export function SchematicCanvas({
   components = [],
   wires = [],
   wireValidationStatus,
+  componentValidationStatus,
   onComponentsChange,
   onWiresChange,
   onComponentSelect,
@@ -86,6 +88,25 @@ export function SchematicCanvas({
   const [draggedEndpointPos, setDraggedEndpointPos] = useState<{ x: number; y: number } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Calculate minimum canvas size based on component positions
+  // This creates a canvas that's always at least as big as the content
+  const canvasBounds = useMemo(() => {
+    let maxX = 0;
+    let maxY = 0;
+
+    components.forEach(comp => {
+      const config = TERMINAL_CONFIGS[comp.type];
+      if (config) {
+        const compRight = comp.x + config.width + 100;
+        const compBottom = comp.y + config.height + 100;
+        if (compRight > maxX) maxX = compRight;
+        if (compBottom > maxY) maxY = compBottom;
+      }
+    });
+
+    return { maxX, maxY };
+  }, [components]);
 
   // Calculate terminal usage for distributing wires
   const terminalUsage = useMemo(() => {
@@ -611,7 +632,7 @@ export function SchematicCanvas({
 
       <div
         ref={canvasRef}
-        className="flex-1 relative overflow-auto bg-background"
+        className="flex-1 relative bg-background overflow-auto"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onKeyDown={handleKeyDown}
@@ -621,12 +642,27 @@ export function SchematicCanvas({
         tabIndex={0}
         data-testid="canvas-drop-zone"
       >
-        <svg
-          className="absolute inset-0"
-          width="2400"
-          height="1600"
-          style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
+        {/* Inner div to handle scrolling - size based on content */}
+        <div 
+          style={{ 
+            width: canvasBounds.maxX > 0 ? Math.max(canvasBounds.maxX, 100) : '100%',
+            height: canvasBounds.maxY > 0 ? Math.max(canvasBounds.maxY, 100) : '100%',
+            minWidth: '100%',
+            minHeight: '100%',
+            position: 'relative'
+          }}
         >
+          <svg
+            width="100%"
+            height="100%"
+            style={{ 
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              transform: `scale(${zoom / 100})`, 
+              transformOrigin: 'top left'
+            }}
+          >
           <defs>
             {showGrid && (
               <pattern
@@ -989,6 +1025,7 @@ export function SchematicCanvas({
                   name={component.name}
                   properties={component.properties}
                   selected={selectedIds.includes(component.id)}
+                  validationStatus={componentValidationStatus?.get(component.id)}
                   onClick={(e) => handleComponentClick(component, e)}
                   onTerminalClick={(terminal, e) => handleTerminalClick(component, terminal, e)}
                   highlightedTerminals={highlightedTerminals}
@@ -1028,8 +1065,8 @@ export function SchematicCanvas({
         {/* Wire drag handles overlay - rendered on top of everything */}
         <svg
           className="absolute inset-0 pointer-events-none"
-          width="2400"
-          height="1600"
+          width="100%"
+          height="100%"
           style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
         >
           {wires.map((wire) => {
@@ -1082,6 +1119,7 @@ export function SchematicCanvas({
             );
           })}
         </svg>
+        </div>
       </div>
     </div>
   );

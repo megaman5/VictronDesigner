@@ -24,9 +24,23 @@ sudo systemctl status victron-designer.service
 sudo journalctl -u victron-designer.service -f
 ```
 
+**⚠️ IMPORTANT: After making ANY code changes (server or client), you MUST:**
+1. Run `npm run build` to rebuild the application
+2. Run `sudo systemctl restart victron-designer.service` to apply changes
+3. Always restart the server after making changes - changes won't take effect until the service is restarted!
+
 ## Recent Changes
 
-### Latest Session - AI Component Properties Fix (December 2025)
+### Latest Session - MPPT Validation & Lynx Removal (December 2025)
+1. **MPPT Solar Panel Validation**: Added validation rule that flags MPPT controllers missing solar panel connections as errors
+   - Checks for PV positive/negative terminal connections
+   - Verifies actual connection to solar panel components
+   - Provides helpful error messages with suggestions
+2. **Removed Lynx Distributor**: Removed from component library to reduce diagram clutter
+   - Still available in device definitions for backward compatibility
+   - AI will use bus bars instead for cleaner diagrams
+
+### Previous Session - AI Component Properties Fix (December 2025)
 1. **Fixed AI omitting properties**: AI was generating loads without `properties` field (watts/amps = 0)
 2. **Enhanced AI prompts**: Added explicit JSON examples showing required `properties` for all components
 3. **Validation for missing properties**: `design-validator.ts` now flags loads without watts/amps as errors

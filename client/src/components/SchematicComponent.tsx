@@ -15,6 +15,7 @@ interface SchematicComponentProps {
   name: string;
   properties?: ComponentProperties;
   selected?: boolean;
+  validationStatus?: "error" | "warning";
   onClick?: (e?: React.MouseEvent) => void;
   onTerminalClick?: (terminal: Terminal, e: React.MouseEvent) => void;
   highlightedTerminals?: string[]; // Terminal IDs to highlight
@@ -25,6 +26,7 @@ export function SchematicComponent({
   name,
   properties = {},
   selected,
+  validationStatus,
   onClick,
   onTerminalClick,
   highlightedTerminals = []
@@ -686,8 +688,15 @@ export function SchematicComponent({
 
   return (
     <div
-      className={`cursor-pointer transition-all pointer-events-auto ${selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
-        }`}
+      className={`cursor-pointer transition-all pointer-events-auto ${
+        selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+      } ${
+        validationStatus === "error" 
+          ? "ring-2 ring-red-500 ring-offset-2 ring-offset-background animate-pulse" 
+          : validationStatus === "warning"
+          ? "ring-2 ring-yellow-500 ring-offset-2 ring-offset-background"
+          : ""
+      }`}
       onClick={onClick}
     >
       <div className="hover-elevate active-elevate-2 rounded-md relative">

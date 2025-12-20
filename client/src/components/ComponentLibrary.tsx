@@ -25,7 +25,6 @@ const victronComponents: Component[] = [
   { id: "cerbo", name: "Cerbo GX", icon: <Cpu className="h-5 w-5" />, category: "victron" },
   { id: "smartshunt", name: "SmartShunt", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "battery-protect", name: "Battery Protect", icon: <Gauge className="h-5 w-5" />, category: "victron" },
-  { id: "lynx-distributor", name: "Lynx Distributor", icon: <Cable className="h-5 w-5" />, category: "victron" },
 ];
 
 const genericComponents: Component[] = [
