@@ -1,7 +1,8 @@
-import { CheckCircle2, Loader2, Zap } from "lucide-react";
+import { CheckCircle2, Loader2, Zap, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface IterationProgressProps {
   currentIteration: number;
@@ -9,6 +10,12 @@ interface IterationProgressProps {
   currentScore: number;
   status: string;
   visualFeedback?: string;
+  // Token streaming props
+  isStreaming?: boolean;
+  tokenCount?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  streamingText?: string;
 }
 
 export function IterationProgress({
@@ -17,6 +24,11 @@ export function IterationProgress({
   currentScore,
   status,
   visualFeedback,
+  isStreaming = false,
+  tokenCount = 0,
+  promptTokens = 0,
+  completionTokens = 0,
+  streamingText = "",
 }: IterationProgressProps) {
   const progress = (currentIteration / maxIterations) * 100;
   const isComplete = status.includes("✅") || status.includes("⚠️");
@@ -115,8 +127,41 @@ export function IterationProgress({
               </div>
             )}
 
+            {/* Token Streaming Status */}
+            {isStreaming && (
+              <div className="pt-2 border-t space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-500 animate-pulse" />
+                    <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                      AI Generating Response...
+                    </span>
+                  </div>
+                  {tokenCount > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      {tokenCount} tokens
+                    </Badge>
+                  )}
+                </div>
+                {streamingText && (
+                  <ScrollArea className="h-24 w-full border rounded-md p-2 bg-muted/50">
+                    <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words">
+                      {streamingText.substring(Math.max(0, streamingText.length - 500))}
+                    </pre>
+                  </ScrollArea>
+                )}
+                {(promptTokens > 0 || completionTokens > 0) && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Prompt: {promptTokens} tokens</span>
+                    <span>Response: {completionTokens} tokens</span>
+                    <span>Total: {promptTokens + completionTokens} tokens</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Quality Tips */}
-            {!isComplete && currentIteration > 1 && (
+            {!isComplete && currentIteration > 1 && !isStreaming && (
               <div className="flex items-start gap-2 p-2 bg-muted rounded-md">
                 <Zap className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-muted-foreground">

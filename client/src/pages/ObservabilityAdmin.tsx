@@ -97,6 +97,24 @@ interface AILog {
     wires?: any[];
     description?: string;
     recommendations?: string[];
+    _debug?: {
+      systemMessage?: string;
+      userMessage?: string;
+      rawResponse?: string;
+      validationFeedback?: {
+        score?: number;
+        errors?: string[];
+        warnings?: string[];
+        wireSizingIssues?: string[];
+        suggestions?: string[];
+      };
+      iterationHistory?: Array<{
+        iteration: number;
+        score: number;
+        errorCount: number;
+        warningCount: number;
+      }>;
+    };
   };
 }
 
@@ -955,6 +973,133 @@ export default function ObservabilityAdmin() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Debug Information */}
+                  {selectedAILog.response?._debug && Object.keys(selectedAILog.response._debug).length > 0 && (
+                    <div className="space-y-4">
+                      <h3 className="font-semibold mb-2 text-blue-600 dark:text-blue-400">🔍 Debug Information</h3>
+                      
+                      {/* System Message */}
+                      {selectedAILog.response._debug.systemMessage && (
+                        <details className="group">
+                          <summary className="font-semibold cursor-pointer hover:text-primary text-sm">
+                            System Message (Full Prompt) - {selectedAILog.response._debug.systemMessage.length} chars
+                          </summary>
+                          <pre className="mt-2 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg text-xs whitespace-pre-wrap overflow-x-auto max-h-[400px] overflow-y-auto font-mono">
+                            {selectedAILog.response._debug.systemMessage}
+                          </pre>
+                        </details>
+                      )}
+
+                      {/* User Message */}
+                      {selectedAILog.response._debug.userMessage && (
+                        <details className="group">
+                          <summary className="font-semibold cursor-pointer hover:text-primary text-sm">
+                            User Message - {selectedAILog.response._debug.userMessage.length} chars
+                          </summary>
+                          <pre className="mt-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-4 rounded-lg text-xs whitespace-pre-wrap overflow-x-auto max-h-[200px] overflow-y-auto font-mono">
+                            {selectedAILog.response._debug.userMessage}
+                          </pre>
+                        </details>
+                      )}
+
+                      {/* Raw AI Response */}
+                      {selectedAILog.response._debug.rawResponse && (
+                        <details className="group">
+                          <summary className="font-semibold cursor-pointer hover:text-primary text-sm">
+                            Raw AI Response (Before JSON Extraction) - {selectedAILog.response._debug.rawResponse.length} chars
+                          </summary>
+                          <pre className="mt-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 p-4 rounded-lg text-xs whitespace-pre-wrap overflow-x-auto max-h-[400px] overflow-y-auto font-mono">
+                            {selectedAILog.response._debug.rawResponse}
+                          </pre>
+                        </details>
+                      )}
+
+                      {/* Validation Feedback */}
+                      {selectedAILog.response._debug.validationFeedback && (
+                        <div>
+                          <h4 className="font-semibold mb-2 text-sm">Validation Feedback</h4>
+                          <div className="bg-muted p-4 rounded-lg space-y-3">
+                            {selectedAILog.response._debug.validationFeedback.score !== undefined && (
+                              <div>
+                                <span className="text-muted-foreground">Score:</span>{" "}
+                                <span className="font-bold">{selectedAILog.response._debug.validationFeedback.score}/100</span>
+                              </div>
+                            )}
+                            {selectedAILog.response._debug.validationFeedback.errors && selectedAILog.response._debug.validationFeedback.errors.length > 0 && (
+                              <div>
+                                <span className="text-muted-foreground font-semibold">Errors ({selectedAILog.response._debug.validationFeedback.errors.length}):</span>
+                                <ul className="list-disc list-inside mt-1 text-sm text-destructive space-y-1">
+                                  {selectedAILog.response._debug.validationFeedback.errors.map((err, i) => (
+                                    <li key={i}>{err}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {selectedAILog.response._debug.validationFeedback.warnings && selectedAILog.response._debug.validationFeedback.warnings.length > 0 && (
+                              <div>
+                                <span className="text-muted-foreground font-semibold">Warnings ({selectedAILog.response._debug.validationFeedback.warnings.length}):</span>
+                                <ul className="list-disc list-inside mt-1 text-sm text-yellow-600 dark:text-yellow-400 space-y-1">
+                                  {selectedAILog.response._debug.validationFeedback.warnings.map((warn, i) => (
+                                    <li key={i}>{warn}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {selectedAILog.response._debug.validationFeedback.wireSizingIssues && selectedAILog.response._debug.validationFeedback.wireSizingIssues.length > 0 && (
+                              <div>
+                                <span className="text-muted-foreground font-semibold">Wire Sizing Issues ({selectedAILog.response._debug.validationFeedback.wireSizingIssues.length}):</span>
+                                <ul className="list-disc list-inside mt-1 text-sm text-orange-600 dark:text-orange-400 space-y-1">
+                                  {selectedAILog.response._debug.validationFeedback.wireSizingIssues.map((issue, i) => (
+                                    <li key={i}>{issue}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {selectedAILog.response._debug.validationFeedback.suggestions && selectedAILog.response._debug.validationFeedback.suggestions.length > 0 && (
+                              <div>
+                                <span className="text-muted-foreground font-semibold">Suggestions:</span>
+                                <ul className="list-disc list-inside mt-1 text-sm space-y-1">
+                                  {selectedAILog.response._debug.validationFeedback.suggestions.map((sugg, i) => (
+                                    <li key={i}>{sugg}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Iteration History */}
+                      {selectedAILog.response._debug.iterationHistory && selectedAILog.response._debug.iterationHistory.length > 0 && (
+                        <div>
+                          <h4 className="font-semibold mb-2 text-sm">Iteration History</h4>
+                          <div className="bg-muted p-4 rounded-lg">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left p-1">Iteration</th>
+                                  <th className="text-left p-1">Score</th>
+                                  <th className="text-left p-1">Errors</th>
+                                  <th className="text-left p-1">Warnings</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedAILog.response._debug.iterationHistory.map((iter, i) => (
+                                  <tr key={i} className="border-b border-muted-foreground/20">
+                                    <td className="p-1">{iter.iteration}</td>
+                                    <td className="p-1 font-bold">{iter.score}</td>
+                                    <td className="p-1 text-destructive">{iter.errorCount}</td>
+                                    <td className="p-1 text-yellow-600 dark:text-yellow-400">{iter.warningCount}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

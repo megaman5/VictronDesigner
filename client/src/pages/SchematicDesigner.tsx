@@ -12,11 +12,22 @@ import { SaveDesignDialog } from "@/components/SaveDesignDialog";
 import { OpenDesignDialog } from "@/components/OpenDesignDialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { trackAction } from "@/lib/tracking";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 import { AlertTriangle } from "lucide-react";
+import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 
 interface AuthUser {
@@ -47,6 +58,9 @@ export default function SchematicDesigner() {
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
+  const [copiedComponents, setCopiedComponents] = useState<SchematicComponent[]>([]);
+  const [copiedWires, setCopiedWires] = useState<Wire[]>([]);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   // Initialize state from localStorage if available (lazy initialization)
   const initializeState = () => {
@@ -104,6 +118,15 @@ export default function SchematicDesigner() {
     iteration: number;
     maxIterations: number;
     score?: number;
+    errorCount?: number;
+    warningCount?: number;
+    isBest?: boolean;
+    // Token streaming state
+    isStreaming?: boolean;
+    tokenCount?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    streamingText?: string;
     errorCount?: number;
     warningCount?: number;
     isBest?: boolean;
@@ -488,16 +511,45 @@ export default function SchematicDesigner() {
               setIterationProgress({
                 iteration: data.iteration,
                 maxIterations: data.maxIterations,
+                isStreaming: false,
+                streamingText: "",
+                tokenCount: 0,
               });
+            } else if (currentEventType === "ai-request-start") {
+              setIterationProgress(prev => prev ? {
+                ...prev,
+                isStreaming: true,
+                streamingText: "",
+                tokenCount: 0,
+                promptTokens: 0,
+                completionTokens: 0,
+              } : null);
+            } else if (currentEventType === "ai-token") {
+              setIterationProgress(prev => prev ? {
+                ...prev,
+                isStreaming: true,
+                streamingText: (prev.streamingText || "") + (data.token || ""),
+                tokenCount: data.accumulatedLength || 0,
+              } : null);
+            } else if (currentEventType === "ai-response-complete") {
+              setIterationProgress(prev => prev ? {
+                ...prev,
+                isStreaming: false,
+                promptTokens: data.promptTokens || 0,
+                completionTokens: data.completionTokens || 0,
+                tokenCount: data.totalTokens || 0,
+              } : null);
             } else if (currentEventType === "iteration-complete") {
-              setIterationProgress({
+              setIterationProgress(prev => prev ? {
+                ...prev,
                 iteration: data.iteration,
                 maxIterations: data.maxIterations,
                 score: data.score,
                 errorCount: data.errorCount,
                 warningCount: data.warningCount,
                 isBest: data.isBest,
-              });
+                isStreaming: false,
+              } : null);
             } else if (currentEventType === "complete") {
               console.log("AI Generated System - Full Data:", data);
               console.log("Components count:", data.components?.length || 0);
@@ -587,51 +639,182 @@ export default function SchematicDesigner() {
   });
 
   // Wire calculation - uses actual wire properties and connected load data
+  // Helper function to calculate inverter DC input from AC loads
+  const calculateInverterDCInput = (
+    inverterId: string,
+    inverterEfficiency: number = 0.875
+  ): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number } => {
+    const inverter = components.find(c => c.id === inverterId);
+    if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "inverter")) {
+      return { acLoadWatts: 0, dcInputWatts: 0, dcInputCurrent: 0, acVoltage: 120 };
+    }
+
+    const inverterACOutputTerminals = ["ac-out-hot", "ac-out-neutral"];
+    let totalACWatts = 0;
+    let acVoltage = 120;
+
+    const findACLoads = (componentId: string, visited: Set<string> = new Set()): { watts: number; voltage: number } => {
+      if (visited.has(componentId)) return { watts: 0, voltage: 120 };
+      visited.add(componentId);
+
+      const comp = components.find(c => c.id === componentId);
+      if (!comp) return { watts: 0, voltage: 120 };
+
+      if (comp.type === "ac-load") {
+        const loadWatts = (comp.properties?.watts || comp.properties?.power || 0) as number;
+        const loadVoltage = comp.properties?.acVoltage || comp.properties?.voltage || 120;
+        return { watts: loadWatts, voltage: loadVoltage };
+      }
+
+      if (comp.type === "ac-panel") {
+        let panelWatts = 0;
+        let panelVoltage = 120;
+        const panelWires = wires.filter(
+          w => (w.fromComponentId === componentId || w.toComponentId === componentId) &&
+               w.polarity === "hot"
+        );
+        
+        const panelVisited = new Set<string>();
+        for (const panelWire of panelWires) {
+          const otherCompId = panelWire.fromComponentId === componentId 
+            ? panelWire.toComponentId 
+            : panelWire.fromComponentId;
+          
+          if (!panelVisited.has(otherCompId)) {
+            panelVisited.add(otherCompId);
+            const result = findACLoads(otherCompId, new Set(visited));
+            panelWatts += result.watts;
+            if (result.voltage !== 120) panelVoltage = result.voltage;
+          }
+        }
+        return { watts: panelWatts, voltage: panelVoltage };
+      }
+
+      const connectedWires = wires.filter(
+        w => (w.fromComponentId === componentId || w.toComponentId === componentId) &&
+             (w.polarity === "hot" || w.polarity === "neutral" || w.polarity === "ground")
+      );
+
+      for (const connectedWire of connectedWires) {
+        const otherCompId = connectedWire.fromComponentId === componentId 
+          ? connectedWire.toComponentId 
+          : connectedWire.fromComponentId;
+        const result = findACLoads(otherCompId, new Set(visited));
+        if (result.watts > 0) {
+          return result;
+        }
+      }
+
+      return { watts: 0, voltage: 120 };
+    };
+
+    const inverterACWires = wires.filter(
+      w => (w.fromComponentId === inverterId || w.toComponentId === inverterId) &&
+           ((w.fromTerminal === "ac-out-hot" && w.fromComponentId === inverterId) ||
+            (w.toTerminal === "ac-out-hot" && w.toComponentId === inverterId))
+    );
+
+    const visitedComponents = new Set<string>();
+    for (const acWire of inverterACWires) {
+      const otherCompId = acWire.fromComponentId === inverterId 
+        ? acWire.toComponentId 
+        : acWire.fromComponentId;
+      
+      if (!visitedComponents.has(otherCompId)) {
+        visitedComponents.add(otherCompId);
+        const result = findACLoads(otherCompId, new Set());
+        totalACWatts += result.watts;
+        if (result.voltage !== 120) acVoltage = result.voltage;
+      }
+    }
+
+    if (totalACWatts === 0) {
+      const inverterRating = (inverter.properties?.powerRating || inverter.properties?.watts || inverter.properties?.power || 0) as number;
+      if (inverterRating > 0) {
+        totalACWatts = inverterRating * 0.8;
+      }
+    }
+
+    const dcInputWatts = totalACWatts / inverterEfficiency;
+    const dcInputCurrent = systemVoltage > 0 ? dcInputWatts / systemVoltage : 0;
+
+    return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
+  };
+
   const calculateWire = async (wire: Wire, overrideVoltage?: number) => {
     try {
       // Calculate current from connected load if not set
       let current = wire.current || 0;
       let voltage = overrideVoltage || systemVoltage;
-      
+
       if (current === 0) {
         // Find connected components to calculate current
         const fromComp = components.find(c => c.id === wire.fromComponentId);
         const toComp = components.find(c => c.id === wire.toComponentId);
+
+        // Check if this is an inverter DC connection - use inverter DC input current
+        const isInverterDCWire = 
+          ((fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+           (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative")) ||
+          ((toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+           (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative"));
         
-        // Use component voltage if available
-        if (fromComp?.properties?.voltage) {
-          voltage = fromComp.properties.voltage as number;
-        } else if (toComp?.properties?.voltage) {
-          voltage = toComp.properties.voltage as number;
-        }
-        
-        // Calculate current from load watts
-        if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
-          const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-          const loadVoltage = (toComp.properties?.voltage as number || voltage);
-          if (loadWatts > 0 && loadVoltage > 0) {
-            current = loadWatts / loadVoltage;
-            voltage = loadVoltage; // Use load's voltage
+        if (isInverterDCWire) {
+          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
+            ? fromComp.id
+            : toComp?.id;
+          if (inverterId) {
+            const inverterDC = calculateInverterDCInput(inverterId);
+            current = inverterDC.dcInputCurrent;
+            // Use system voltage for DC side
+            if (fromComp?.properties?.voltage) {
+              voltage = fromComp.properties.voltage as number;
+            } else if (toComp?.properties?.voltage) {
+              voltage = toComp.properties.voltage as number;
+            }
           }
-        } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
-          const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
-          const loadVoltage = (fromComp.properties?.voltage as number || voltage);
-          if (loadWatts > 0 && loadVoltage > 0) {
-            current = loadWatts / loadVoltage;
-            voltage = loadVoltage; // Use load's voltage
+        } else {
+          // Use component voltage if available
+          if (fromComp?.properties?.voltage) {
+            voltage = fromComp.properties.voltage as number;
+          } else if (toComp?.properties?.voltage) {
+            voltage = toComp.properties.voltage as number;
           }
-        } else if (fromComp?.properties?.current) {
-          current = fromComp.properties.current as number;
-        } else if (toComp?.properties?.current) {
-          current = toComp.properties.current as number;
-        } else if (fromComp?.properties?.amps) {
-          current = fromComp.properties.amps as number;
-        } else if (toComp?.properties?.amps) {
-          current = toComp.properties.amps as number;
+          
+          // Calculate current from load watts
+          if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+            const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+            // AC loads use AC voltage (120V), DC loads use component voltage
+            const loadVoltage = toComp.type === "ac-load" 
+              ? (toComp.properties?.acVoltage || toComp.properties?.voltage || 120)
+              : (toComp.properties?.voltage as number || voltage);
+            if (loadWatts > 0 && loadVoltage > 0) {
+              current = loadWatts / loadVoltage;
+              voltage = loadVoltage; // Use load's voltage
+            }
+          } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+            const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+            // AC loads use AC voltage (120V), DC loads use component voltage
+            const loadVoltage = fromComp.type === "ac-load"
+              ? (fromComp.properties?.acVoltage || fromComp.properties?.voltage || 120)
+              : (fromComp.properties?.voltage as number || voltage);
+            if (loadWatts > 0 && loadVoltage > 0) {
+              current = loadWatts / loadVoltage;
+              voltage = loadVoltage; // Use load's voltage
+            }
+          } else if (fromComp?.properties?.current) {
+            current = fromComp.properties.current as number;
+          } else if (toComp?.properties?.current) {
+            current = toComp.properties.current as number;
+          } else if (fromComp?.properties?.amps) {
+            current = fromComp.properties.amps as number;
+          } else if (toComp?.properties?.amps) {
+            current = toComp.properties.amps as number;
+          }
         }
       }
 
-      // Default to 10A if still no current found
+      // Default to 10A if still no current found (only for non-inverter wires)
       if (current === 0) {
         current = 10;
       }
@@ -692,13 +875,37 @@ export default function SchematicDesigner() {
   const handleComponentDrop = (x: number, y: number) => {
     if (!draggedComponentType) return;
 
+    // Get default properties based on component type
+    const getDefaultProperties = (type: string): Record<string, any> => {
+      const defaults: Record<string, Record<string, any>> = {
+        battery: { voltage: systemVoltage, capacity: 200, batteryType: 'LiFePO4' },
+        'dc-load': { watts: 50, voltage: systemVoltage },
+        'ac-load': { watts: 1000, acVoltage: 120 },
+        'solar-panel': { watts: 300, voltage: systemVoltage },
+        mppt: { amps: 30, voltage: systemVoltage },
+        multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage },
+        inverter: { watts: 2000, voltage: systemVoltage },
+        'phoenix-inverter': { watts: 1200, voltage: systemVoltage },
+        'blue-smart-charger': { amps: 15, voltage: systemVoltage },
+        'orion-dc-dc': { amps: 30, voltage: systemVoltage },
+        'battery-protect': { amps: 100, voltage: systemVoltage },
+        fuse: { fuseRating: 400, amps: 400 },
+        switch: { voltage: systemVoltage },
+        'busbar-positive': { voltage: systemVoltage },
+        'busbar-negative': { voltage: systemVoltage },
+        cerbo: { voltage: systemVoltage },
+        smartshunt: { voltage: systemVoltage },
+      };
+      return defaults[type] || { voltage: systemVoltage };
+    };
+
     const newComponent: SchematicComponent = {
       id: `comp-${Date.now()}`,
       type: draggedComponentType,
       name: draggedComponentType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
       x,
       y,
-      properties: {},
+      properties: getDefaultProperties(draggedComponentType),
     };
 
     setComponents(prev => [...prev, newComponent]);
@@ -719,6 +926,100 @@ export default function SchematicDesigner() {
     if (selectedComponent?.id === componentId) {
       setSelectedComponent(null);
     }
+  };
+
+  const handleCopy = (componentIds: string[]) => {
+    // Get selected components with all properties
+    const componentsToCopy = components.filter(c => componentIds.includes(c.id));
+    
+    // Get wires that connect only the selected components (internal wires)
+    const wiresToCopy = wires.filter(w => 
+      componentIds.includes(w.fromComponentId) && componentIds.includes(w.toComponentId)
+    );
+    
+    setCopiedComponents(componentsToCopy);
+    setCopiedWires(wiresToCopy);
+    
+    toast({
+      title: "Copied",
+      description: `Copied ${componentsToCopy.length} component${componentsToCopy.length !== 1 ? 's' : ''} and ${wiresToCopy.length} wire${wiresToCopy.length !== 1 ? 's' : ''}`,
+    });
+  };
+
+  const handlePaste = () => {
+    if (copiedComponents.length === 0) return;
+    
+    // Calculate offset (50px down and right)
+    const offsetX = 50;
+    const offsetY = 50;
+    
+    // Create ID mapping for new components
+    const idMap = new Map<string, string>();
+    const newComponents: SchematicComponent[] = copiedComponents.map(comp => {
+      const newId = `comp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      idMap.set(comp.id, newId);
+      return {
+        ...comp,
+        id: newId,
+        x: comp.x + offsetX,
+        y: comp.y + offsetY,
+        // Preserve all properties
+        properties: { ...comp.properties },
+      };
+    });
+    
+    // Create new wires with updated component IDs
+    const newWires: Wire[] = copiedWires.map(wire => ({
+      ...wire,
+      id: `wire-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      fromComponentId: idMap.get(wire.fromComponentId) || wire.fromComponentId,
+      toComponentId: idMap.get(wire.toComponentId) || wire.toComponentId,
+      // Preserve all wire properties
+      length: wire.length,
+      gauge: wire.gauge,
+      current: wire.current,
+      voltageDrop: wire.voltageDrop,
+      color: wire.color,
+      conductorMaterial: wire.conductorMaterial,
+    }));
+    
+    // Add new components and wires
+    setComponents(prev => [...prev, ...newComponents]);
+    setWires(prev => [...prev, ...newWires]);
+    
+    // Select the newly pasted components
+    setSelectedComponent(newComponents[0]);
+    
+    toast({
+      title: "Pasted",
+      description: `Pasted ${newComponents.length} component${newComponents.length !== 1 ? 's' : ''} and ${newWires.length} wire${newWires.length !== 1 ? 's' : ''}`,
+    });
+  };
+
+  const handleClearAll = () => {
+    // Clear all components and wires
+    setComponents([]);
+    setWires([]);
+    setSelectedComponent(null);
+    setSelectedWire(null);
+    setWireCalculations({});
+    setCopiedComponents([]);
+    setCopiedWires([]);
+    setCurrentDesignId(null);
+    setCurrentDesignName(null);
+    
+    // Clear auto-saved state
+    localStorage.removeItem("autoSavedDiagramState");
+    
+    // Clear validation
+    setValidationResult(null);
+    
+    toast({
+      title: "Cleared",
+      description: "All components and wires have been removed",
+    });
+    
+    setClearDialogOpen(false);
   };
 
   const handleWireConnectionComplete = async (wireData: import("@/components/SchematicCanvas").WireConnectionData) => {
@@ -954,6 +1255,7 @@ export default function SchematicDesigner() {
         onFeedback={() => setFeedbackDialogOpen(true)}
         onLogin={handleLogin}
         onLogout={handleLogout}
+        onClear={() => setClearDialogOpen(true)}
         wireMode={wireConnectionMode}
         hasComponents={components.length > 0}
         designQualityScore={validationResult?.score}
@@ -999,6 +1301,8 @@ export default function SchematicDesigner() {
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}
           showWireLabels={showWireLabels}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
         />
 
         <PropertiesPanel
@@ -1109,6 +1413,30 @@ export default function SchematicDesigner() {
         onLoad={handleLoadDesign}
       />
 
+      {/* Iteration Progress Overlay */}
+      {iterationProgress && (
+        <IterationProgress
+          currentIteration={iterationProgress.iteration}
+          maxIterations={iterationProgress.maxIterations}
+          currentScore={iterationProgress.score || 0}
+          status={
+            iterationProgress.isStreaming
+              ? "🤖 AI is generating response..."
+              : iterationProgress.errorCount && iterationProgress.errorCount > 0
+              ? `⚠️ Iteration ${iterationProgress.iteration} complete with ${iterationProgress.errorCount} errors`
+              : iterationProgress.warningCount && iterationProgress.warningCount > 0
+              ? `⚠️ Iteration ${iterationProgress.iteration} complete with ${iterationProgress.warningCount} warnings`
+              : iterationProgress.score && iterationProgress.score >= 70
+              ? `✅ Iteration ${iterationProgress.iteration} complete - Quality score: ${iterationProgress.score}`
+              : `🔄 Iteration ${iterationProgress.iteration} complete - Quality score: ${iterationProgress.score || 0}`
+          }
+          isStreaming={iterationProgress.isStreaming}
+          tokenCount={iterationProgress.tokenCount}
+          promptTokens={iterationProgress.promptTokens}
+          completionTokens={iterationProgress.completionTokens}
+          streamingText={iterationProgress.streamingText}
+        />
+      )}
 
       <Sheet open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
         <SheetContent side="right" className="w-full sm:w-[700px] overflow-y-auto">
@@ -1130,6 +1458,32 @@ export default function SchematicDesigner() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Clear All Confirmation Dialog */}
+      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Components and Wires?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all components, wires, and connections from the canvas. This action cannot be undone.
+              {currentDesignName && (
+                <span className="block mt-2 font-semibold">
+                  Current design: "{currentDesignName}"
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
