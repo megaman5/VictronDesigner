@@ -829,6 +829,29 @@ export default function SchematicDesigner() {
         }
       });
     }
+    // Also check wireId (singular) for compatibility
+    if (issue.wireId) {
+      if (issue.severity === "error") {
+        wireValidationStatus.set(issue.wireId, "error");
+      } else if (issue.severity === "warning" && !wireValidationStatus.has(issue.wireId)) {
+        wireValidationStatus.set(issue.wireId, "warning");
+      }
+    }
+  });
+
+  // Create component validation status mapping for canvas rendering
+  const componentValidationStatus = new Map<string, "error" | "warning">();
+  validationResult?.issues.forEach(issue => {
+    if (issue.componentIds) {
+      issue.componentIds.forEach(componentId => {
+        if (issue.severity === "error") {
+          componentValidationStatus.set(componentId, "error");
+        } else if (issue.severity === "warning" && !componentValidationStatus.has(componentId)) {
+          // Only set warning if not already marked as error
+          componentValidationStatus.set(componentId, "warning");
+        }
+      });
+    }
   });
 
   return (
@@ -873,6 +896,7 @@ export default function SchematicDesigner() {
           components={components}
           wires={wires}
           wireValidationStatus={wireValidationStatus}
+          componentValidationStatus={componentValidationStatus}
           onComponentsChange={setComponents}
           onWiresChange={setWires}
           onComponentSelect={handleComponentSelect}
@@ -913,6 +937,7 @@ export default function SchematicDesigner() {
             voltageDrop: wireCalculation.actualVoltageDrop,
             status: wireCalculation.status,
           } : undefined}
+          validationResult={validationResult}
           onEditWire={handleWireEdit}
           onUpdateComponent={(id, updates) => {
             setComponents(prev => prev.map(comp => {
@@ -993,7 +1018,7 @@ export default function SchematicDesigner() {
       />
 
       <Sheet open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
-        <SheetContent side="right" className="w-full sm:w-[540px] overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:w-[700px] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Design Quality Review</SheetTitle>
           </SheetHeader>

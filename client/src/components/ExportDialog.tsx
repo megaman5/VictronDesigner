@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { SchematicComponent, Wire } from "@shared/schema";
+import { TERMINAL_CONFIGS } from "@/lib/terminal-config";
 
 interface ExportDialogProps {
   open: boolean;
@@ -122,6 +123,30 @@ export function ExportDialog({
   const exportDiagram = async () => {
     setExporting("diagram");
     try {
+      // Calculate content bounds from components
+      const padding = 100; // Padding around content
+      let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+      
+      components.forEach(comp => {
+        const config = TERMINAL_CONFIGS[comp.type];
+        const width = config?.width || 140;
+        const height = config?.height || 100;
+        
+        if (comp.x < minX) minX = comp.x;
+        if (comp.y < minY) minY = comp.y;
+        if (comp.x + width > maxX) maxX = comp.x + width;
+        if (comp.y + height > maxY) maxY = comp.y + height;
+      });
+      
+      // Add padding and ensure minimum size
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = maxX + padding;
+      maxY = maxY + padding + 100; // Extra bottom padding for labels and watermark
+      
+      const contentWidth = Math.max(400, maxX - minX);
+      const contentHeight = Math.max(300, maxY - minY);
+
       // Find the SVG element which is the actual canvas content
       const svgElement = document.querySelector('[data-testid="canvas-drop-zone"] svg') as SVGElement;
       if (!svgElement) {
@@ -140,31 +165,36 @@ export function ExportDialog({
         el.style.transform = 'scale(1)';
       });
 
-      // Create a temporary container for export with fixed dimensions
+      // Create a temporary container for export with content-based dimensions
       const exportContainer = document.createElement('div');
       exportContainer.style.cssText = `
         position: fixed;
         left: -9999px;
         top: 0;
-        width: 2400px;
-        height: 1600px;
+        width: ${contentWidth}px;
+        height: ${contentHeight}px;
         overflow: hidden;
-        background-color: #0f0f1a;
+        background-color: #f8f9fa;
       `;
       
       // Clone the canvas content
       const clone = canvasContainer.cloneNode(true) as HTMLElement;
       clone.style.cssText = `
-        width: 2400px;
-        height: 1600px;
+        width: ${maxX}px;
+        height: ${maxY}px;
         overflow: visible;
         position: relative;
+        transform: translate(${-minX}px, ${-minY}px);
       `;
       
-      // Reset transforms on cloned elements
-      const clonedScaled = clone.querySelectorAll('[style*="transform"]') as NodeListOf<HTMLElement>;
+      // Reset transforms on cloned elements (except the main translate)
+      const clonedScaled = clone.querySelectorAll('[style*="scale"]') as NodeListOf<HTMLElement>;
       clonedScaled.forEach((el) => {
-        el.style.transform = 'scale(1)';
+        // Keep position but remove scaling
+        const currentTransform = el.style.transform;
+        if (currentTransform.includes('scale')) {
+          el.style.transform = currentTransform.replace(/scale\([^)]+\)/g, 'scale(1)');
+        }
       });
       
       exportContainer.appendChild(clone);
@@ -172,12 +202,12 @@ export function ExportDialog({
 
       // Use html2canvas to capture the clean container
       const canvas = await html2canvas(exportContainer, {
-        backgroundColor: "#0f0f1a",
+        backgroundColor: "#f8f9fa",
         scale: 1,
         useCORS: true,
         logging: false,
-        width: 2400,
-        height: 1600,
+        width: contentWidth,
+        height: contentHeight,
       });
 
       // Clean up
@@ -215,12 +245,12 @@ export function ExportDialog({
         console.log("Final canvas dimensions:", finalCanvas.width, finalCanvas.height);
         console.log("Icon loaded:", !!iconImg);
         
-        // Watermark settings
-        const padding = 40;
+        // Watermark settings - position in bottom right corner
+        const watermarkPadding = 15; // Distance from edge
         const textContent = "VictronDesigner.com";
-        const bgHeight = 60;
-        const iconHeight = 45;
-        const iconPadding = 12;
+        const bgHeight = 50;
+        const iconHeight = 38;
+        const iconPadding = 10;
         
         // Calculate icon dimensions
         let iconWidth = 0;
@@ -230,16 +260,16 @@ export function ExportDialog({
         }
         
         // Calculate text width
-        ctx.font = "bold 26px Arial, sans-serif";
+        ctx.font = "bold 22px Arial, sans-serif";
         const textWidth = ctx.measureText(textContent).width;
         
         // Total width includes icon + gap + text + padding
         const gap = iconImg ? 10 : 0;
         const totalWidth = iconPadding + iconWidth + gap + textWidth + iconPadding + 10;
         
-        // Position in bottom right
-        const bgX = finalCanvas.width - totalWidth - padding;
-        const bgY = finalCanvas.height - bgHeight - padding;
+        // Position in bottom right corner
+        const bgX = finalCanvas.width - totalWidth - watermarkPadding;
+        const bgY = finalCanvas.height - bgHeight - watermarkPadding;
         const radius = 10;
         
         console.log("Watermark position:", bgX, bgY, "size:", totalWidth, bgHeight);
@@ -274,7 +304,7 @@ export function ExportDialog({
         
         // Draw text
         ctx.fillStyle = "#1e3a5f";
-        ctx.font = "bold 26px Arial, sans-serif";
+        ctx.font = "bold 22px Arial, sans-serif";
         ctx.textBaseline = "middle";
         ctx.textAlign = "left";
         ctx.fillText(textContent, textX, bgY + bgHeight / 2);

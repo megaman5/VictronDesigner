@@ -8,6 +8,7 @@ export interface ValidationIssue {
   message: string;
   componentIds?: string[];
   wireId?: string;
+  wireIds?: string[];
   suggestion?: string;
 }
 
@@ -89,6 +90,12 @@ export class DesignValidator {
 
     // Rule 5: DC/AC separation
     this.validateDCACMingling();
+
+    // Rule 6: Voltage mismatches
+    this.validateVoltageMismatches();
+
+    // Rule 7: MPPT must have solar panel connections
+    this.validateMPPTSolarConnections();
   }
 
   private validateSmartShuntPlacement(): void {
@@ -221,6 +228,50 @@ export class DesignValidator {
     });
   }
 
+  private validateMPPTSolarConnections(): void {
+    const mppts = this.components.filter(c => c.type === "mppt");
+
+    mppts.forEach(mppt => {
+      // Check if MPPT has PV input connections (pv-positive or pv-negative terminals)
+      const hasPVPositive = this.wires.some(
+        w => (w.fromComponentId === mppt.id && w.fromTerminal === "pv-positive") ||
+             (w.toComponentId === mppt.id && w.toTerminal === "pv-positive")
+      );
+      const hasPVNegative = this.wires.some(
+        w => (w.fromComponentId === mppt.id && w.fromTerminal === "pv-negative") ||
+             (w.toComponentId === mppt.id && w.toTerminal === "pv-negative")
+      );
+
+      // Check if connected to a solar panel (checking both terminal connections and component types)
+      const connectedToSolar = this.wires.some(w => {
+        const fromComp = this.components.find(c => c.id === w.fromComponentId);
+        const toComp = this.components.find(c => c.id === w.toComponentId);
+        
+        // Solar panel to MPPT: solar "positive"/"negative" terminals to MPPT "pv-positive"/"pv-negative"
+        if (fromComp?.type === "solar-panel" && toComp?.id === mppt.id) {
+          return (w.fromTerminal === "positive" && w.toTerminal === "pv-positive") ||
+                 (w.fromTerminal === "negative" && w.toTerminal === "pv-negative");
+        }
+        // MPPT to Solar panel: MPPT "pv-positive"/"pv-negative" to solar "positive"/"negative"
+        if (toComp?.type === "solar-panel" && fromComp?.id === mppt.id) {
+          return (w.fromTerminal === "pv-positive" && w.toTerminal === "positive") ||
+                 (w.fromTerminal === "pv-negative" && w.toTerminal === "negative");
+        }
+        return false;
+      });
+
+      if (!hasPVPositive || !hasPVNegative || !connectedToSolar) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: `MPPT "${mppt.name}" is missing solar panel connection`,
+          componentIds: [mppt.id],
+          suggestion: "Connect solar panel(s) to MPPT PV input terminals (solar panel 'positive' to MPPT 'pv-positive', solar panel 'negative' to MPPT 'pv-negative')",
+        });
+      }
+    });
+  }
+
   private validateDCACMingling(): void {
     // Check that DC and AC loads aren't mixed on same bus bar or circuit
     // (already covered in validateBusBarPolarity, but this is more general)
@@ -241,6 +292,70 @@ export class DesignValidator {
         });
       }
     }
+  }
+
+  private validateVoltageMismatches(): void {
+    // Get system voltage (from battery or systemVoltage parameter)
+    const battery = this.components.find(c => c.type === "battery");
+    const batteryVoltage = battery?.properties?.voltage as number | undefined;
+    const systemVoltage = batteryVoltage || this.systemVoltage;
+
+    if (!systemVoltage) return; // Can't validate without a reference voltage
+
+    const mismatchedComponents: string[] = [];
+
+    // Check all components that have voltage properties
+    this.components.forEach(comp => {
+      const compVoltage = comp.properties?.voltage as number | undefined;
+      
+      // Skip components that don't have voltage or are the battery itself
+      if (!compVoltage || comp.type === "battery") return;
+
+      // Check if voltage matches system voltage
+      if (compVoltage !== systemVoltage) {
+        mismatchedComponents.push(comp.id);
+      }
+    });
+
+    if (mismatchedComponents.length > 0) {
+      const componentNames = mismatchedComponents.map(id => this.getComponentName(id)).join(", ");
+      this.issues.push({
+        severity: "error",
+        category: "electrical",
+        message: `${mismatchedComponents.length} component(s) have voltage mismatch: ${componentNames}`,
+        componentIds: mismatchedComponents,
+        suggestion: `All components should match system voltage (${systemVoltage}V). Update component properties to ${systemVoltage}V or adjust system voltage.`,
+      });
+    }
+
+    // Also check for components connected via wires that have mismatched voltages
+    this.wires.forEach(wire => {
+      const fromComp = this.components.find(c => c.id === wire.fromComponentId);
+      const toComp = this.components.find(c => c.id === wire.toComponentId);
+
+      if (!fromComp || !toComp) return;
+
+      const fromVoltage = fromComp.properties?.voltage as number | undefined;
+      const toVoltage = toComp.properties?.voltage as number | undefined;
+
+      // Skip if either component doesn't have voltage specified
+      if (!fromVoltage || !toVoltage) return;
+
+      // Skip if both match system voltage (already checked above)
+      if (fromVoltage === systemVoltage && toVoltage === systemVoltage) return;
+
+      // Check if connected components have different voltages
+      if (fromVoltage !== toVoltage) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: `Voltage mismatch: ${this.getComponentName(fromComp.id)} (${fromVoltage}V) connected to ${this.getComponentName(toComp.id)} (${toVoltage}V)`,
+          componentIds: [fromComp.id, toComp.id],
+          wireId: wire.id,
+          suggestion: `Components must have matching voltages. Update one or both components to ${systemVoltage}V.`,
+        });
+      }
+    });
   }
 
   /**
