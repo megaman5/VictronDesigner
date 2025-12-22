@@ -14,12 +14,15 @@ import { SaveFeedback } from "@/components/SaveFeedback";
 
 interface WireCalculation {
   current?: number;
+  totalCurrent?: number; // Total current (before dividing by parallel count)
+  parallelCount?: number; // Number of parallel wires
   length?: number;
   voltage?: number;
   recommendedGauge?: string;
   voltageDrop?: number;
   voltageDropPercent?: number;
   status?: "valid" | "warning" | "error";
+  message?: string;
 }
 
 interface PropertiesPanelProps {
@@ -59,6 +62,7 @@ interface PropertiesPanelProps {
   onUpdateWire?: (wireId: string, updates: Partial<Wire>) => void;
   onWireSelect?: (wire: Wire | null) => void;
   onComponentSelect?: (component: SchematicComponent | null) => void;
+  onCreateParallelWires?: (wireId: string, count: number) => void;
 }
 
 // Helper function to get available voltages for a component type
@@ -183,6 +187,126 @@ function calculateBusBarTotals(
   });
 
   return { totalCurrent, totalWatts, voltage };
+}
+
+/**
+ * Calculate current through SmartShunt
+ * Current flows from battery-minus terminal to system-minus terminal
+ */
+function calculateSmartShuntCurrent(
+  smartShuntId: string,
+  wires: Wire[] = [],
+  components: SchematicComponent[] = []
+): number {
+  // Find the wire connecting battery-minus to system-minus
+  // The current through the SmartShunt is the current on the wire from system-minus
+  const systemMinusWire = wires.find(w => 
+    (w.fromComponentId === smartShuntId && w.fromTerminal === 'system-minus') ||
+    (w.toComponentId === smartShuntId && w.toTerminal === 'system-minus')
+  );
+  
+  if (!systemMinusWire) return 0;
+  
+  // Find what's connected to system-minus (bus bar, loads, etc.)
+  const otherCompId = systemMinusWire.fromComponentId === smartShuntId 
+    ? systemMinusWire.toComponentId 
+    : systemMinusWire.fromComponentId;
+  const otherComp = components.find(c => c.id === otherCompId);
+  
+  if (!otherComp) return 0;
+  
+  // Calculate total current from all loads connected to system-minus side
+  // This is similar to bus bar calculation but for the system-minus connection
+  let totalCurrent = 0;
+  
+  // Find all wires connected to the component on system-minus side
+  const connectedWires = wires.filter(w => 
+    (w.fromComponentId === otherCompId || w.toComponentId === otherCompId) &&
+    w.polarity === 'negative'
+  );
+  
+  for (const wire of connectedWires) {
+    const wireOtherCompId = wire.fromComponentId === otherCompId 
+      ? wire.toComponentId 
+      : wire.fromComponentId;
+    const wireOtherComp = components.find(c => c.id === wireOtherCompId);
+    
+    if (!wireOtherComp) continue;
+    
+    // Calculate current from loads
+    if (wireOtherComp.type === 'dc-load') {
+      const loadWatts = (wireOtherComp.properties?.watts || wireOtherComp.properties?.power || 0) as number;
+      const loadVoltage = wireOtherComp.properties?.voltage as number || 12;
+      if (loadWatts > 0 && loadVoltage > 0) {
+        totalCurrent += loadWatts / loadVoltage;
+      }
+    } else if (wireOtherComp.type === 'inverter' || wireOtherComp.type === 'phoenix-inverter' || wireOtherComp.type === 'multiplus') {
+      // Inverters draw current from DC side
+      const inverterWatts = (wireOtherComp.properties?.watts || wireOtherComp.properties?.powerRating || 0) as number;
+      const inverterVoltage = wireOtherComp.properties?.voltage as number || 12;
+      if (inverterWatts > 0 && inverterVoltage > 0) {
+        totalCurrent += inverterWatts / inverterVoltage;
+      }
+    } else if (wireOtherComp.type === 'busbar-negative') {
+      // If connected to a bus bar, calculate from bus bar
+      const busBarTotals = calculateBusBarTotals(wireOtherCompId, 'busbar-negative', wires, components);
+      totalCurrent += busBarTotals.totalCurrent;
+    }
+  }
+  
+  return totalCurrent;
+}
+
+/**
+ * Calculate current through a fuse
+ * Current flows from "in" terminal to "out" terminal
+ */
+function calculateFuseCurrent(
+  fuseId: string,
+  wires: Wire[] = [],
+  components: SchematicComponent[] = []
+): number {
+  // Find the wire connected to fuse "out" terminal (downstream side)
+  const fuseOutWire = wires.find(w => 
+    (w.fromComponentId === fuseId && w.fromTerminal === 'out') ||
+    (w.toComponentId === fuseId && w.toTerminal === 'out')
+  );
+  
+  if (!fuseOutWire) return 0;
+  
+  // Find what's connected downstream of the fuse
+  const downstreamCompId = fuseOutWire.fromComponentId === fuseId 
+    ? fuseOutWire.toComponentId 
+    : fuseOutWire.fromComponentId;
+  const downstreamComp = components.find(c => c.id === downstreamCompId);
+  
+  if (!downstreamComp) return 0;
+  
+  // Calculate total current from all loads downstream of the fuse
+  let totalCurrent = 0;
+  
+  // If connected to a bus bar, calculate from bus bar
+  if (downstreamComp.type === 'busbar-positive') {
+    const busBarTotals = calculateBusBarTotals(downstreamCompId, 'busbar-positive', wires, components);
+    totalCurrent = busBarTotals.totalCurrent;
+  } else {
+    // Direct connection - calculate from the component
+    if (downstreamComp.type === 'dc-load') {
+      const loadWatts = (downstreamComp.properties?.watts || downstreamComp.properties?.power || 0) as number;
+      const loadVoltage = downstreamComp.properties?.voltage as number || 12;
+      if (loadWatts > 0 && loadVoltage > 0) {
+        totalCurrent = loadWatts / loadVoltage;
+      }
+    } else if (downstreamComp.type === 'inverter' || downstreamComp.type === 'phoenix-inverter' || downstreamComp.type === 'multiplus') {
+      const inverterWatts = (downstreamComp.properties?.watts || downstreamComp.properties?.powerRating || 0) as number;
+      const inverterVoltage = downstreamComp.properties?.voltage as number || 12;
+      if (inverterWatts > 0 && inverterVoltage > 0) {
+        totalCurrent = inverterWatts / inverterVoltage;
+      }
+    }
+  }
+  
+  return totalCurrent;
 }
 
 /**
@@ -312,7 +436,7 @@ function calculateInverterDCInput(
   return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
@@ -353,10 +477,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
       setWatts(componentWatts);
       
       // For components that use amps, prioritize amps over current
+      // SmartShunt doesn't have amps input - it calculates current
       let componentCurrent = 0;
       if (['mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect'].includes(selectedComponent.type)) {
         componentCurrent = props.amps || props.current || 0;
-      } else {
+      } else if (selectedComponent.type !== 'smartshunt') {
         componentCurrent = props.current || props.amps || 0;
       }
       
@@ -667,7 +792,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         <SelectValue placeholder="Select gauge" />
                       </SelectTrigger>
                       <SelectContent>
-                        {["4/0", "2/0", "1/0", "2", "4", "6", "8", "10", "12", "14", "16"].map(g => (
+                        {["4/0", "3/0", "2/0", "1/0", "1", "2", "4", "6", "8", "10", "12", "14", "16", "18"].map(g => (
                           <SelectItem key={g} value={g}>{g} AWG</SelectItem>
                         ))}
                       </SelectContent>
@@ -868,42 +993,6 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   );
                 })()}
 
-                {/* Fuse-specific properties */}
-                {selectedComponent.type === 'fuse' && (
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-medium">Class T Fuse Specifications</h3>
-                    <div className="space-y-2">
-                      <Label>Fuse Rating (A)</Label>
-                      <Select
-                        value={fuseRating.toString()}
-                        onValueChange={(value) => {
-                          const r = parseInt(value);
-                          setFuseRating(r);
-                          onUpdateComponent?.(selectedComponent.id, {
-                            properties: { ...selectedComponent.properties, fuseRating: r, amps: r }
-                          });
-                          triggerSaveFeedback();
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select fuse rating" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="100">100A</SelectItem>
-                          <SelectItem value="150">150A</SelectItem>
-                          <SelectItem value="200">200A</SelectItem>
-                          <SelectItem value="250">250A</SelectItem>
-                          <SelectItem value="300">300A</SelectItem>
-                          <SelectItem value="400">400A</SelectItem>
-                          <SelectItem value="500">500A</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Class T fuses provide 20,000A interrupt capacity for lithium battery protection.
-                    </div>
-                  </div>
-                )}
 
                 {/* MPPT-specific properties */}
                 {selectedComponent.type === 'mppt' && (
@@ -1356,7 +1445,131 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   );
                 })()}
 
-                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel'].includes(selectedComponent.type) && (
+                {/* SmartShunt - show calculated current (read-only) */}
+                {selectedComponent.type === 'smartshunt' && (() => {
+                  const shuntCurrent = calculateSmartShuntCurrent(selectedComponent.id, wires, components);
+                  return (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium">SmartShunt Specifications</h3>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded mb-2">
+                        SmartShunt measures current flowing through it. Current is automatically calculated from connected loads.
+                      </div>
+                      <div className="space-y-2">
+                        <Label>System Voltage (V)</Label>
+                        <Select
+                          value={voltage.toString()}
+                          onValueChange={(value) => {
+                            const v = parseInt(value);
+                            handleVoltageChange(v);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select voltage" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getAvailableVoltages(selectedComponent.type).map((v) => (
+                              <SelectItem key={v} value={v.toString()}>
+                                {v}V DC
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Current Through Shunt (A)</Label>
+                        <div className="text-sm font-mono bg-muted p-2 rounded">
+                          {shuntCurrent.toFixed(1)}A
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Calculated from connected loads
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Fuse - show calculated current and compare to rating */}
+                {selectedComponent.type === 'fuse' && (() => {
+                  const fuseCurrent = calculateFuseCurrent(selectedComponent.id, wires, components);
+                  const fuseRating = selectedComponent.properties?.fuseRating || selectedComponent.properties?.amps || 400;
+                  const utilizationPercent = fuseRating > 0 ? (fuseCurrent / fuseRating) * 100 : 0;
+                  const isOverrated = fuseCurrent > fuseRating;
+                  const isNearLimit = utilizationPercent > 80;
+                  
+                  return (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium">Class T Fuse Specifications</h3>
+                      <div className="space-y-2">
+                        <Label>Fuse Rating (A)</Label>
+                        <Select
+                          value={fuseRating.toString()}
+                          onValueChange={(value) => {
+                            const r = parseInt(value);
+                            setFuseRating(r);
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: { ...selectedComponent.properties, fuseRating: r, amps: r }
+                            });
+                            triggerSaveFeedback();
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select fuse rating" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[100, 150, 200, 250, 300, 350, 400, 450, 500, 600].map((rating) => (
+                              <SelectItem key={rating} value={rating.toString()}>
+                                {rating}A
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Current Through Fuse (A)</Label>
+                        <div className={`text-sm font-mono p-2 rounded ${
+                          isOverrated ? 'bg-destructive/20 text-destructive' : 
+                          isNearLimit ? 'bg-yellow-500/20 text-yellow-600' : 
+                          'bg-muted'
+                        }`}>
+                          {fuseCurrent.toFixed(1)}A
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Calculated from connected loads
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Utilization</Label>
+                        <div className={`text-sm font-mono p-2 rounded ${
+                          isOverrated ? 'bg-destructive/20 text-destructive' : 
+                          isNearLimit ? 'bg-yellow-500/20 text-yellow-600' : 
+                          'bg-muted'
+                        }`}>
+                          {utilizationPercent.toFixed(1)}% ({fuseCurrent.toFixed(1)}A / {fuseRating}A)
+                        </div>
+                        {isOverrated && (
+                          <div className="text-xs text-destructive font-medium">
+                            ⚠️ Current exceeds fuse rating! Fuse will blow.
+                          </div>
+                        )}
+                        {isNearLimit && !isOverrated && (
+                          <div className="text-xs text-yellow-600 font-medium">
+                            ⚠️ Near fuse rating limit. Consider larger fuse.
+                          </div>
+                        )}
+                        {!isOverrated && !isNearLimit && (
+                          <div className="text-xs text-muted-foreground">
+                            ✓ Fuse rating is sufficient
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                        Class T fuses provide 20,000A interrupt capacity for lithium battery protection.
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">
@@ -1603,6 +1816,18 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   );
                 }
 
+                // Debug: Log calculation details
+                if (calc.status === "error" && calc.current && calc.current > 230) {
+                  console.log("Wire calculation:", {
+                    current: calc.current,
+                    recommendedGauge: calc.recommendedGauge,
+                    status: calc.status,
+                    message: calc.message,
+                    hasMessage: !!calc.message,
+                    messageIncludesParallel: calc.message?.includes("parallel")
+                  });
+                }
+
                 // Check if this wire is connected to an inverter DC terminal
                 const fromComp = components.find(c => c.id === selectedWire.fromComponentId);
                 const toComp = components.find(c => c.id === selectedWire.toComponentId);
@@ -1679,6 +1904,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         <span className="text-sm text-muted-foreground">Current</span>
                         <span className="font-mono font-medium">
                           {calc.current != null ? calc.current.toFixed(1) : '—'}A
+                          {calc.parallelCount && calc.parallelCount > 1 && calc.totalCurrent && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({calc.totalCurrent.toFixed(1)}A total ÷ {calc.parallelCount} parallel)
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -1712,7 +1942,31 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                               {calc.recommendedGauge}
                             </Badge>
                           </div>
-                          {selectedWire?.gauge && selectedWire.gauge !== calc.recommendedGauge && (
+                          {/* Show parallel run recommendation if message contains it */}
+                          {calc.message && (calc.message.includes("parallel run") || calc.message.includes("parallel")) && (() => {
+                            // Try multiple patterns to match parallel run count
+                            const match1 = calc.message.match(/(\d+)\s+parallel\s+run/i);
+                            const match2 = calc.message.match(/Use\s+(\d+)\s+parallel/i);
+                            const match = match1 || match2;
+                            if (match) {
+                              const parallelCount = parseInt(match[1], 10);
+                              return (
+                                <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-md mb-2">
+                                  <strong>Parallel Runs Required:</strong> {parallelCount} × {calc.recommendedGauge}
+                                </div>
+                              );
+                            }
+                            // If message mentions parallel but we can't extract count, show generic message
+                            if (calc.message.includes("parallel")) {
+                              return (
+                                <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-md mb-2">
+                                  <strong>Parallel Runs Required:</strong> Multiple runs of {calc.recommendedGauge} needed
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                          {selectedWire?.gauge && selectedWire.gauge !== calc.recommendedGauge && !calc.message?.includes("parallel run") && (
                             <>
                               <div className="flex justify-between items-center">
                                 <span className="text-sm text-muted-foreground">Current Gauge</span>
@@ -1857,8 +2111,52 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </div>
                     )}
                     {calc.status === "error" && (
-                      <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 p-3 rounded-md">
-                        {calc.message || "Error: Wire gauge insufficient or voltage drop too high"}
+                      <div className="space-y-2">
+                        <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 p-3 rounded-md">
+                          {calc.message || "Error: Wire gauge insufficient or voltage drop too high"}
+                        </div>
+                        {/* Check if message suggests parallel runs OR if current exceeds 4/0 AWG capacity */}
+                        {((calc.message && (calc.message.includes("parallel run") || calc.message.includes("parallel"))) || 
+                          (calc.current && calc.current > 230 && calc.recommendedGauge === "4/0 AWG")) && 
+                         selectedWire && onCreateParallelWires && (() => {
+                          // Calculate parallel runs needed
+                          let parallelCount = 1;
+                          
+                          // Try to extract from message first
+                          if (calc.message) {
+                            const match1 = calc.message.match(/(\d+)\s+parallel\s+run/i);
+                            const match2 = calc.message.match(/Use\s+(\d+)\s+parallel/i);
+                            const match = match1 || match2;
+                            if (match) {
+                              parallelCount = parseInt(match[1], 10);
+                            }
+                          }
+                          
+                          // If we couldn't extract from message, calculate from current
+                          if (parallelCount === 1 && calc.current) {
+                            // 4/0 AWG max is 230A at 75°C, calculate how many needed
+                            const maxAmpacity = 230;
+                            parallelCount = Math.ceil((calc.current || 0) / maxAmpacity);
+                          }
+                          
+                          // Only show button if we need more than 1 parallel run
+                          if (parallelCount > 1) {
+                            return (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="w-full mt-2"
+                                onClick={() => {
+                                  onCreateParallelWires(selectedWire.id, parallelCount);
+                                  triggerSaveFeedback();
+                                }}
+                              >
+                                Create {parallelCount} Parallel Wire{parallelCount > 1 ? 's' : ''} of {calc.recommendedGauge || '4/0 AWG'}
+                              </Button>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     )}
                   </div>

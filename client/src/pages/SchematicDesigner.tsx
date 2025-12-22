@@ -10,7 +10,7 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { SaveDesignDialog } from "@/components/SaveDesignDialog";
 import { OpenDesignDialog } from "@/components/OpenDesignDialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -30,6 +30,59 @@ import { calculateWireSize } from "@/lib/wire-calculator";
 import { AlertTriangle } from "lucide-react";
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
+
+// Infer system voltage from components
+// Priority: battery > other DC components > default 12V
+function inferSystemVoltage(components: SchematicComponent[]): number {
+  if (components.length === 0) return 12; // Default
+  
+  // First, check batteries (most reliable indicator)
+  const batteries = components.filter(c => c.type === 'battery');
+  if (batteries.length > 0) {
+    const batteryVoltages = batteries
+      .map(b => b.properties?.voltage as number | undefined)
+      .filter((v): v is number => v !== undefined && (v === 12 || v === 24 || v === 48));
+    
+    if (batteryVoltages.length > 0) {
+      // Use most common battery voltage, or first if all same
+      const voltageCounts = new Map<number, number>();
+      batteryVoltages.forEach(v => {
+        voltageCounts.set(v, (voltageCounts.get(v) || 0) + 1);
+      });
+      const mostCommon = Array.from(voltageCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (mostCommon) return mostCommon;
+    }
+  }
+  
+  // Then check other DC components (MPPT, DC loads, inverters, etc.)
+  // Exclude AC components (ac-load, ac-panel) as they use AC voltage
+  const dcComponents = components.filter(c => 
+    c.type !== 'ac-load' && 
+    c.type !== 'ac-panel' &&
+    c.properties?.voltage !== undefined
+  );
+  
+  if (dcComponents.length > 0) {
+    const dcVoltages = dcComponents
+      .map(c => c.properties?.voltage as number)
+      .filter(v => v === 12 || v === 24 || v === 48); // Only valid DC system voltages
+    
+    if (dcVoltages.length > 0) {
+      // Use most common voltage
+      const voltageCounts = new Map<number, number>();
+      dcVoltages.forEach(v => {
+        voltageCounts.set(v, (voltageCounts.get(v) || 0) + 1);
+      });
+      const mostCommon = Array.from(voltageCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (mostCommon) return mostCommon;
+    }
+  }
+  
+  // Default to 12V if no valid voltage found
+  return 12;
+}
 
 interface AuthUser {
   id: string;
@@ -109,7 +162,14 @@ export default function SchematicDesigner() {
   const initialState = initializeState();
   const [components, setComponents] = useState<SchematicComponent[]>(initialState.components);
   const [wires, setWires] = useState<Wire[]>(initialState.wires);
+  // Infer system voltage from components (will be recalculated when components change)
   const [systemVoltage, setSystemVoltage] = useState(initialState.systemVoltage);
+  
+  // Update system voltage when components change
+  useEffect(() => {
+    const newVoltage = inferSystemVoltage(components);
+    setSystemVoltage(newVoltage);
+  }, [components]);
 
   // Validation state
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
@@ -144,7 +204,9 @@ export default function SchematicDesigner() {
     if (schematic) {
       setComponents(schematic.components as SchematicComponent[]);
       setWires(schematic.wires as Wire[]);
-      setSystemVoltage(schematic.systemVoltage);
+      // System voltage will be inferred from components, but use saved value as initial
+      const inferred = inferSystemVoltage(schematic.components || []);
+      setSystemVoltage(inferred || schematic.systemVoltage || 12);
     }
   }, [schematic]);
 
@@ -172,7 +234,9 @@ export default function SchematicDesigner() {
         const state = JSON.parse(loadedState);
         setComponents(state.components || []);
         setWires(state.wires || []);
-        setSystemVoltage(state.systemVoltage || 12);
+        // System voltage will be inferred from components
+        const inferred = inferSystemVoltage(state.components || []);
+        setSystemVoltage(inferred || state.systemVoltage || 12);
         
         // Clear the loaded state
         localStorage.removeItem("loadedFeedbackState");
@@ -201,7 +265,9 @@ export default function SchematicDesigner() {
         if (now.getTime() - savedAt.getTime() < fiveMinutes) {
           setComponents(state.components || []);
           setWires(state.wires || []);
-          setSystemVoltage(state.systemVoltage || 12);
+          // System voltage will be inferred from components
+        const inferred = inferSystemVoltage(state.components || []);
+        setSystemVoltage(inferred || state.systemVoltage || 12);
           
           toast({
             title: "Diagram restored",
@@ -744,6 +810,15 @@ export default function SchematicDesigner() {
 
   const calculateWire = (wire: Wire, overrideVoltage?: number) => {
     try {
+      // Find parallel wires (same from/to components, same polarity)
+      const parallelWires = wires.filter(w => 
+        w.id !== wire.id &&
+        w.polarity === wire.polarity &&
+        ((w.fromComponentId === wire.fromComponentId && w.toComponentId === wire.toComponentId) ||
+         (w.fromComponentId === wire.toComponentId && w.toComponentId === wire.fromComponentId))
+      );
+      const parallelCount = parallelWires.length + 1; // +1 for the current wire
+
       // Calculate current from connected load if not set
       let current = wire.current || 0;
       let voltage = overrideVoltage || systemVoltage;
@@ -1067,18 +1142,29 @@ export default function SchematicDesigner() {
       // Use actual wire length and gauge if available
       const wireLength = wire.length || 10;
 
+      // Divide current by number of parallel wires (each wire carries 1/N of total current)
+      const currentPerWire = current / parallelCount;
+
       // Calculate wire size client-side (no server request needed)
       const result = calculateWireSize({
-        current,
+        current: currentPerWire, // Use current per wire, not total current
         length: wireLength,
         voltage: voltage,
         conductorMaterial: (wire as any).conductorMaterial || "copper",
         currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
       });
       
+      // Store the total current in the result for display purposes
+      result.totalCurrent = current;
+      result.parallelCount = parallelCount;
+      
+      // Store the full calculation result including message
       setWireCalculations(prev => ({
         ...prev,
-        [wire.id]: result
+        [wire.id]: {
+          ...result,
+          message: result.message, // Ensure message is included
+        }
       }));
     } catch (error: any) {
       console.error("Wire calculation error:", error);
@@ -1383,6 +1469,41 @@ export default function SchematicDesigner() {
     setWires(prev => prev.filter(w => w.id !== wireId));
   };
 
+  const handleCreateParallelWires = (wireId: string, count: number) => {
+    const originalWire = wires.find(w => w.id === wireId);
+    if (!originalWire) return;
+
+    // Find the recommended gauge from calculation
+    const calc = wireCalculations[wireId];
+    const recommendedGauge = calc?.recommendedGauge || "4/0 AWG";
+
+    // Create parallel wires (count - 1 additional wires, since we'll keep the original)
+    const newWires: Wire[] = [];
+    for (let i = 1; i < count; i++) {
+      newWires.push({
+        id: `wire-${Date.now()}-${i}`,
+        fromComponentId: originalWire.fromComponentId,
+        toComponentId: originalWire.toComponentId,
+        fromTerminal: originalWire.fromTerminal,
+        toTerminal: originalWire.toTerminal,
+        polarity: originalWire.polarity,
+        gauge: recommendedGauge,
+        length: originalWire.length || 10,
+        conductorMaterial: originalWire.conductorMaterial,
+      });
+    }
+
+    // Update original wire to recommended gauge
+    setWires(prev => prev.map(w => 
+      w.id === wireId ? { ...w, gauge: recommendedGauge } : w
+    ).concat(newWires));
+
+    toast({
+      title: "Parallel wires created",
+      description: `Created ${count - 1} additional parallel wire(s) of ${recommendedGauge}`,
+    });
+  };
+
   const handleWireUpdate = (wireId: string, updates: Partial<Wire>) => {
     setWires(prev => prev.map(w => {
       if (w.id === wireId) {
@@ -1508,6 +1629,7 @@ export default function SchematicDesigner() {
         isAIWiring={aiWireMutation.isPending}
         showWireLabels={showWireLabels}
         onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
+        systemVoltage={systemVoltage}
       />
 
       {/* Alpha Warning Banner */}
@@ -1586,6 +1708,7 @@ export default function SchematicDesigner() {
           onUpdateWire={handleWireUpdate}
           onWireSelect={handleWireSelect}
           onComponentSelect={handleComponentSelect}
+          onCreateParallelWires={handleCreateParallelWires}
           onUpdateComponent={(id, updates) => {
             setComponents(prev => prev.map(comp => {
               if (comp.id === id) {
@@ -1682,12 +1805,12 @@ export default function SchematicDesigner() {
         />
       )}
 
-      <Sheet open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
-        <SheetContent side="right" className="w-full sm:w-[900px] lg:w-[1000px] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Design Quality Review</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6">
+      <Dialog open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Design Quality Review</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
             <DesignReviewPanel
               components={components}
               wires={wires}
@@ -1695,13 +1818,52 @@ export default function SchematicDesigner() {
               validationResult={validationResult}
               onValidate={validateDesign}
               onIssueClick={(issue) => {
-                console.log("Issue clicked:", issue);
-                // TODO: Highlight affected components/wires
+                // Close the modal
+                setDesignQualitySheetOpen(false);
+                
+                // Check for wireId (singular) or wireIds (plural)
+                const wireId = (issue as any).wireId || (issue.wireIds && issue.wireIds.length > 0 ? issue.wireIds[0] : null);
+                
+                // If issue has a wire, select that wire
+                if (wireId) {
+                  const wire = wires.find(w => w.id === wireId);
+                  if (wire) {
+                    handleWireSelect(wire);
+                    // Scroll to wire by finding one of its connected components
+                    setTimeout(() => {
+                      const fromComp = components.find(c => c.id === wire.fromComponentId);
+                      const toComp = components.find(c => c.id === wire.toComponentId);
+                      const compToScroll = fromComp || toComp;
+                      if (compToScroll) {
+                        // Use the correct selector from SchematicCanvas
+                        const element = document.querySelector(`[data-testid="canvas-component-${compToScroll.id}"]`);
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }
+                    }, 100);
+                  }
+                }
+                // If issue has componentIds, select the first component
+                else if (issue.componentIds && issue.componentIds.length > 0) {
+                  const component = components.find(c => issue.componentIds?.includes(c.id));
+                  if (component) {
+                    handleComponentSelect(component);
+                    // Try to scroll to component
+                    setTimeout(() => {
+                      // Use the correct selector from SchematicCanvas
+                      const element = document.querySelector(`[data-testid="canvas-component-${component.id}"]`);
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }
+                    }, 100);
+                  }
+                }
               }}
             />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* Clear All Confirmation Dialog */}
       <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>

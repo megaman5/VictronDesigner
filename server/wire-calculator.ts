@@ -178,7 +178,9 @@ export function calculateWireSize(params: {
       if (actualVoltageDrop > maxVDropVolts) {
         message = `Voltage drop (${voltageDropPercent.toFixed(1)}%) exceeds ${maxVoltageDrop}% limit. Run may be too long.`;
       } else {
-        message = `Current (${current}A) exceeds maximum ampacity (${deratedAmpacity.toFixed(0)}A). Reduce current or use parallel runs.`;
+        // Calculate how many parallel runs of 4/0 AWG are needed
+        const parallelRunsNeeded = Math.ceil(current / deratedAmpacity);
+        message = `Current (${current.toFixed(1)}A) exceeds maximum ampacity (${deratedAmpacity.toFixed(0)}A). Use ${parallelRunsNeeded} parallel run(s) of 4/0 AWG or reduce current.`;
       }
     }
   }

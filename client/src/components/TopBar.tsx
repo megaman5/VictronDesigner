@@ -1,5 +1,7 @@
 import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "./ThemeToggle";
 import {
   Tooltip,
@@ -42,6 +44,7 @@ interface TopBarProps {
   isAIWiring?: boolean;
   showWireLabels?: boolean;
   onToggleWireLabels?: () => void;
+  systemVoltage?: number;
 }
 
 export function TopBar({ 
@@ -63,7 +66,8 @@ export function TopBar({
   currentDesignName,
   isAIWiring = false,
   showWireLabels = true,
-  onToggleWireLabels
+  onToggleWireLabels,
+  systemVoltage = 12
 }: TopBarProps) {
   const isLoggedIn = !!user;
 
@@ -84,6 +88,10 @@ export function TopBar({
               — {currentDesignName}
             </span>
           )}
+          <div className="flex items-center gap-2 ml-4">
+            <Label className="text-sm text-muted-foreground">System:</Label>
+            <span className="text-sm font-medium">{systemVoltage}V</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

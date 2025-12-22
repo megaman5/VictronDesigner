@@ -201,6 +201,36 @@ export function ExportDialog({
         background-color: #f8f9fa;
       `;
       
+      // Inject a style tag to force all component wrappers to have transparent backgrounds
+      const style = document.createElement('style');
+      style.textContent = `
+        [data-testid^="canvas-component-"] {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+        [data-testid^="canvas-component-"] > * {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+        [data-testid^="canvas-component-"] > div {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+        [data-testid^="canvas-component-"] > div > div {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+        [data-testid^="canvas-component-"] svg {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+        [data-testid="canvas-drop-zone"] > div {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+      `;
+      exportContainer.appendChild(style);
+      
       // Clone the canvas content
       const clone = canvasContainer.cloneNode(true) as HTMLElement;
       clone.style.cssText = `
@@ -210,6 +240,39 @@ export function ExportDialog({
         position: relative;
         transform: translate(${-minX}px, ${-minY}px);
       `;
+      
+      // Make sure all component wrappers and their children have transparent backgrounds
+      const componentWrappers = clone.querySelectorAll('[data-testid^="canvas-component-"]');
+      componentWrappers.forEach((wrapper: any) => {
+        // Force transparent background with !important
+        if (wrapper) {
+          wrapper.style.setProperty('background', 'transparent', 'important');
+          wrapper.style.setProperty('background-color', 'transparent', 'important');
+          wrapper.style.setProperty('backgroundColor', 'transparent', 'important');
+        }
+        // Remove hover-elevate effects that create white overlays
+        wrapper.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
+        // Find and remove any ::after pseudo-elements by removing the classes
+        const innerDivs = wrapper.querySelectorAll('div');
+        innerDivs.forEach((div: any) => {
+          if (div && div.classList) {
+            div.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
+            if (div) {
+              div.style.setProperty('background', 'transparent', 'important');
+              div.style.setProperty('background-color', 'transparent', 'important');
+              div.style.setProperty('backgroundColor', 'transparent', 'important');
+            }
+          }
+        });
+        // Make SVG backgrounds transparent
+        const svgs = wrapper.querySelectorAll('svg');
+        svgs.forEach((svg: any) => {
+          if (svg) {
+            svg.style.setProperty('background', 'transparent', 'important');
+            svg.style.setProperty('background-color', 'transparent', 'important');
+          }
+        });
+      });
       
       // Reset transforms on cloned elements (except the main translate)
       const clonedScaled = clone.querySelectorAll('[style*="scale"]') as NodeListOf<HTMLElement>;
@@ -221,10 +284,39 @@ export function ExportDialog({
         }
       });
       
+      // Remove all hover-elevate and active-elevate classes from the entire clone
+      // These create ::after pseudo-elements that show as white backgrounds
+      const allElements = clone.querySelectorAll('*');
+      allElements.forEach((el: any) => {
+        if (el && el.classList) {
+          el.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
+        }
+        // Force transparent backgrounds on all wrapper elements (divs, but not SVG shapes)
+        const tagName = el.tagName?.toLowerCase();
+        if (el && (tagName === 'div' || tagName === 'svg')) {
+          const computedStyle = window.getComputedStyle(el);
+          const bgColor = computedStyle.backgroundColor;
+          // If background is white, light gray, or any solid color, make it transparent
+          if (bgColor && bgColor !== 'transparent' && bgColor !== 'rgba(0, 0, 0, 0)') {
+            // Check if it's a white/light background
+            if (bgColor === 'rgb(255, 255, 255)' || bgColor === 'white' || 
+                bgColor.includes('rgb(248, 249, 250)') || bgColor.includes('rgb(255, 255, 255)') ||
+                bgColor.includes('rgb(250, 250, 250)') || bgColor.includes('rgb(249, 250, 251)')) {
+              el.style.setProperty('background', 'transparent', 'important');
+              el.style.setProperty('background-color', 'transparent', 'important');
+            }
+          }
+        }
+      });
+      
       exportContainer.appendChild(clone);
       document.body.appendChild(exportContainer);
+      
+      // Wait a moment for styles to apply
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       // Use html2canvas to capture the clean container
+      // Use ignoreElements to skip any elements that might have white backgrounds
       const canvas = await html2canvas(exportContainer, {
         backgroundColor: "#f8f9fa",
         scale: 1,
@@ -232,6 +324,71 @@ export function ExportDialog({
         logging: false,
         width: contentWidth,
         height: contentHeight,
+        ignoreElements: (element) => {
+          // Don't ignore anything - we want to capture everything but with transparent backgrounds
+          return false;
+        },
+        onclone: (clonedDoc) => {
+          // After cloning, force all component wrappers to have transparent backgrounds
+          const clonedWrappers = clonedDoc.querySelectorAll('[data-testid^="canvas-component-"]');
+          clonedWrappers.forEach((wrapper: any) => {
+            if (wrapper) {
+              // Force transparent on wrapper div itself
+              wrapper.style.setProperty('background', 'transparent', 'important');
+              wrapper.style.setProperty('background-color', 'transparent', 'important');
+              wrapper.style.setProperty('backgroundColor', 'transparent', 'important');
+              
+              // Remove any classes that might add backgrounds
+              wrapper.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
+              
+              // Force transparent on all nested divs
+              const innerDivs = wrapper.querySelectorAll('div');
+              innerDivs.forEach((div: any) => {
+                if (div) {
+                  div.style.setProperty('background', 'transparent', 'important');
+                  div.style.setProperty('background-color', 'transparent', 'important');
+                  div.style.setProperty('backgroundColor', 'transparent', 'important');
+                  div.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
+                }
+              });
+              
+              // Force transparent on all SVGs
+              const svgs = wrapper.querySelectorAll('svg');
+              svgs.forEach((svg: any) => {
+                if (svg) {
+                  svg.style.setProperty('background', 'transparent', 'important');
+                  svg.style.setProperty('background-color', 'transparent', 'important');
+                }
+              });
+            }
+          });
+          
+          // Also check the main canvas container for any backgrounds
+          const canvasContainer = clonedDoc.querySelector('[data-testid="canvas-drop-zone"]');
+          if (canvasContainer) {
+            // Force transparent on the container itself
+            (canvasContainer as any).style.setProperty('background', 'transparent', 'important');
+            (canvasContainer as any).style.setProperty('background-color', 'transparent', 'important');
+            
+            // Force transparent on ALL divs in the container (except we'll handle component wrappers separately)
+            const allDivs = canvasContainer.querySelectorAll('div');
+            allDivs.forEach((div: any) => {
+              if (div && !div.hasAttribute('data-testid') || !div.getAttribute('data-testid')?.startsWith('canvas-component-')) {
+                // Only process non-component divs, or ensure component divs are transparent
+                const computedBg = window.getComputedStyle(div).backgroundColor;
+                // If it's white, light, or any solid color, make it transparent
+                if (computedBg && computedBg !== 'transparent' && computedBg !== 'rgba(0, 0, 0, 0)') {
+                  if (computedBg === 'rgb(255, 255, 255)' || computedBg === 'white' || 
+                      computedBg.includes('rgb(248, 249, 250)') || computedBg.includes('rgb(255, 255, 255)') ||
+                      computedBg.includes('rgb(250, 250, 250)') || computedBg.includes('rgb(249, 250, 251)')) {
+                    div.style.setProperty('background', 'transparent', 'important');
+                    div.style.setProperty('background-color', 'transparent', 'important');
+                  }
+                }
+              }
+            });
+          }
+        },
       });
 
       // Clean up
