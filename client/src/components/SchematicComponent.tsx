@@ -746,7 +746,7 @@ export function SchematicComponent({
       }`}
       onClick={onClick}
     >
-      <div className="hover-elevate active-elevate-2 rounded-md relative">
+      <div className="hover-elevate active-elevate-2 rounded-md relative" style={{ background: 'transparent' }}>
         {renderShape()}
 
         {/* Terminal connection points overlay */}

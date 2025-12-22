@@ -50,18 +50,32 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
     const handleSave = () => {
         if (!wire) return;
 
-        // Ensure gauge has AWG suffix if it's a number
-        let formattedGauge = gauge;
-        if (gauge && !gauge.endsWith("AWG")) {
-            formattedGauge = `${gauge} AWG`;
-        }
+        // Handle parallel run gauges (e.g., "4/0-parallel-2")
+        if (gauge.includes("-parallel-")) {
+            // For parallel runs, we'll just set the base gauge
+            // The parallel wire creation should be handled separately
+            const baseGauge = gauge.split("-parallel-")[0];
+            const formattedGauge = `${baseGauge} AWG`;
+            onSave(wire.id, {
+                gauge: formattedGauge,
+                polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
+                length: parseFloat(length),
+                conductorMaterial: material as "copper" | "aluminum"
+            });
+        } else {
+            // Ensure gauge has AWG suffix if it's a number
+            let formattedGauge = gauge;
+            if (gauge && !gauge.endsWith("AWG")) {
+                formattedGauge = `${gauge} AWG`;
+            }
 
-        onSave(wire.id, {
-            gauge: formattedGauge,
-            polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
-            length: parseFloat(length),
-            conductorMaterial: material as "copper" | "aluminum"
-        });
+            onSave(wire.id, {
+                gauge: formattedGauge,
+                polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
+                length: parseFloat(length),
+                conductorMaterial: material as "copper" | "aluminum"
+            });
+        }
         onOpenChange(false);
     };
 
@@ -81,9 +95,13 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
                                 <SelectValue placeholder="Select gauge" />
                             </SelectTrigger>
                             <SelectContent>
-                                {["4/0", "2/0", "1/0", "2", "4", "6", "8", "10", "12", "14", "16"].map(g => (
+                                {["4/0", "3/0", "2/0", "1/0", "1", "2", "4", "6", "8", "10", "12", "14", "16", "18"].map(g => (
                                     <SelectItem key={g} value={g}>{g} AWG</SelectItem>
                                 ))}
+                                {/* Parallel run options */}
+                                <SelectItem value="4/0-parallel-2">4/0 AWG (2 parallel)</SelectItem>
+                                <SelectItem value="4/0-parallel-3">4/0 AWG (3 parallel)</SelectItem>
+                                <SelectItem value="4/0-parallel-4">4/0 AWG (4 parallel)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

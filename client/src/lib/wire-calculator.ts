@@ -102,47 +102,114 @@ export function calculateWireSize(params: {
   let status: "valid" | "warning" | "error" = "valid";
   let message = "";
 
-  // Iterate from smallest to largest to find the smallest gauge that meets requirements
-  // BUT: Never recommend a gauge smaller than the current gauge
-  for (const gauge of gaugeOrder) {
-    const wireData = WIRE_DATA[gauge as keyof typeof WIRE_DATA];
-    if (!wireData) continue;
-    
-    // If we have a current gauge, skip any gauges smaller than it
-    if (normalizedCurrentGauge && !compareGaugeSizes(gauge, normalizedCurrentGauge)) {
-      continue; // Skip this gauge - it's smaller than current
-    }
-    
-    // Calculate voltage drop: VD = 2 × I × R × L / 1000
-    // (2 for round trip, R is ohms/1000ft, L in feet)
-    const resistancePerFoot = wireData.resistance / 1000;
-    const vDrop = 2 * current * resistancePerFoot * length;
-    const vDropPercent = (vDrop / voltage) * 100;
-
-    // Get ampacity with derating
-    const baseAmpacity = getAmpacity(gauge, insulationType);
-    const deratedAmpacity = baseAmpacity * tempDeratingFactor * bundlingFactor;
-
-    // Check if this gauge meets requirements
-    if (vDrop <= maxVDropVolts && current <= deratedAmpacity) {
-      recommendedGauge = gauge;
-      actualVoltageDrop = vDrop;
-      voltageDropPercent = vDropPercent;
-
-      // Set status based on how close we are to limits
-      if (vDropPercent > maxVoltageDrop * 0.9 || current > deratedAmpacity * 0.9) {
-        status = "warning";
-        message = "Wire size is near maximum capacity. Consider larger gauge.";
-      } else {
+  // First, check if the current gauge meets requirements
+  let currentGaugeMeetsRequirements = false;
+  if (normalizedCurrentGauge) {
+    const wireData = WIRE_DATA[normalizedCurrentGauge as keyof typeof WIRE_DATA];
+    if (wireData) {
+      const resistancePerFoot = wireData.resistance / 1000;
+      const vDrop = 2 * current * resistancePerFoot * length;
+      const vDropPercent = (vDrop / voltage) * 100;
+      const baseAmpacity = getAmpacity(normalizedCurrentGauge, insulationType);
+      const deratedAmpacity = baseAmpacity * tempDeratingFactor * bundlingFactor;
+      
+      currentGaugeMeetsRequirements = (vDrop <= maxVDropVolts && current <= deratedAmpacity);
+      
+      // Check if current gauge is close to limits (warning status)
+      // Use 2.5% as warning threshold (same as server-side validation)
+      const warningThreshold = maxVoltageDrop * 0.833; // 2.5% of 3% = 83.3%
+      const isNearLimit = vDropPercent > warningThreshold || current > deratedAmpacity * 0.9;
+      
+      // If current gauge meets requirements AND is well within limits, use it
+      // If it's close to limits (warning), we'll recommend a larger gauge instead
+      if (currentGaugeMeetsRequirements && !isNearLimit) {
+        recommendedGauge = normalizedCurrentGauge;
+        actualVoltageDrop = vDrop;
+        voltageDropPercent = vDropPercent;
         status = "valid";
         message = "Wire size meets ABYC/NEC standards.";
+      } else if (currentGaugeMeetsRequirements && isNearLimit) {
+        // Current gauge meets requirements but is close to limit - recommend larger
+        // Don't set recommendedGauge here, let the loop below find a larger one
+        currentGaugeMeetsRequirements = false; // Force finding a larger gauge
       }
-      break; // Found the smallest gauge that works (and is >= current gauge)
     }
   }
 
-  // If no gauge is sufficient, use the largest and mark as invalid
-  if (recommendedGauge === "4/0") {
+  // If current gauge doesn't meet requirements, find the next larger gauge that does
+  if (!currentGaugeMeetsRequirements) {
+    let foundValidGauge = false;
+    for (const gauge of gaugeOrder) {
+      const wireData = WIRE_DATA[gauge as keyof typeof WIRE_DATA];
+      if (!wireData) continue;
+      
+      // If we have a current gauge, skip any gauges smaller than or equal to it
+      // (we want to recommend a LARGER gauge if current doesn't meet requirements)
+      if (normalizedCurrentGauge) {
+        // Skip if this gauge is smaller than current
+        if (!compareGaugeSizes(gauge, normalizedCurrentGauge)) {
+          continue; // Skip this gauge - it's smaller than current
+        }
+        // Skip if this gauge is the same as current (we want larger if current doesn't work)
+        if (gauge === normalizedCurrentGauge) {
+          continue; // Skip current gauge - we want larger
+        }
+      }
+      
+      // Calculate voltage drop: VD = 2 × I × R × L / 1000
+      // (2 for round trip, R is ohms/1000ft, L in feet)
+      const resistancePerFoot = wireData.resistance / 1000;
+      const vDrop = 2 * current * resistancePerFoot * length;
+      const vDropPercent = (vDrop / voltage) * 100;
+
+      // Get ampacity with derating
+      const baseAmpacity = getAmpacity(gauge, insulationType);
+      const deratedAmpacity = baseAmpacity * tempDeratingFactor * bundlingFactor;
+
+      // Check if this gauge meets requirements
+      if (vDrop <= maxVDropVolts && current <= deratedAmpacity) {
+        recommendedGauge = gauge;
+        actualVoltageDrop = vDrop;
+        voltageDropPercent = vDropPercent;
+        foundValidGauge = true;
+
+        // Set status based on how close we are to limits
+        if (vDropPercent > maxVoltageDrop * 0.9 || current > deratedAmpacity * 0.9) {
+          status = "warning";
+          message = "Wire size is near maximum capacity. Consider larger gauge.";
+        } else {
+          status = "valid";
+          message = "Wire size meets ABYC/NEC standards.";
+        }
+        break; // Found the smallest gauge that works (and is > current gauge)
+      }
+    }
+    
+    // If we didn't find a valid larger gauge, mark as error
+    if (!foundValidGauge && normalizedCurrentGauge) {
+      const wireData = WIRE_DATA[normalizedCurrentGauge as keyof typeof WIRE_DATA];
+      if (wireData) {
+        const resistancePerFoot = wireData.resistance / 1000;
+        const vDrop = 2 * current * resistancePerFoot * length;
+        const vDropPercent = (vDrop / voltage) * 100;
+        const baseAmpacity = getAmpacity(normalizedCurrentGauge, insulationType);
+        const deratedAmpacity = baseAmpacity * tempDeratingFactor * bundlingFactor;
+        
+        recommendedGauge = normalizedCurrentGauge; // Keep current for display, but mark as error
+        actualVoltageDrop = vDrop;
+        voltageDropPercent = vDropPercent;
+        status = "error";
+        if (vDrop > maxVDropVolts) {
+          message = `Voltage drop (${vDropPercent.toFixed(1)}%) exceeds ${maxVoltageDrop}% limit. Consider larger gauge.`;
+        } else {
+          message = `Current (${current.toFixed(1)}A) exceeds maximum ampacity (${deratedAmpacity.toFixed(0)}A). Consider larger gauge.`;
+        }
+      }
+    }
+  }
+
+  // If no gauge is sufficient and we haven't set status yet (no current gauge case), use the largest and mark as invalid
+  if (recommendedGauge === "4/0" && status === "valid" && !normalizedCurrentGauge) {
     const wireData = WIRE_DATA["4/0"];
     const resistancePerFoot = wireData.resistance / 1000;
     actualVoltageDrop = 2 * current * resistancePerFoot * length;
@@ -156,7 +223,9 @@ export function calculateWireSize(params: {
       if (actualVoltageDrop > maxVDropVolts) {
         message = `Voltage drop (${voltageDropPercent.toFixed(1)}%) exceeds ${maxVoltageDrop}% limit. Run may be too long.`;
       } else {
-        message = `Current (${current}A) exceeds maximum ampacity (${deratedAmpacity.toFixed(0)}A). Reduce current or use parallel runs.`;
+        // Calculate how many parallel runs of 4/0 AWG are needed
+        const parallelRunsNeeded = Math.ceil(current / deratedAmpacity);
+        message = `Current (${current.toFixed(1)}A) exceeds maximum ampacity (${deratedAmpacity.toFixed(0)}A). Use ${parallelRunsNeeded} parallel run(s) of 4/0 AWG or reduce current.`;
       }
     }
   }

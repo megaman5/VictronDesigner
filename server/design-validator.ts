@@ -97,6 +97,9 @@ export class DesignValidator {
 
     // Rule 7: MPPT must have solar panel connections
     this.validateMPPTSolarConnections();
+
+    // Rule 8: Fuse ratings must exceed current through them
+    this.validateFuseRatings();
   }
 
   private validateSmartShuntPlacement(): void {
@@ -374,6 +377,124 @@ export class DesignValidator {
   /**
    * Validate wire sizing against ABYC/NEC standards
    */
+  /**
+   * Calculate current through a fuse by tracing downstream loads
+   */
+  private calculateFuseCurrent(fuseId: string): number {
+    // Find the wire connected to fuse "out" terminal (downstream side)
+    const fuseOutWire = this.wires.find(w => 
+      (w.fromComponentId === fuseId && w.fromTerminal === 'out') ||
+      (w.toComponentId === fuseId && w.toTerminal === 'out')
+    );
+    
+    if (!fuseOutWire) return 0;
+    
+    // Find what's connected downstream of the fuse
+    const downstreamCompId = fuseOutWire.fromComponentId === fuseId 
+      ? fuseOutWire.toComponentId 
+      : fuseOutWire.fromComponentId;
+    const downstreamComp = this.components.find(c => c.id === downstreamCompId);
+    
+    if (!downstreamComp) return 0;
+    
+    // Calculate total current from all loads downstream of the fuse
+    let totalCurrent = 0;
+    
+    // Helper to calculate current from a component
+    const getComponentCurrent = (comp: SchematicComponent): number => {
+      if (comp.type === 'dc-load') {
+        const loadWatts = (comp.properties?.watts || comp.properties?.power || 0) as number;
+        const loadVoltage = comp.properties?.voltage as number || this.systemVoltage;
+        if (loadWatts > 0 && loadVoltage > 0) {
+          return loadWatts / loadVoltage;
+        }
+      } else if (comp.type === 'inverter' || comp.type === 'phoenix-inverter' || comp.type === 'multiplus') {
+        const inverterDC = calculateInverterDCInput(comp.id, this.components, this.wires, this.systemVoltage);
+        return inverterDC.dcInputCurrent;
+      } else if (comp.type === 'mppt' || comp.type === 'blue-smart-charger' || comp.type === 'orion-dc-dc') {
+        // Chargers output current, but we want load current, so skip them
+        return 0;
+      }
+      return 0;
+    };
+    
+    // If connected to a bus bar, calculate from bus bar
+    if (downstreamComp.type === 'busbar-positive') {
+      const connectedWires = this.wires.filter(
+        w => (w.fromComponentId === downstreamCompId || w.toComponentId === downstreamCompId) &&
+             w.polarity === 'positive'
+      );
+      
+      const visitedComps = new Set<string>();
+      for (const connectedWire of connectedWires) {
+        const otherCompId = connectedWire.fromComponentId === downstreamCompId 
+          ? connectedWire.toComponentId 
+          : connectedWire.fromComponentId;
+        
+        if (visitedComps.has(otherCompId)) continue;
+        visitedComps.add(otherCompId);
+        
+        const otherComp = this.components.find(c => c.id === otherCompId);
+        if (!otherComp) continue;
+        
+        // Skip AC loads and AC panels - they're on separate AC system
+        if (otherComp.type === 'ac-load' || otherComp.type === 'ac-panel') continue;
+        
+        totalCurrent += getComponentCurrent(otherComp);
+      }
+    } else {
+      // Direct connection - calculate from the component
+      totalCurrent = getComponentCurrent(downstreamComp);
+    }
+    
+    return totalCurrent;
+  }
+
+  /**
+   * Validate that fuse ratings exceed current through them
+   */
+  private validateFuseRatings(): void {
+    const fuses = this.components.filter(c => c.type === 'fuse');
+    
+    fuses.forEach(fuse => {
+      const fuseRating = fuse.properties?.fuseRating || fuse.properties?.amps || 0;
+      
+      if (fuseRating === 0) {
+        this.issues.push({
+          severity: 'warning',
+          category: 'electrical',
+          message: `Fuse "${fuse.name}" has no rating specified`,
+          componentIds: [fuse.id],
+          suggestion: 'Set fuse rating in component properties',
+        });
+        return;
+      }
+      
+      const currentThroughFuse = this.calculateFuseCurrent(fuse.id);
+      const utilizationPercent = fuseRating > 0 ? (currentThroughFuse / fuseRating) * 100 : 0;
+      
+      if (currentThroughFuse > fuseRating) {
+        // Current exceeds rating - fuse will blow (ERROR)
+        this.issues.push({
+          severity: 'error',
+          category: 'electrical',
+          message: `Fuse "${fuse.name}" (${fuseRating}A) is undersized: ${currentThroughFuse.toFixed(1)}A exceeds rating (${utilizationPercent.toFixed(1)}% utilization)`,
+          componentIds: [fuse.id],
+          suggestion: `Increase fuse rating to at least ${Math.ceil(currentThroughFuse / 50) * 50}A (next standard size above ${currentThroughFuse.toFixed(1)}A)`,
+        });
+      } else if (utilizationPercent > 80) {
+        // Near limit - warning
+        this.issues.push({
+          severity: 'warning',
+          category: 'electrical',
+          message: `Fuse "${fuse.name}" (${fuseRating}A) is near capacity: ${currentThroughFuse.toFixed(1)}A (${utilizationPercent.toFixed(1)}% utilization)`,
+          componentIds: [fuse.id],
+          suggestion: `Consider increasing fuse rating to ${Math.ceil(currentThroughFuse / 50) * 50}A for safety margin`,
+        });
+      }
+    });
+  }
+
   private validateWireSizing(): void {
     // Import wire data for validation
     const WIRE_DATA: Record<string, { maxCurrent: number; resistance: number }> = {
@@ -425,6 +546,15 @@ export class DesignValidator {
         });
         return;
       }
+
+      // Find parallel wires (same from/to components, same polarity)
+      const parallelWires = this.wires.filter(w => 
+        w.id !== wire.id &&
+        w.polarity === wire.polarity &&
+        ((w.fromComponentId === wire.fromComponentId && w.toComponentId === wire.toComponentId) ||
+         (w.fromComponentId === wire.toComponentId && w.toComponentId === wire.fromComponentId))
+      );
+      const parallelCount = parallelWires.length + 1; // +1 for the current wire
 
       // Calculate current from connected components if not set
       let current = wire.current || 0;
@@ -1054,8 +1184,11 @@ export class DesignValidator {
         }
       }
 
+      // Divide current by number of parallel wires (each wire carries 1/N of total current)
+      const currentPerWire = current / parallelCount;
+
       // Check ampacity using proper temperature-adjusted calculations
-      if (current > 0) {
+      if (currentPerWire > 0) {
         // Normalize gauge format (remove " AWG" suffix if present)
         const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
         const maxAmpacity = getWireAmpacity(normalizedGauge, "75C", 30, 1.0);
@@ -1067,7 +1200,7 @@ export class DesignValidator {
             message: `Wire has unknown gauge: ${wire.gauge}`,
             wireId: wire.id,
           });
-        } else if (current > maxAmpacity) {
+        } else if (currentPerWire > maxAmpacity) {
           this.issues.push({
             severity: "error",
             category: "wire-sizing",
@@ -1076,12 +1209,13 @@ export class DesignValidator {
             componentIds: [wire.fromComponentId, wire.toComponentId],
             suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGauge(current)})`,
           });
-        } else if (current > maxAmpacity * 0.8) {
+        } else if (currentPerWire > maxAmpacity * 0.8) {
           // Warning if wire is above 80% of capacity
+          const currentDisplay = parallelCount > 1 ? `${current.toFixed(1)}A (${currentPerWire.toFixed(1)}A per wire, ${parallelCount} parallel)` : `${current.toFixed(1)}A`;
           this.issues.push({
             severity: "warning",
             category: "wire-sizing",
-            message: `Wire gauge ${wire.gauge} running at ${((current / maxAmpacity) * 100).toFixed(0)}% capacity (${current.toFixed(1)}A of ${maxAmpacity.toFixed(1)}A max)`,
+            message: `Wire gauge ${wire.gauge} running at ${((currentPerWire / maxAmpacity) * 100).toFixed(0)}% capacity (${currentDisplay} of ${maxAmpacity.toFixed(1)}A max per wire)`,
             wireId: wire.id,
             componentIds: [wire.fromComponentId, wire.toComponentId],
             suggestion: `Consider using larger gauge for better safety margin`,
@@ -1197,13 +1331,15 @@ export class DesignValidator {
             suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length)}) or shorten run (current: ${length}ft)`,
           });
         } else if (voltageDropPercent > 2.5) {
+          // Get current wire gauge to recommend a larger one
+          const currentGauge = wire.gauge ? wire.gauge.replace(/ AWG$/i, '').trim().replace(/\\0/g, "/0") : null;
           this.issues.push({
             severity: "warning",
             category: "wire-sizing",
             message: `High voltage drop: ${voltageDropPercent.toFixed(1)}% at ${current.toFixed(1)}A, ${length}ft, ${voltage}V`,
             wireId: wire.id,
             componentIds: [wire.fromComponentId, wire.toComponentId],
-            suggestion: `Consider larger gauge (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length)}) to reduce losses`,
+            suggestion: `Consider larger gauge (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length, currentGauge)}) to reduce losses`,
           });
         }
       }
@@ -1226,10 +1362,13 @@ export class DesignValidator {
     if (requiredAmpacity <= 175) return "2/0 AWG"; // 175A capacity
     if (requiredAmpacity <= 200) return "3/0 AWG"; // 200A capacity
     if (requiredAmpacity <= 230) return "4/0 AWG"; // 230A capacity
-    return "4/0 AWG or larger (consider parallel runs)";
+    // For currents exceeding 4/0 AWG capacity, suggest parallel runs
+    const maxAmpacity = 230; // 4/0 AWG at 75°C
+    const parallelRunsNeeded = Math.ceil(requiredAmpacity / maxAmpacity);
+    return `${parallelRunsNeeded} parallel run(s) of 4/0 AWG`;
   }
 
-  private suggestWireGaugeForVoltageDrop(current: number, length: number): string {
+  private suggestWireGaugeForVoltageDrop(current: number, length: number, currentGauge?: string | null): string {
     // Calculate required gauge based on voltage drop (3% max)
     const maxVDropVolts = (this.systemVoltage * 3) / 100;
     
@@ -1248,7 +1387,26 @@ export class DesignValidator {
       "4/0": 0.0490,
     };
 
+    // Helper to compare gauge sizes (same as in wire-calculator)
+    const compareGaugeSizes = (gauge1: string, gauge2: string): boolean => {
+      const gaugeOrder = ["18", "16", "14", "12", "10", "8", "6", "4", "2", "1", "1/0", "2/0", "3/0", "4/0"];
+      const index1 = gaugeOrder.indexOf(gauge1);
+      const index2 = gaugeOrder.indexOf(gauge2);
+      if (index1 === -1 || index2 === -1) return false;
+      return index1 >= index2;
+    };
+
     for (const gauge of gauges) {
+      // Skip gauges smaller than or equal to current gauge
+      if (currentGauge) {
+        if (!compareGaugeSizes(gauge, currentGauge)) {
+          continue; // Skip smaller than current
+        }
+        if (gauge === currentGauge) {
+          continue; // Skip current gauge - we want larger
+        }
+      }
+      
       const resistancePerFoot = (WIRE_RESISTANCE[gauge] || 0.9989) / 1000;
       const vDrop = 2 * current * resistancePerFoot * length;
       if (vDrop <= maxVDropVolts) {

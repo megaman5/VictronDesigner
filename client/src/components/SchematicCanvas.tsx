@@ -850,9 +850,33 @@ export function SchematicCanvas({
                 }
               }
 
+              // Extend wire paths well into terminal positions to ensure proper connection
+              // This prevents gaps when exporting to PNG (html2canvas can have sub-pixel rendering issues)
+              // Terminals have white strokes (2-3px) and radius 7-10px, so we need to extend past the stroke
+              // Orientation is the EXIT direction, so to extend INTO the terminal, we go OPPOSITE direction
+              const extendDistance = 10; // pixels to extend into terminal (past the white stroke)
+              let extendedFromPos = { ...fromPos };
+              let extendedToPos = { ...toPos };
+              
+              if (fromOrientation) {
+                // Extend OPPOSITE to orientation direction (into the terminal center, past the white stroke)
+                if (fromOrientation === 'left') extendedFromPos.x += extendDistance; // Go right (into terminal)
+                else if (fromOrientation === 'right') extendedFromPos.x -= extendDistance; // Go left (into terminal)
+                else if (fromOrientation === 'top') extendedFromPos.y += extendDistance; // Go down (into terminal)
+                else if (fromOrientation === 'bottom') extendedFromPos.y -= extendDistance; // Go up (into terminal)
+              }
+              
+              if (toOrientation) {
+                // Extend OPPOSITE to orientation direction (into the terminal center, past the white stroke)
+                if (toOrientation === 'left') extendedToPos.x += extendDistance; // Go right (into terminal)
+                else if (toOrientation === 'right') extendedToPos.x -= extendDistance; // Go left (into terminal)
+                else if (toOrientation === 'top') extendedToPos.y += extendDistance; // Go down (into terminal)
+                else if (toOrientation === 'bottom') extendedToPos.y -= extendDistance; // Go up (into terminal)
+              }
+
               const result = calculateRoute(
-                fromPos.x, fromPos.y,
-                toPos.x, toPos.y,
+                extendedFromPos.x, extendedFromPos.y,
+                extendedToPos.x, extendedToPos.y,
                 obstacles,
                 2400, // canvas width
                 1600, // canvas height
@@ -910,7 +934,7 @@ export function SchematicCanvas({
                     strokeLinejoin="round"
                     fill="none"
                     opacity={isSelected ? 1 : 0.9}
-                    style={{ pointerEvents: 'none' }}
+                    style={{ pointerEvents: 'none', paintOrder: 'stroke fill' }}
                   />
 
                   {showWireLabels && (
