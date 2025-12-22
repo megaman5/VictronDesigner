@@ -761,6 +761,7 @@ JSON RESPONSE FORMAT:
                     length: wire.length,
                     voltage,
                     conductorMaterial: (wire as any).conductorMaterial || "copper",
+                    currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
                   });
                   
                   wireCalculations.push({
@@ -1196,6 +1197,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
                     length: wire.length,
                     voltage,
                     conductorMaterial: (wire as any).conductorMaterial || "copper",
+                    currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
                   });
                   
                   wireCalculations.push({
@@ -1662,6 +1664,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
                     length: wire.length,
                     voltage,
                     conductorMaterial: (wire as any).conductorMaterial || "copper",
+                    currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
                   });
                   
                   wireCalculationsForObs.push({
@@ -1854,6 +1857,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
                 length: wire.length,
                 voltage,
                 conductorMaterial: (wire as any).conductorMaterial || "copper",
+                currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
               });
               
               finalWireCalculations.push({

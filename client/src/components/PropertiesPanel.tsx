@@ -90,6 +90,35 @@ function getAvailableVoltages(componentType: string): number[] {
 
 // All components now use 'watts' consistently
 
+// Helper function to detect if a wire is AC
+function isACWire(
+  wire: { polarity: string; fromTerminal: string; toTerminal: string; fromComponentId?: string; toComponentId?: string },
+  components: SchematicComponent[] = []
+): boolean {
+  // Check if polarity is already AC type
+  if (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground") {
+    return true;
+  }
+  
+  // Check if terminals are AC type
+  if (wire.fromTerminal.startsWith("ac-") || wire.toTerminal.startsWith("ac-")) {
+    return true;
+  }
+  
+  // Check if connected components are AC type
+  if (wire.fromComponentId && wire.toComponentId) {
+    const fromComp = components.find(c => c.id === wire.fromComponentId);
+    const toComp = components.find(c => c.id === wire.toComponentId);
+    
+    if (fromComp?.type === "ac-load" || fromComp?.type === "ac-panel" ||
+        toComp?.type === "ac-load" || toComp?.type === "ac-panel") {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 // Calculate bus bar totals from connected components
 function calculateBusBarTotals(
   busBarId: string,
@@ -485,14 +514,50 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
           <TabsContent value="properties" className="p-4 space-y-4 mt-0 pr-2">
             {/* Display issues for selected component or wire */}
             {(() => {
+              // Only show issues if we have a selection
+              if (!selectedComponent && !selectedWire) {
+                return null;
+              }
+              
               const relevantIssues = validationResult?.issues.filter(issue => {
-                if (selectedComponent && issue.componentIds?.includes(selectedComponent.id)) {
-                  return true;
+                // If component is selected (and wire is NOT selected), only show component issues
+                if (selectedComponent && !selectedWire) {
+                  // Primary check: component must be in componentIds
+                  if (issue.componentIds && issue.componentIds.includes(selectedComponent.id)) {
+                    return true;
+                  }
+                  // Secondary check: if it's a wire issue, the wire must connect to this component
+                  // But only if the issue doesn't have componentIds (to avoid double-matching)
+                  if (!issue.componentIds || issue.componentIds.length === 0) {
+                    if (issue.wireId) {
+                      const wire = wires.find(w => w.id === issue.wireId);
+                      if (wire && (wire.fromComponentId === selectedComponent.id || wire.toComponentId === selectedComponent.id)) {
+                        return true;
+                      }
+                    }
+                    if (issue.wireIds && issue.wireIds.length > 0) {
+                      const matchingWire = wires.find(w => issue.wireIds.includes(w.id) && 
+                        (w.fromComponentId === selectedComponent.id || w.toComponentId === selectedComponent.id));
+                      if (matchingWire) {
+                        return true;
+                      }
+                    }
+                  }
+                  return false;
                 }
-                if (selectedWire && (issue.wireId === selectedWire.id || issue.wireIds?.includes(selectedWire.id))) {
-                  return true;
+                
+                // Priority: If wire is selected, show wire issues (even if component is also selected)
+                if (selectedWire) {
+                  // Must be for this specific wire (wire issues can have both wireId and componentIds)
+                  if (issue.wireId === selectedWire.id) {
+                    return true;
+                  }
+                  if (issue.wireIds && issue.wireIds.includes(selectedWire.id)) {
+                    return true;
+                  }
+                  // Don't show component-only issues (issues without wireId/wireIds) when wire is selected
+                  return false;
                 }
-                return false;
               }) || [];
 
               if (relevantIssues.length > 0) {
@@ -543,6 +608,31 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
                 <Separator />
 
+                {/* Show calculated wire current/power if available */}
+                {(() => {
+                  const calc = wireCalculation || wireCalculations[selectedWire.id];
+                  if (calc && calc.current != null && calc.current > 0) {
+                    return (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Calculated Load</Label>
+                          <div className="text-sm font-mono bg-muted p-2 rounded-md">
+                            <div>Current: {calc.current.toFixed(1)}A</div>
+                            {calc.voltage && (
+                              <div>Voltage: {calc.voltage}V</div>
+                            )}
+                            {calc.current && calc.voltage && (
+                              <div>Power: {(calc.current * calc.voltage).toFixed(0)}W</div>
+                            )}
+                          </div>
+                        </div>
+                        <Separator />
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium">Wire Properties</h3>
                   <div className="space-y-2">
@@ -552,9 +642,21 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         <SelectValue placeholder="Select polarity" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="positive">Positive (+)</SelectItem>
-                        <SelectItem value="negative">Negative (-)</SelectItem>
-                        <SelectItem value="ground">Ground</SelectItem>
+                        {selectedWire && isACWire(selectedWire, components) ? (
+                          // AC wire options
+                          <>
+                            <SelectItem value="hot">Hot</SelectItem>
+                            <SelectItem value="neutral">Neutral</SelectItem>
+                            <SelectItem value="ground">Ground</SelectItem>
+                          </>
+                        ) : (
+                          // DC wire options
+                          <>
+                            <SelectItem value="positive">Positive (+)</SelectItem>
+                            <SelectItem value="negative">Negative (-)</SelectItem>
+                            <SelectItem value="ground">Ground</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1194,7 +1296,67 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   );
                 })()}
 
-                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel'].includes(selectedComponent.type) && (
+                {/* DC Distribution Panel - calculated from connected DC loads */}
+                {selectedComponent.type === 'dc-panel' && (() => {
+                  // Calculate total DC loads connected to this panel
+                  // Only count from positive wires to avoid double-counting (similar to AC panel counting only hot wires)
+                  const panelWires = wires.filter(
+                    w => (w.fromComponentId === selectedComponent.id || w.toComponentId === selectedComponent.id) &&
+                         w.polarity === "positive" // Only count from positive wires
+                  );
+                  
+                  let totalDCWatts = 0;
+                  let dcVoltage = 12; // Default
+                  const visitedLoads = new Set<string>();
+                  
+                  for (const wire of panelWires) {
+                    const otherCompId = wire.fromComponentId === selectedComponent.id 
+                      ? wire.toComponentId 
+                      : wire.fromComponentId;
+                    
+                    if (!visitedLoads.has(otherCompId)) {
+                      visitedLoads.add(otherCompId);
+                      const otherComp = components.find(c => c.id === otherCompId);
+                      if (otherComp && otherComp.type === "dc-load") {
+                        const loadWatts = (otherComp.properties?.watts || otherComp.properties?.power || 0) as number;
+                        totalDCWatts += loadWatts;
+                        const loadVoltage = otherComp.properties?.voltage || 12;
+                        if (loadVoltage !== 12) dcVoltage = loadVoltage;
+                      }
+                    }
+                  }
+                  
+                  const totalDCCurrent = dcVoltage > 0 ? totalDCWatts / dcVoltage : 0;
+                  
+                  return (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium">DC Distribution Panel Specifications</h3>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded mb-2">
+                        DC panel current and power are automatically calculated from connected DC loads.
+                      </div>
+                      <div className="space-y-2">
+                        <Label>DC Voltage (V)</Label>
+                        <div className="text-sm font-mono bg-muted p-2 rounded">
+                          {dcVoltage}V DC
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Total Current (A)</Label>
+                        <div className="text-sm font-mono bg-muted p-2 rounded">
+                          {totalDCCurrent.toFixed(1)}A
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Total Power (W)</Label>
+                        <div className="text-sm font-mono bg-muted p-2 rounded">
+                          {totalDCWatts.toFixed(0)}W
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">

@@ -8,6 +8,15 @@ This is a professional electrical schematic design tool specifically for Victron
 
 Preferred communication style: Simple, everyday language.
 
+## ⚠️ CRITICAL: Always Restart After Code Changes
+
+**MANDATORY WORKFLOW - After making ANY code changes (server or client):**
+1. **ALWAYS** run `npm run build` to rebuild the application
+2. **ALWAYS** run `sudo systemctl restart victron-designer.service` to apply changes
+3. Changes will NOT take effect until both steps are completed!
+
+**This applies to ALL code changes - no exceptions!**
+
 ## Production Deployment
 
 The app runs as a systemd service on the server:
@@ -24,14 +33,61 @@ sudo systemctl status victron-designer.service
 sudo journalctl -u victron-designer.service -f
 ```
 
-**⚠️ IMPORTANT: After making ANY code changes (server or client), you MUST:**
-1. Run `npm run build` to rebuild the application
-2. Run `sudo systemctl restart victron-designer.service` to apply changes
-3. Always restart the server after making changes - changes won't take effect until the service is restarted!
-
 ## Recent Changes
 
-### Latest Session - MPPT Validation & Lynx Removal (December 2025)
+### Latest Session - AC/DC Voltage Separation & Current Calculation Fixes (December 2025)
+1. **AC Load Voltage Handling**: Fixed AC loads to use AC voltage (110V/120V/220V/230V) instead of DC voltage
+   - AC loads now use `acVoltage` property instead of `voltage` property
+   - Properties panel shows AC voltage options (110V, 120V, 220V, 230V) for AC loads
+   - Default AC load voltage set to 120V AC (North America standard)
+   - Export report hides old `voltage` property for AC loads, only shows `acVoltage`
+   - Current calculations for AC loads now use AC voltage (e.g., 1440W / 120V = 12A, not 120A)
+
+2. **Voltage Mismatch Validation**: Fixed to exclude AC loads and AC panels from DC voltage checks
+   - AC loads and AC panels are now excluded from voltage mismatch validation
+   - Only DC components are checked against DC system voltage (12V/24V/48V)
+   - AC wires (hot/neutral/ground) are excluded from wire voltage mismatch checks
+   - Error messages clarified to specify "DC components" instead of "All components"
+
+3. **Bus Bar Current Calculations**: Fixed double-counting and incorrect current calculations
+   - Bus bars now correctly exclude AC loads (they're on separate AC system)
+   - For inverters, uses `dcInputCurrent` directly instead of tracing through AC loads
+   - For MPPT/chargers, uses their output current directly
+   - For DC loads, calculates from watts/voltage directly
+   - Prevents recursive tracing through bus bars that caused exponential current growth
+   - Fixed 414.8A and 411.4A errors (were double-counting currents)
+
+4. **Wire Current Calculation Logic**: Implemented direction-aware current calculation
+   - **Source-to-Bus Bar wires** (solar → MPPT, MPPT → bus bar): Uses source output current directly
+   - **Bus Bar-to-Load wires** (bus bar → inverter, bus bar → DC panel): Traces to find actual load current
+   - **Bus Bar-to-DC Panel wires**: Traces through panel to find connected DC loads
+   - Prevents incorrect current calculations (e.g., solar panel wires showing 137.1A instead of ~25A)
+
+5. **Inverter DC Input Calculation**: Enhanced to properly detect and calculate from AC loads
+   - Returns full object with `acLoadWatts`, `dcInputWatts`, `dcInputCurrent`, and `acVoltage`
+   - Fixed terminal matching to correctly find AC output wires (`ac-out-hot`, `ac-out-neutral`)
+   - Prevents double-counting AC loads through AC panels
+   - Inverter AC output wires now correctly show AC load current (13.1A @ 110V AC)
+
+6. **MPPT Current Detection**: Fixed to use `maxCurrent` property
+   - MPPT components use `maxCurrent` property, not `amps` or `current`
+   - MPPT → Bus Bar wires now correctly show 50A (not "Cannot determine current")
+   - Bus bar calculations also updated to use `maxCurrent` for MPPT components
+
+7. **Export Report Enhancements**: Improved system report accuracy and clarity
+   - AC Distribution Panel shows correct AC voltage (110V/120V AC, not 12V)
+   - Wire power calculations show correct AC/DC voltage labels
+   - Inverter DC input properly calculated and displayed
+   - Bus bar totals exclude AC loads, only sum DC loads and inverter DC inputs
+   - All validation warnings/errors included at bottom of report
+   - AC load display cleaned up (hides old `voltage` property, formats current to 1 decimal)
+
+8. **Inverter AC Output Wire Detection**: Fixed to handle all inverter types and wire polarities
+   - Handles `inverter`, `multiplus`, and `phoenix-inverter` types
+   - Detects hot, neutral, AND ground wires (ground carries 0A)
+   - Fixes "Cannot determine current" warnings for inverter AC output wires
+
+### Previous Session - MPPT Validation & Lynx Removal (December 2025)
 1. **MPPT Solar Panel Validation**: Added validation rule that flags MPPT controllers missing solar panel connections as errors
    - Checks for PV positive/negative terminal connections
    - Verifies actual connection to solar panel components
@@ -148,8 +204,11 @@ sudo journalctl -u victron-designer.service -f
 - Wire calculation engine implementing ABYC/NEC standards with temperature derating
 - Ampacity tables for wire gauges from 18 AWG to 4/0 AWG
 - Voltage drop calculations based on wire length, current, and resistance
+- **AC/DC Voltage Separation**: AC loads use AC voltage (110V/120V/220V/230V), DC components use DC voltage (12V/24V/48V)
+- **Inverter DC Input Calculation**: Calculates DC input power/current from connected AC loads with efficiency factor (87.5%)
+- **Direction-Aware Wire Current Calculation**: Distinguishes between source wires (solar/MPPT output) and load wires (inverter/DC load input)
 - Shopping list aggregation from component specifications
-- System report generation combining diagrams, parts lists, and wire labels
+- System report generation combining diagrams, parts lists, wire labels, and validation results
 
 **Export Utilities**:
 - CSV generation for shopping lists
@@ -187,6 +246,9 @@ sudo journalctl -u victron-designer.service -f
   - Terminal-specific wire connections (fromTerminal/toTerminal IDs)
   - Calculated wire gauges and lengths
   - ABYC/NEC compliant recommendations
+  - AC loads with proper AC voltage (110V/120V/220V/230V) and `acVoltage` property
+  - Inverter DC input calculations from connected AC loads
+  - Validation feedback for wire sizing, voltage drop, and current calculations
 
 **Database**:
 - **Neon Serverless PostgreSQL** - Cloud-hosted PostgreSQL database

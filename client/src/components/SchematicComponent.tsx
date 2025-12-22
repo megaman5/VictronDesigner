@@ -298,7 +298,10 @@ export function SchematicComponent({
         );
       }
 
-      case "solar-panel":
+      case "solar-panel": {
+        const watts = properties.watts || properties.power || 300;
+        const voltage = properties.voltage || 12;
+        const panelType = properties.panelType || "Monocrystalline";
         return (
           <svg width="140" height="120" viewBox="0 0 140 120">
             {/* Panel frame */}
@@ -318,9 +321,14 @@ export function SchematicComponent({
             {/* Solar reflection effect */}
             <rect x="25" y="30" width="15" height="15" fill="url(#solarGradient)" opacity="0.3" />
 
+            {/* Power and voltage display */}
+            <rect x="25" y="50" width="90" height="20" fill="#0a0a1a" rx="2" />
+            <text x="70" y="60" textAnchor="middle" className="fill-green-400 text-[10px] font-mono font-bold">{watts}W</text>
+            <text x="70" y="68" textAnchor="middle" className="fill-gray-400 text-[8px]">{voltage}V</text>
+
             {/* Label */}
-            <text x="70" y="13" textAnchor="middle" className="fill-foreground text-xs font-semibold">Solar Panel</text>
-            <text x="70" y="107" textAnchor="middle" className="fill-foreground text-[10px]">300W Monocrystalline</text>
+            <text x="70" y="13" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Solar Panel'}</text>
+            <text x="70" y="107" textAnchor="middle" className="fill-foreground text-[10px]">{panelType}</text>
 
             {/* Junction box */}
             <rect x="60" y="95" width="20" height="10" fill="#2a2a2a" stroke="#3a3a3a" strokeWidth="1" />
@@ -329,13 +337,17 @@ export function SchematicComponent({
             <defs>
               <linearGradient id="solarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" style={{ stopColor: 'white', stopOpacity: 0.8 }} />
-                <stop offset="100%" style={{ stopColor: 'white', stopOpacity: 0 }} />
+                <stop offset="100%" style={{ stopColor: 'transparent', stopOpacity: 0 }} />
               </linearGradient>
             </defs>
           </svg>
         );
+      }
 
-      case "ac-load":
+      case "ac-load": {
+        const watts = properties.watts || properties.power || 0;
+        const acVoltage = properties.acVoltage || properties.voltage || 120;
+        const current = watts > 0 && acVoltage > 0 ? (watts / acVoltage).toFixed(1) : 0;
         return (
           <svg width="120" height="100" viewBox="0 0 120 100">
             {/* Generic AC appliance icon */}
@@ -345,15 +357,34 @@ export function SchematicComponent({
             <circle cx="60" cy="52" r="18" fill="none" stroke="white" strokeWidth="3" />
             <line x1="60" y1="40" x2="60" y2="60" stroke="white" strokeWidth="3" />
 
+            {/* Power and voltage display */}
+            {watts > 0 && (
+              <rect x="25" y="40" width="70" height="18" fill="#0a0a1a" rx="2" />
+            )}
+            {watts > 0 && (
+              <text x="60" y="50" textAnchor="middle" className="fill-yellow-400 text-[9px] font-mono font-bold">{watts}W</text>
+            )}
+            {watts > 0 && (
+              <text x="60" y="57" textAnchor="middle" className="fill-gray-400 text-[8px]">{acVoltage}V AC</text>
+            )}
+
             {/* Connection */}
             <rect x="10" y="48" width="15" height="8" fill="hsl(var(--background))" stroke="hsl(var(--foreground))" strokeWidth="2" />
 
-            <text x="60" y="17" textAnchor="middle" className="fill-foreground text-xs font-semibold">AC Load</text>
-            <text x="60" y="93" textAnchor="middle" className="fill-foreground text-[10px]">230V AC Appliances</text>
+            <text x="60" y="17" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'AC Load'}</text>
+            {watts > 0 ? (
+              <text x="60" y="93" textAnchor="middle" className="fill-foreground text-[10px]">{current}A @ {acVoltage}V AC</text>
+            ) : (
+              <text x="60" y="93" textAnchor="middle" className="fill-foreground text-[10px]">{acVoltage}V AC Appliances</text>
+            )}
           </svg>
         );
+      }
 
-      case "dc-load":
+      case "dc-load": {
+        const watts = properties.watts || properties.power || 0;
+        const voltage = properties.voltage || 12;
+        const current = watts > 0 && voltage > 0 ? (watts / voltage).toFixed(1) : 0;
         return (
           <svg width="120" height="100" viewBox="0 0 120 100">
             {/* Generic DC device */}
@@ -364,13 +395,29 @@ export function SchematicComponent({
             <line x1="45" y1="45" x2="45" y2="59" stroke="white" strokeWidth="2" />
             <line x1="75" y1="45" x2="75" y2="59" stroke="white" strokeWidth="2" />
 
+            {/* Power and voltage display */}
+            {watts > 0 && (
+              <rect x="25" y="40" width="70" height="18" fill="#0a0a1a" rx="2" />
+            )}
+            {watts > 0 && (
+              <text x="60" y="50" textAnchor="middle" className="fill-cyan-400 text-[9px] font-mono font-bold">{watts}W</text>
+            )}
+            {watts > 0 && (
+              <text x="60" y="57" textAnchor="middle" className="fill-gray-400 text-[8px]">{voltage}V DC</text>
+            )}
+
             {/* Connection */}
             <rect x="10" y="48" width="15" height="8" fill="hsl(var(--background))" stroke="hsl(var(--foreground))" strokeWidth="2" />
 
-            <text x="60" y="17" textAnchor="middle" className="fill-foreground text-xs font-semibold">DC Load</text>
-            <text x="60" y="93" textAnchor="middle" className="fill-foreground text-[10px]">12V DC Devices</text>
+            <text x="60" y="17" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'DC Load'}</text>
+            {watts > 0 ? (
+              <text x="60" y="93" textAnchor="middle" className="fill-foreground text-[10px]">{current}A @ {voltage}V DC</text>
+            ) : (
+              <text x="60" y="93" textAnchor="middle" className="fill-foreground text-[10px]">{voltage}V DC Devices</text>
+            )}
           </svg>
         );
+      }
 
       case "fuse": {
         const fuseRating = properties.fuseRating || properties.amps || 400;
