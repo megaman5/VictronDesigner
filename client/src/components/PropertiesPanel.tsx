@@ -145,12 +145,17 @@ function calculateBusBarTotals(
   let totalCurrent = 0;
   let totalWatts = 0;
   let voltage = 12; // Default
+  const visitedComps = new Set<string>(); // Track components to prevent double-counting with parallel wires
 
   // For each connected wire, find the component on the other end
   connectedWires.forEach(wire => {
     const otherComponentId = wire.fromComponentId === busBarId 
       ? wire.toComponentId 
       : wire.fromComponentId;
+    
+    // Skip if we've already counted this component (handles parallel wires)
+    if (visitedComps.has(otherComponentId)) return;
+    visitedComps.add(otherComponentId);
     
     const otherComponent = components.find(c => c.id === otherComponentId);
     if (!otherComponent) return;
@@ -271,7 +276,8 @@ function calculateSmartShuntCurrent(
 function calculateFuseCurrent(
   fuseId: string,
   wires: Wire[] = [],
-  components: SchematicComponent[] = []
+  components: SchematicComponent[] = [],
+  systemVoltage: number = 12
 ): number {
   // Find the wire connected to fuse "out" terminal (downstream side)
   const fuseOutWire = wires.find(w => 
@@ -289,31 +295,92 @@ function calculateFuseCurrent(
   
   if (!downstreamComp) return 0;
   
-  // Calculate total current from all loads downstream of the fuse
-  let totalCurrent = 0;
+  // Calculate NET current: loads minus sources (charging reduces battery discharge)
+  let totalLoadCurrent = 0;
+  let totalSourceCurrent = 0;
   
   // If connected to a bus bar, calculate from bus bar
   if (downstreamComp.type === 'busbar-positive') {
-    const busBarTotals = calculateBusBarTotals(downstreamCompId, 'busbar-positive', wires, components);
-    totalCurrent = busBarTotals.totalCurrent;
+    // Find all wires connected to the bus bar
+    const busBarWires = wires.filter(w => 
+      (w.fromComponentId === downstreamCompId && w.polarity === 'positive') ||
+      (w.toComponentId === downstreamCompId && w.polarity === 'positive')
+    );
+    
+    const visitedComps = new Set<string>();
+    
+    for (const wire of busBarWires) {
+      const otherCompId = wire.fromComponentId === downstreamCompId 
+        ? wire.toComponentId 
+        : wire.fromComponentId;
+      
+      if (visitedComps.has(otherCompId)) continue;
+      visitedComps.add(otherCompId);
+      
+      const otherComp = components.find(c => c.id === otherCompId);
+      if (!otherComp) continue;
+      
+      // Sources (MPPT, chargers) - these REDUCE current through fuse (charging battery)
+      if (otherComp.type === 'mppt' || otherComp.type === 'blue-smart-charger' || otherComp.type === 'orion-dc-dc') {
+        const sourceCurrent = (otherComp.properties?.maxCurrent || otherComp.properties?.current || otherComp.properties?.amps || 0) as number;
+        if (sourceCurrent > 0) {
+          totalSourceCurrent += sourceCurrent;
+        }
+      }
+      // Loads (inverters, DC loads) - these INCREASE current through fuse
+      else if (otherComp.type === 'inverter' || otherComp.type === 'phoenix-inverter' || otherComp.type === 'multiplus') {
+        // Calculate inverter DC input from AC loads
+        const inverterDC = calculateInverterDCInput(otherComp.id, wires, components, systemVoltage);
+        if (inverterDC.dcInputCurrent > 0) {
+          totalLoadCurrent += inverterDC.dcInputCurrent;
+        }
+      }
+      else if (otherComp.type === 'dc-load') {
+        const loadWatts = (otherComp.properties?.watts || otherComp.properties?.power || 0) as number;
+        const loadVoltage = (otherComp.properties?.voltage as number) || systemVoltage;
+        if (loadWatts > 0 && loadVoltage > 0) {
+          totalLoadCurrent += loadWatts / loadVoltage;
+        }
+      }
+      else if (otherComp.type === 'dc-panel') {
+        // Trace through DC panel to find loads
+        const panelWires = wires.filter(w => 
+          (w.fromComponentId === otherCompId && w.polarity === 'positive') ||
+          (w.toComponentId === otherCompId && w.polarity === 'positive')
+        );
+        for (const panelWire of panelWires) {
+          const panelLoadId = panelWire.fromComponentId === otherCompId 
+            ? panelWire.toComponentId 
+            : panelWire.fromComponentId;
+          const panelLoad = components.find(c => c.id === panelLoadId);
+          if (panelLoad && panelLoad.type === 'dc-load') {
+            const loadWatts = (panelLoad.properties?.watts || panelLoad.properties?.power || 0) as number;
+            const loadVoltage = (panelLoad.properties?.voltage as number) || systemVoltage;
+            if (loadWatts > 0 && loadVoltage > 0) {
+              totalLoadCurrent += loadWatts / loadVoltage;
+            }
+          }
+        }
+      }
+    }
   } else {
     // Direct connection - calculate from the component
     if (downstreamComp.type === 'dc-load') {
       const loadWatts = (downstreamComp.properties?.watts || downstreamComp.properties?.power || 0) as number;
-      const loadVoltage = downstreamComp.properties?.voltage as number || 12;
+      const loadVoltage = (downstreamComp.properties?.voltage as number) || systemVoltage;
       if (loadWatts > 0 && loadVoltage > 0) {
-        totalCurrent = loadWatts / loadVoltage;
+        totalLoadCurrent = loadWatts / loadVoltage;
       }
     } else if (downstreamComp.type === 'inverter' || downstreamComp.type === 'phoenix-inverter' || downstreamComp.type === 'multiplus') {
-      const inverterWatts = (downstreamComp.properties?.watts || downstreamComp.properties?.powerRating || 0) as number;
-      const inverterVoltage = downstreamComp.properties?.voltage as number || 12;
-      if (inverterWatts > 0 && inverterVoltage > 0) {
-        totalCurrent = inverterWatts / inverterVoltage;
+      const inverterDC = calculateInverterDCInput(downstreamComp.id, wires, components, systemVoltage);
+      if (inverterDC.dcInputCurrent > 0) {
+        totalLoadCurrent = inverterDC.dcInputCurrent;
       }
     }
   }
   
-  return totalCurrent;
+  // Net current = loads minus sources (charging reduces battery discharge)
+  return Math.max(0, totalLoadCurrent - totalSourceCurrent);
 }
 
 /**
@@ -671,15 +738,15 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                 if (selectedComponent && !selectedWire) {
                   // Primary check: component must be in componentIds
                   if (issue.componentIds && issue.componentIds.includes(selectedComponent.id)) {
-                    return true;
-                  }
+                  return true;
+                }
                   // Secondary check: if it's a wire issue, the wire must connect to this component
                   // But only if the issue doesn't have componentIds (to avoid double-matching)
                   if (!issue.componentIds || issue.componentIds.length === 0) {
                     if (issue.wireId) {
                       const wire = wires.find(w => w.id === issue.wireId);
                       if (wire && (wire.fromComponentId === selectedComponent.id || wire.toComponentId === selectedComponent.id)) {
-                        return true;
+                  return true;
                       }
                     }
                     if (issue.wireIds && issue.wireIds.length > 0) {
@@ -689,8 +756,8 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         return true;
                       }
                     }
-                  }
-                  return false;
+                }
+                return false;
                 }
                 
                 // Priority: If wire is selected, show wire issues (even if component is also selected)
@@ -799,9 +866,9 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         ) : (
                           // DC wire options
                           <>
-                            <SelectItem value="positive">Positive (+)</SelectItem>
-                            <SelectItem value="negative">Negative (-)</SelectItem>
-                            <SelectItem value="ground">Ground</SelectItem>
+                        <SelectItem value="positive">Positive (+)</SelectItem>
+                        <SelectItem value="negative">Negative (-)</SelectItem>
+                        <SelectItem value="ground">Ground</SelectItem>
                           </>
                         )}
                       </SelectContent>
@@ -1137,7 +1204,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </Select>
                     </div>
                     {selectedComponent.properties?.maxPVVoltage && (
-                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
                         Max PV Input: {selectedComponent.properties.maxPVVoltage}V
                       </div>
                     )}
@@ -1592,7 +1659,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
                 {/* Fuse - show calculated current and compare to rating */}
                 {selectedComponent.type === 'fuse' && (() => {
-                  const fuseCurrent = calculateFuseCurrent(selectedComponent.id, wires, components);
+                  const fuseCurrent = calculateFuseCurrent(selectedComponent.id, wires, components, systemVoltage);
                   const fuseRating = selectedComponent.properties?.fuseRating || selectedComponent.properties?.amps || 400;
                   const utilizationPercent = fuseRating > 0 ? (fuseCurrent / fuseRating) * 100 : 0;
                   const isOverrated = fuseCurrent > fuseRating;
@@ -2383,8 +2450,8 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     )}
                     {calc.status === "error" && (
                       <div className="space-y-2">
-                        <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 p-3 rounded-md">
-                          {calc.message || "Error: Wire gauge insufficient or voltage drop too high"}
+                      <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 p-3 rounded-md">
+                        {calc.message || "Error: Wire gauge insufficient or voltage drop too high"}
                         </div>
                         {/* Check if message suggests parallel runs OR if current exceeds 4/0 AWG capacity */}
                         {((calc.message && (calc.message.includes("parallel run") || calc.message.includes("parallel"))) || 
