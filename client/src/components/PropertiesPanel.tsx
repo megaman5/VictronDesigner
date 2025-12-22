@@ -1695,20 +1695,24 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     </div>
                     <div className="space-y-2">
                       <Label>Maximum Current (A)</Label>
-                      <Input
-                        type="number"
-                        value={selectedComponent.properties?.maxAmps || 30}
-                        onChange={(e) => {
-                          const amps = parseInt(e.target.value) || 30;
+                      <Select
+                        value={(selectedComponent.properties?.maxAmps || 30).toString()}
+                        onValueChange={(value) => {
+                          const amps = parseInt(value);
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, maxAmps: amps, voltage }
                           });
                           triggerSaveFeedback();
                         }}
-                        step="5"
-                        min="10"
-                        max="100"
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select current rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="30">30A</SelectItem>
+                          <SelectItem value="50">50A</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 )}

@@ -166,9 +166,9 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     width: 140,
     height: 120,
     terminals: [
-      { id: "ac-in-hot", type: "ac-in", label: "AC L", x: 10, y: 40, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "ac-in-hot", type: "ac-in", label: "AC L", x: 10, y: 35, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
       { id: "ac-in-neutral", type: "ac-in", label: "AC N", x: 10, y: 60, color: "hsl(var(--wire-neutral))", orientation: "left" },
-      { id: "ac-in-ground", type: "ground", label: "AC G", x: 10, y: 80, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
+      { id: "ac-in-ground", type: "ground", label: "AC G", x: 10, y: 85, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
       { id: "dc-positive", type: "positive", label: "DC+", x: 130, y: 50, color: "hsl(var(--wire-positive))", orientation: "right" },
       { id: "dc-negative", type: "negative", label: "DC-", x: 130, y: 70, color: "hsl(var(--wire-negative))", orientation: "right" },
     ],
@@ -265,6 +265,32 @@ export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> 
 
       { id: "load-3-pos", type: "positive", label: "3+", x: 140, y: 160, color: "hsl(var(--wire-positive))", orientation: "right" },
       { id: "load-3-neg", type: "negative", label: "3-", x: 140, y: 180, color: "hsl(var(--wire-negative))", orientation: "right" },
+    ],
+  },
+
+  "shore-power": {
+    width: 140,
+    height: 100,
+    terminals: [
+      { id: "ac-out-hot", type: "ac-out", label: "L", x: 130, y: 30, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
+      { id: "ac-out-neutral", type: "ac-out", label: "N", x: 130, y: 50, color: "hsl(var(--wire-neutral))", orientation: "right" },
+      { id: "ac-out-ground", type: "ground", label: "G", x: 130, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "right" },
+    ],
+  },
+
+  "transfer-switch": {
+    width: 180,
+    height: 140,
+    terminals: [
+      { id: "source1-hot", type: "ac-in", label: "S1 L", x: 10, y: 30, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "source1-neutral", type: "ac-in", label: "S1 N", x: 10, y: 50, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "source1-ground", type: "ground", label: "S1 G", x: 10, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
+      { id: "source2-hot", type: "ac-in", label: "S2 L", x: 10, y: 90, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "source2-neutral", type: "ac-in", label: "S2 N", x: 10, y: 110, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "source2-ground", type: "ground", label: "S2 G", x: 10, y: 130, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
+      { id: "output-hot", type: "ac-out", label: "OUT L", x: 170, y: 50, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
+      { id: "output-neutral", type: "ac-out", label: "OUT N", x: 170, y: 70, color: "hsl(var(--wire-neutral))", orientation: "right" },
+      { id: "output-ground", type: "ground", label: "OUT G", x: 170, y: 90, color: "hsl(var(--wire-ac-ground))", orientation: "right" },
     ],
   },
 };

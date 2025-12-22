@@ -52,7 +52,7 @@ export function calculateRoute(
   occupiedNodes: Set<string> = new Set(), // Nodes occupied by other wires
   startOrientation?: TerminalOrientation,
   endOrientation?: TerminalOrientation
-): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[] } {
+): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[]; pathPoints: Array<{ x: number; y: number }> } {
 
   const start = snapPointToGrid(startX, startY);
   const end = snapPointToGrid(endX, endY);
@@ -272,7 +272,8 @@ export function calculateRoute(
     labelX: (start.x + end.x) / 2,
     labelY: (start.y + end.y) / 2,
     labelRotation: 0,
-    pathNodes: []
+    pathNodes: [],
+    pathPoints: points
   };
 }
 
@@ -340,7 +341,7 @@ function reconstructPath(endNode: Node): { path: string; labelX: number; labelY:
     }
   }
 
-  return { path, labelX, labelY, labelRotation, pathNodes };
+  return { path, labelX, labelY, labelRotation, pathNodes, pathPoints: simplifiedPoints };
 }
 
 /**
