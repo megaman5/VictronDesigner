@@ -402,7 +402,6 @@ export function SchematicCanvas({
         'busbar-negative': { width: 140, height: 60 },
         fuse: { width: 80, height: 60 },
         switch: { width: 80, height: 80 },
-        'breaker-panel': { width: 160, height: 200 },
       };
 
       const selected = components.filter(comp => {
@@ -561,7 +560,6 @@ export function SchematicCanvas({
       'dc-load': 100,
       fuse: 60,
       switch: 80,
-      'breaker-panel': 200,
     };
 
     return {
@@ -732,7 +730,6 @@ export function SchematicCanvas({
               'busbar-negative': { width: 140, height: 60 },
               fuse: { width: 80, height: 60 },
               switch: { width: 80, height: 80 },
-              'breaker-panel': { width: 160, height: 200 },
               'ac-panel': { width: 180, height: 220 },
               'dc-panel': { width: 160, height: 240 },
             };
@@ -1013,7 +1010,6 @@ export function SchematicCanvas({
               'busbar-negative': { width: 140, height: 60 },
               fuse: { width: 80, height: 60 },
               switch: { width: 80, height: 80 },
-              'breaker-panel': { width: 160, height: 200 },
               'ac-panel': { width: 180, height: 220 },
               'dc-panel': { width: 160, height: 240 },
             };

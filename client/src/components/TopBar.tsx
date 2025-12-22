@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2 } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,7 @@ interface TopBarProps {
   onLogin?: () => void;
   onLogout?: () => void;
   onClear?: () => void;
+  onEstimates?: () => void;
   wireMode?: boolean;
   hasComponents?: boolean;
   designQualityScore?: number;
@@ -59,6 +60,7 @@ export function TopBar({
   onLogin,
   onLogout,
   onClear,
+  onEstimates,
   wireMode = false, 
   hasComponents = false, 
   designQualityScore,
@@ -150,6 +152,17 @@ export function TopBar({
             {designQualityScore !== undefined && (
               <span className="ml-1 font-semibold">{designQualityScore}</span>
             )}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onEstimates}
+            data-testid="button-estimates"
+            className="gap-2"
+          >
+            <Calculator className="h-4 w-4" />
+            Estimates
           </Button>
 
           {/* Open Button - enabled when logged in */}

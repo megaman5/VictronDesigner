@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { TopBar } from "@/components/TopBar";
+import { RuntimeEstimatesDialog } from "@/components/RuntimeEstimatesDialog";
 import { ComponentLibrary } from "@/components/ComponentLibrary";
 import { SchematicCanvas } from "@/components/SchematicCanvas";
 import { PropertiesPanel } from "@/components/PropertiesPanel";
@@ -100,6 +101,7 @@ export default function SchematicDesigner() {
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
+  const [showEstimates, setShowEstimates] = useState(false);
 
   // User auth state
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -1213,7 +1215,7 @@ export default function SchematicDesigner() {
         battery: { voltage: systemVoltage, capacity: 200, batteryType: 'LiFePO4' },
         'dc-load': { watts: 50, voltage: systemVoltage },
         'ac-load': { watts: 1000, acVoltage: 120 },
-        'solar-panel': { watts: 300, voltage: systemVoltage },
+        'solar-panel': { watts: 300, voltage: systemVoltage * 1.5 }, // Default to typical Vmp (1.5x system voltage)
         mppt: { amps: 30, voltage: systemVoltage },
         multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage },
         inverter: { watts: 2000, voltage: systemVoltage },
@@ -1227,6 +1229,8 @@ export default function SchematicDesigner() {
         'busbar-negative': { voltage: systemVoltage },
         cerbo: { voltage: systemVoltage },
         smartshunt: { voltage: systemVoltage },
+        'shore-power': { voltage: 120, maxAmps: 30 },
+        'transfer-switch': { switchType: 'manual', priority: 'source1' },
       };
       return defaults[type] || { voltage: systemVoltage };
     };
@@ -1617,6 +1621,7 @@ export default function SchematicDesigner() {
         onOpen={() => setOpenDialogOpen(true)}
         onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
         onDesignQuality={() => setDesignQualitySheetOpen(true)}
+        onEstimates={() => setShowEstimates(true)}
         onFeedback={() => setFeedbackDialogOpen(true)}
         onLogin={handleLogin}
         onLogout={handleLogout}
@@ -1864,6 +1869,13 @@ export default function SchematicDesigner() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <RuntimeEstimatesDialog
+        open={showEstimates}
+        onOpenChange={setShowEstimates}
+        components={components}
+        systemVoltage={systemVoltage}
+      />
 
       {/* Clear All Confirmation Dialog */}
       <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>

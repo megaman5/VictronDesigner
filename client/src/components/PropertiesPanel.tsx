@@ -39,6 +39,8 @@ interface PropertiesPanelProps {
       capacity?: number;
       batteryType?: string;
       fuseRating?: number;
+      dailyHours?: number;
+      safeDOD?: number;
       [key: string]: any;
     };
   };
@@ -57,6 +59,7 @@ interface PropertiesPanelProps {
   validationResult?: ValidationResult | null;
   wires?: Wire[];
   components?: SchematicComponent[];
+  systemVoltage?: number;
   onEditWire?: (wire: any) => void;
   onUpdateComponent?: (id: string, updates: any) => void;
   onUpdateWire?: (wireId: string, updates: Partial<Wire>) => void;
@@ -71,6 +74,10 @@ function getAvailableVoltages(componentType: string): number[] {
     case 'ac-load':
       // AC loads use AC voltages (110V/120V/220V/230V)
       return [110, 120, 220, 230];
+    case 'solar-panel':
+      // Solar panels use PV voltage (Vmp - Maximum Power Voltage), not system DC voltage
+      // Typical Vmp values: 18V, 20V, 36V, 40V, 72V, etc.
+      return [18, 20, 36, 40, 72, 100];
     case 'multiplus':
     case 'phoenix-inverter':
     case 'mppt':
@@ -436,7 +443,7 @@ function calculateInverterDCInput(
   return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], systemVoltage = 12, onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
@@ -445,6 +452,10 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
   // Battery-specific state
   const [batteryType, setBatteryType] = useState<string>('LiFePO4');
   const [capacity, setCapacity] = useState<number>(200);
+  const [safeDOD, setSafeDOD] = useState<number>(80);
+  
+  // Load-specific state
+  const [dailyHours, setDailyHours] = useState<number>(24);
   
   // Fuse-specific state
   const [fuseRating, setFuseRating] = useState<number>(400);
@@ -494,8 +505,19 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
       setCurrent(componentCurrent);
       setBatteryType(props.batteryType || 'LiFePO4');
       setCapacity(props.capacity || 200);
+      
+      // Set safeDOD based on battery type if not specified
+      const batteryTypeForDOD = props.batteryType || 'LiFePO4';
+      const defaultDOD = batteryTypeForDOD === 'LiFePO4' || batteryTypeForDOD === 'Lithium' ? 80 : 50;
+      setSafeDOD(props.safeDOD || defaultDOD);
+      
       setFuseRating(props.fuseRating || props.amps || 400);
       setInverterWatts(props.watts || props.powerRating || 3000);
+      
+      // Set dailyHours for loads (default to 24 if not specified)
+      if (selectedComponent.type === 'dc-load' || selectedComponent.type === 'ac-load') {
+        setDailyHours(props.dailyHours ?? 24);
+      }
     }
   }, [selectedComponent?.id, selectedComponent?.properties, selectedComponent?.type]);
 
@@ -925,6 +947,28 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         step="10"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label>Safe Depth of Discharge (%)</Label>
+                      <Input
+                        type="number"
+                        value={safeDOD}
+                        data-testid="input-safe-dod"
+                        onChange={(e) => {
+                          const dod = parseInt(e.target.value) || 50;
+                          setSafeDOD(dod);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, safeDOD: dod }
+                          });
+                          triggerSaveFeedback();
+                        }}
+                        min="0"
+                        max="100"
+                        step="5"
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Recommended: LiFePO4/Lithium: 80%, AGM/GEL/FLA: 50%
+                      </div>
+                    </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
                       Total Energy: {voltage * capacity}Wh ({(voltage * capacity / 1000).toFixed(1)}kWh)
                     </div>
@@ -998,6 +1042,56 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                 {selectedComponent.type === 'mppt' && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">MPPT Specifications</h3>
+                    
+                    {/* MPPT Model Selection */}
+                    <div className="space-y-2">
+                      <Label>MPPT Model</Label>
+                      <Select
+                        value={selectedComponent.properties?.model || 'custom'}
+                        onValueChange={(value) => {
+                          if (value === 'custom') {
+                            // Keep current values
+                            return;
+                          }
+                          // Parse model string (e.g., "100|30" = 100V max PV, 30A charge)
+                          const [maxPVVoltage, chargeCurrent] = value.split('|').map(Number);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { 
+                              ...selectedComponent.properties, 
+                              model: value,
+                              maxCurrent: chargeCurrent,
+                              maxPVVoltage: maxPVVoltage,
+                              amps: chargeCurrent,
+                              current: chargeCurrent
+                            }
+                          });
+                          triggerSaveFeedback();
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select MPPT model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="75|10">SmartSolar MPPT 75|10 (75V PV, 10A)</SelectItem>
+                          <SelectItem value="100|15">SmartSolar MPPT 100|15 (100V PV, 15A)</SelectItem>
+                          <SelectItem value="100|20">SmartSolar MPPT 100|20 (100V PV, 20A)</SelectItem>
+                          <SelectItem value="100|30">SmartSolar MPPT 100|30 (100V PV, 30A)</SelectItem>
+                          <SelectItem value="100|50">SmartSolar MPPT 100|50 (100V PV, 50A)</SelectItem>
+                          <SelectItem value="150|35">SmartSolar MPPT 150|35 (150V PV, 35A)</SelectItem>
+                          <SelectItem value="150|45">SmartSolar MPPT 150|45 (150V PV, 45A)</SelectItem>
+                          <SelectItem value="150|60">SmartSolar MPPT 150|60 (150V PV, 60A)</SelectItem>
+                          <SelectItem value="150|70">SmartSolar MPPT 150|70 (150V PV, 70A)</SelectItem>
+                          <SelectItem value="150|85">SmartSolar MPPT 150|85 (150V PV, 85A)</SelectItem>
+                          <SelectItem value="150|100">SmartSolar MPPT 150|100 (150V PV, 100A)</SelectItem>
+                          <SelectItem value="250|60">SmartSolar MPPT 250|60 (250V PV, 60A)</SelectItem>
+                          <SelectItem value="250|70">SmartSolar MPPT 250|70 (250V PV, 70A)</SelectItem>
+                          <SelectItem value="250|85">SmartSolar MPPT 250|85 (250V PV, 85A)</SelectItem>
+                          <SelectItem value="250|100">SmartSolar MPPT 250|100 (250V PV, 100A)</SelectItem>
+                          <SelectItem value="custom">Custom</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="space-y-2">
                       <Label>Charge Current (A)</Label>
                       <Input
@@ -1008,11 +1102,13 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           const amps = parseInt(e.target.value) || 0;
                           setCurrent(amps);
                           onUpdateComponent?.(selectedComponent.id, {
-                            properties: { ...selectedComponent.properties, amps, current: amps }
+                            properties: { ...selectedComponent.properties, maxCurrent: amps, amps, current: amps }
                           });
                           triggerSaveFeedback();
                         }}
                         step="5"
+                        min="10"
+                        max="200"
                       />
                     </div>
                     <div className="space-y-2">
@@ -1025,6 +1121,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           onUpdateComponent?.(selectedComponent.id, {
                             properties: { ...selectedComponent.properties, voltage: v }
                           });
+                          triggerSaveFeedback();
                         }}
                       >
                         <SelectTrigger>
@@ -1039,8 +1136,13 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         </SelectContent>
                       </Select>
                     </div>
+                    {selectedComponent.properties?.maxPVVoltage && (
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                        Max PV Input: {selectedComponent.properties.maxPVVoltage}V
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Max Charge Power: {(current || 30) * voltage}W
+                      Max Charge Power: {(current || 30) * voltage}W @ {voltage}V
                     </div>
                   </div>
                 )}
@@ -1569,7 +1671,147 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   );
                 })()}
 
-                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt'].includes(selectedComponent.type) && (
+                {/* Shore Power properties */}
+                {selectedComponent.type === 'shore-power' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Shore Power Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>AC Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          handleVoltageChange(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="120">120V AC</SelectItem>
+                          <SelectItem value="230">230V AC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Maximum Current (A)</Label>
+                      <Input
+                        type="number"
+                        value={selectedComponent.properties?.maxAmps || 30}
+                        onChange={(e) => {
+                          const amps = parseInt(e.target.value) || 30;
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, maxAmps: amps, voltage }
+                          });
+                          triggerSaveFeedback();
+                        }}
+                        step="5"
+                        min="10"
+                        max="100"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Transfer Switch properties */}
+                {selectedComponent.type === 'transfer-switch' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Transfer Switch Specifications</h3>
+                    <div className="space-y-2">
+                      <Label>Switch Type</Label>
+                      <Select
+                        value={selectedComponent.properties?.switchType || 'manual'}
+                        onValueChange={(value) => {
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, switchType: value }
+                          });
+                          triggerSaveFeedback();
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select switch type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual</SelectItem>
+                          <SelectItem value="automatic">Automatic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {selectedComponent.properties?.switchType === 'automatic' && (
+                      <div className="space-y-2">
+                        <Label>Priority Source</Label>
+                        <Select
+                          value={selectedComponent.properties?.priority || 'source1'}
+                          onValueChange={(value) => {
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: { ...selectedComponent.properties, priority: value }
+                            });
+                            triggerSaveFeedback();
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select priority" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="source1">Source 1 (e.g., Inverter)</SelectItem>
+                            <SelectItem value="source2">Source 2 (e.g., Shore Power)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">
+                          Automatic switches will use this source when available
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Solar Panel - PV voltage (Vmp) */}
+                {selectedComponent.type === 'solar-panel' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Solar Panel Specifications</h3>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded mb-2">
+                      Solar panels use PV voltage (Vmp - Maximum Power Voltage), not system DC voltage. The MPPT controller converts PV voltage to system voltage.
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PV Voltage (Vmp)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          handleVoltageChange(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select PV voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableVoltages('solar-panel').map((v) => (
+                            <SelectItem key={v} value={v.toString()}>
+                              {v}V PV (Vmp)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Power (W)</Label>
+                      <Input
+                        type="number"
+                        value={watts}
+                        data-testid="input-power"
+                        onChange={(e) => handleWattsChange(parseFloat(e.target.value))}
+                        step="10"
+                      />
+                    </div>
+                    {watts > 0 && voltage > 0 && (
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                        Current at Vmp: {(watts / voltage).toFixed(1)}A
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">
@@ -1587,7 +1829,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         <SelectContent>
                           {getAvailableVoltages(selectedComponent.type).map((v) => (
                             <SelectItem key={v} value={v.toString()}>
-                              {v}V {selectedComponent.type === 'ac-load' ? 'AC' : 'DC'}
+                              {v}V {selectedComponent.type === 'ac-load' ? 'AC' : selectedComponent.type === 'solar-panel' ? 'PV (Vmp)' : 'DC'}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1613,6 +1855,31 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         step="1"
                       />
                     </div>
+                    {/* Daily Hours input for loads */}
+                    {(selectedComponent.type === 'dc-load' || selectedComponent.type === 'ac-load') && (
+                      <div className="space-y-2">
+                        <Label>Daily Running Hours</Label>
+                        <Input
+                          type="number"
+                          value={dailyHours}
+                          data-testid="input-daily-hours"
+                          onChange={(e) => {
+                            const hours = parseFloat(e.target.value) || 0;
+                            setDailyHours(hours);
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: { ...selectedComponent.properties, dailyHours: hours }
+                            });
+                            triggerSaveFeedback();
+                          }}
+                          min="0"
+                          max="24"
+                          step="0.5"
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          Hours per day this load runs (0-24). Used for runtime estimates.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
