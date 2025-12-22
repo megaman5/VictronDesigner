@@ -98,7 +98,10 @@ export class DesignValidator {
     // Rule 7: MPPT must have solar panel connections
     this.validateMPPTSolarConnections();
 
-    // Rule 8: Fuse ratings must exceed current through them
+    // Rule 8: MPPT PV voltage and current limits
+    this.validateMPPTPVLimits();
+
+    // Rule 9: Fuse ratings must exceed current through them
     this.validateFuseRatings();
   }
 
@@ -310,12 +313,17 @@ export class DesignValidator {
 
     // Check all DC components that have voltage properties
     // AC loads and AC panels use AC voltage (110V/120V/220V/230V), not DC system voltage
+    // Solar panels use PV voltage (Vmp), not DC system voltage - they're converted by MPPT
     this.components.forEach(comp => {
       // Skip AC loads and AC panels - they use AC voltage, not DC system voltage
       if (comp.type === "ac-load" || comp.type === "ac-panel") return;
       
       // Skip battery itself
       if (comp.type === "battery") return;
+      
+      // Skip solar panels - they use PV voltage (Vmp), not DC system voltage
+      // The MPPT controller converts PV voltage to system voltage
+      if (comp.type === "solar-panel") return;
       
       const compVoltage = comp.properties?.voltage as number | undefined;
       
@@ -353,6 +361,15 @@ export class DesignValidator {
       // Skip if either component is an AC load or AC panel
       if (fromComp.type === "ac-load" || fromComp.type === "ac-panel" ||
           toComp.type === "ac-load" || toComp.type === "ac-panel") return;
+
+      // Skip PV wires (pv-positive/pv-negative) - solar panels use PV voltage (Vmp), not DC system voltage
+      // PV voltage is converted by MPPT controller to system voltage
+      if (wire.polarity === "pv-positive" || wire.polarity === "pv-negative" ||
+          wire.fromTerminal?.includes("pv-") || wire.toTerminal?.includes("pv-")) return;
+      
+      // Skip if either component is a solar panel (PV voltage) or MPPT (handles PV-to-DC conversion)
+      if (fromComp.type === "solar-panel" || toComp.type === "solar-panel" ||
+          fromComp.type === "mppt" || toComp.type === "mppt") return;
 
       const fromVoltage = fromComp.properties?.voltage as number | undefined;
       const toVoltage = toComp.properties?.voltage as number | undefined;

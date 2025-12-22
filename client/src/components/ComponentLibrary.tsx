@@ -40,9 +40,10 @@ const genericComponents: Component[] = [
 const safetyComponents: Component[] = [
   { id: "fuse", name: "Class T Fuse", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "switch", name: "Battery Switch", icon: <Cable className="h-5 w-5" />, category: "safety" },
-  { id: "breaker-panel", name: "Breaker Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
   { id: "ac-panel", name: "AC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
   { id: "dc-panel", name: "DC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
+  { id: "shore-power", name: "Shore Power", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "transfer-switch", name: "Transfer Switch", icon: <Cable className="h-5 w-5" />, category: "safety" },
 ];
 
 interface ComponentLibraryProps {

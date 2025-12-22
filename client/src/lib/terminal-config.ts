@@ -232,19 +232,6 @@ export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> 
     ],
   },
 
-  "breaker-panel": {
-    width: 160,
-    height: 200,
-    terminals: [
-      { id: "main-in-pos", type: "positive", label: "MAIN+", x: 20, y: 180, color: "hsl(var(--wire-positive))", orientation: "bottom" },
-      { id: "main-in-neg", type: "negative", label: "MAIN-", x: 140, y: 180, color: "hsl(var(--wire-negative))", orientation: "bottom" },
-      { id: "load-1-pos", type: "positive", label: "1", x: 140, y: 30, color: "hsl(var(--wire-positive))", orientation: "right" },
-      { id: "load-2-pos", type: "positive", label: "2", x: 140, y: 60, color: "hsl(var(--wire-positive))", orientation: "right" },
-      { id: "load-3-pos", type: "positive", label: "3", x: 140, y: 90, color: "hsl(var(--wire-positive))", orientation: "right" },
-      { id: "load-4-pos", type: "positive", label: "4", x: 140, y: 120, color: "hsl(var(--wire-positive))", orientation: "right" },
-    ],
-  },
-
   "ac-panel": {
     width: 180,
     height: 220,

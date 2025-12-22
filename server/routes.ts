@@ -7,6 +7,7 @@ import { observabilityStorage } from "./observability-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
+import { calculateRuntimeEstimates } from "./runtime-calculator";
 import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
@@ -310,7 +311,6 @@ LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
    - Breaker Panel: x=1200, y=400
 - fuse: "in", "out"
 - switch: "in", "out"
-- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", ...
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", ...
 
@@ -518,9 +518,10 @@ COMPONENT TERMINALS (EXACT NAMES):
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
 - switch: "in", "out"
-- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
+- shore-power: "ac-out-hot", "ac-out-neutral", "ac-out-ground"
+- transfer-switch: "source1-hot", "source1-neutral", "source1-ground", "source2-hot", "source2-neutral", "source2-ground", "output-hot", "output-neutral", "output-ground"
 
 WIRE REQUIREMENTS (ALL FIELDS MANDATORY):
 EVERY wire must have these exact fields:
@@ -856,7 +857,6 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
 - switch: "in", "out"
-- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
 
@@ -1292,7 +1292,6 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
 - switch: "in", "out"
-- breaker-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-2-pos", "load-3-pos", "load-4-pos"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
 
@@ -2395,6 +2394,27 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Runtime estimates endpoint
+  app.post("/api/runtime-estimates", async (req, res) => {
+    try {
+      const { components, systemVoltage = 12 } = req.body;
+
+      if (!components || !Array.isArray(components)) {
+        return res.status(400).json({ error: "Components array is required" });
+      }
+
+      const estimates = calculateRuntimeEstimates({
+        components,
+        systemVoltage,
+      });
+
+      res.json(estimates);
+    } catch (error: any) {
+      console.error("Runtime estimates error:", error);
+      res.status(500).json({ error: error.message || "Failed to calculate runtime estimates" });
     }
   });
 

@@ -339,25 +339,6 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
         ],
         usageNotes: "Manual disconnect for safety."
     },
-    "breaker-panel": {
-        type: "breaker-panel",
-        name: "AC/DC Breaker Panel",
-        description: "Distribution panel with circuit breakers for individual loads.",
-        category: "distribution",
-        terminals: [
-            { id: "main-in-pos", type: "positive", label: "MAIN +", mandatory: true, description: "Main DC Feed" },
-            { id: "main-in-neg", type: "negative", label: "MAIN -", mandatory: true, description: "Main DC Negative" },
-            { id: "load-1-pos", type: "positive", label: "L1", mandatory: false, description: "Load 1 Positive" },
-            { id: "load-2-pos", type: "positive", label: "L2", mandatory: false, description: "Load 2 Positive" },
-            { id: "load-3-pos", type: "positive", label: "L3", mandatory: false, description: "Load 3 Positive" },
-            { id: "load-4-pos", type: "positive", label: "L4", mandatory: false, description: "Load 4 Positive" }
-        ],
-        wiringRules: [
-            "Connects to the main busbars.",
-            "Provides fused outputs for smaller loads (lights, pumps)."
-        ],
-        usageNotes: "Organizes and protects individual circuits."
-    },
     "ac-panel": {
         type: "ac-panel",
         name: "AC Distribution Panel",
@@ -400,5 +381,47 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             "Provides fused outputs for DC loads."
         ],
         usageNotes: "Centralized fusing for 12V/24V/48V loads."
-    }
+    },
+    "shore-power": {
+        type: "shore-power",
+        name: "Shore Power / Grid",
+        description: "AC power source from shore power, grid, or generator. Provides AC power to chargers and inverters.",
+        category: "source",
+        terminals: [
+            { id: "ac-out-hot", type: "ac-out", label: "L", mandatory: true, description: "Line (Hot)" },
+            { id: "ac-out-neutral", type: "ac-out", label: "N", mandatory: true, description: "Neutral" },
+            { id: "ac-out-ground", type: "ground", label: "G", mandatory: true, description: "Ground" },
+        ],
+        wiringRules: [
+            "Connect to Blue Smart Charger AC input or MultiPlus AC input.",
+            "Requires proper grounding.",
+            "Use appropriate circuit breaker for protection.",
+        ],
+        usageNotes: "AC power source for charging batteries via AC chargers or powering loads through inverters with transfer switches.",
+    },
+    "transfer-switch": {
+        type: "transfer-switch",
+        name: "Transfer Switch",
+        description: "Switches AC power between two sources (e.g., inverter and shore power). Can be manual or automatic.",
+        category: "distribution",
+        terminals: [
+            { id: "source1-hot", type: "ac-in", label: "Source 1 L", mandatory: true, description: "Source 1 Line (e.g., Inverter)" },
+            { id: "source1-neutral", type: "ac-in", label: "Source 1 N", mandatory: true, description: "Source 1 Neutral" },
+            { id: "source1-ground", type: "ground", label: "Source 1 G", mandatory: true, description: "Source 1 Ground" },
+            { id: "source2-hot", type: "ac-in", label: "Source 2 L", mandatory: true, description: "Source 2 Line (e.g., Shore Power)" },
+            { id: "source2-neutral", type: "ac-in", label: "Source 2 N", mandatory: true, description: "Source 2 Neutral" },
+            { id: "source2-ground", type: "ground", label: "Source 2 G", mandatory: true, description: "Source 2 Ground" },
+            { id: "output-hot", type: "ac-out", label: "Output L", mandatory: true, description: "Output Line to Loads" },
+            { id: "output-neutral", type: "ac-out", label: "Output N", mandatory: true, description: "Output Neutral" },
+            { id: "output-ground", type: "ground", label: "Output G", mandatory: true, description: "Output Ground" },
+        ],
+        wiringRules: [
+            "Source 1 typically connects to inverter output.",
+            "Source 2 typically connects to shore power.",
+            "Output connects to AC loads or AC distribution panel.",
+            "Automatic switches prioritize one source and switch when it fails.",
+            "Manual switches require user operation.",
+        ],
+        usageNotes: "Allows seamless switching between inverter power and shore power. Automatic switches provide uninterrupted power.",
+    },
 };

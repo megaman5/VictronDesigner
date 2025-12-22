@@ -71,7 +71,9 @@ export function SchematicComponent({
         );
 
       case "mppt": {
-        const mpptAmps = properties.amps || properties.current || 30;
+        const mpptAmps = properties.maxCurrent || properties.amps || properties.current || 30;
+        const maxPVVoltage = properties.maxPVVoltage || 100;
+        const systemVoltage = properties.voltage || 12;
         return (
           <svg width="160" height="130" viewBox="0 0 160 130">
             {/* Main blue housing */}
@@ -83,12 +85,12 @@ export function SchematicComponent({
 
             {/* Display content */}
             <text x="80" y="42" textAnchor="middle" className="fill-cyan-300 text-xs font-mono">BULK</text>
-            <text x="50" y="58" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">PV 45V</text>
+            <text x="50" y="58" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">PV {maxPVVoltage}V</text>
             <text x="110" y="58" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">{mpptAmps}A</text>
 
             {/* Product label */}
             <text x="80" y="85" textAnchor="middle" className="fill-white text-xs font-bold">SmartSolar</text>
-            <text x="80" y="98" textAnchor="middle" className="fill-white text-[10px]">MPPT 100|{mpptAmps}</text>
+            <text x="80" y="98" textAnchor="middle" className="fill-white text-[10px]">MPPT {maxPVVoltage}|{mpptAmps}</text>
 
             {/* Connection terminals */}
             <circle cx="30" cy="108" r="4" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
@@ -461,34 +463,6 @@ export function SchematicComponent({
           </svg>
         );
 
-      case "breaker-panel":
-        return (
-          <svg width="160" height="200" viewBox="0 0 160 200">
-            {/* Panel housing */}
-            <rect x="5" y="5" width="150" height="190" fill="#e0e0e0" stroke="#999" strokeWidth="2" rx="4" />
-
-            {/* Header */}
-            <rect x="15" y="15" width="130" height="25" fill="#333" rx="2" />
-            <text x="80" y="32" textAnchor="middle" className="fill-white text-xs font-bold">DISTRIBUTION</text>
-
-            {/* Breaker Rows */}
-            {[0, 1, 2, 3].map((i) => (
-              <g key={i} transform={`translate(0, ${i * 30})`}>
-                {/* Breaker switch */}
-                <rect x="20" y="55" width="40" height="20" fill="#fff" stroke="#666" strokeWidth="1" rx="2" />
-                <rect x="25" y="58" width="10" height="14" fill="#333" rx="1" />
-                {/* Label */}
-                <text x="70" y="68" className="fill-black text-[10px] font-mono">LOAD {i + 1}</text>
-                {/* LED */}
-                <circle cx="130" cy="65" r="3" fill="#00ff00" opacity="0.8" />
-              </g>
-            ))}
-
-            {/* Main Breaker Area */}
-            <rect x="15" y="165" width="130" height="25" fill="#ccc" stroke="#999" strokeWidth="1" rx="2" />
-            <text x="80" y="182" textAnchor="middle" className="fill-black text-[10px] font-bold">MAIN DC INPUT</text>
-          </svg>
-        );
       case "ac-panel":
         return (
           <svg width="180" height="220" viewBox="0 0 180 220">
@@ -719,6 +693,56 @@ export function SchematicComponent({
 
             {/* Label */}
             <text x="80" y="10" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Inverter'}</text>
+          </svg>
+        );
+      }
+
+      case "shore-power": {
+        return (
+          <svg width="140" height="100" viewBox="0 0 140 100">
+            {/* Shore power outlet icon */}
+            <rect x="20" y="20" width="100" height="60" fill="#2a2a3a" stroke="#3a3a4a" strokeWidth="2" rx="6" />
+            
+            {/* AC plug symbol */}
+            <circle cx="50" cy="50" r="8" fill="none" stroke="white" strokeWidth="2" />
+            <line x1="50" y1="42" x2="50" y2="58" stroke="white" strokeWidth="2" />
+            <line x1="42" y1="50" x2="58" y2="50" stroke="white" strokeWidth="2" />
+            
+            {/* Voltage display */}
+            <text x="100" y="35" textAnchor="middle" className="fill-yellow-400 text-[10px] font-mono font-bold">
+              {properties.voltage || 120}V
+            </text>
+            {properties.maxAmps && (
+              <text x="100" y="50" textAnchor="middle" className="fill-gray-400 text-[9px]">
+                {properties.maxAmps}A
+              </text>
+            )}
+            
+            <text x="70" y="15" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Shore Power'}</text>
+            <text x="70" y="95" textAnchor="middle" className="fill-foreground text-[10px]">AC Power Source</text>
+          </svg>
+        );
+      }
+
+      case "transfer-switch": {
+        const switchType = properties.switchType || 'manual';
+        return (
+          <svg width="180" height="140" viewBox="0 0 180 140">
+            {/* Main switch body */}
+            <rect x="30" y="30" width="120" height="80" fill="#3a3a3a" stroke="#4a4a4a" strokeWidth="2" rx="4" />
+            
+            {/* Switch lever */}
+            <line x1="90" y1="50" x2={switchType === 'automatic' ? "120" : "110"} y2="70" stroke="white" strokeWidth="3" strokeLinecap="round" />
+            <circle cx={switchType === 'automatic' ? "120" : "110"} cy="70" r="5" fill="white" />
+            
+            {/* Source labels */}
+            <text x="20" y="45" textAnchor="middle" className="fill-foreground text-[9px]">S1</text>
+            <text x="160" y="45" textAnchor="middle" className="fill-foreground text-[9px]">S2</text>
+            <text x="90" y="125" textAnchor="middle" className="fill-foreground text-[9px]">OUT</text>
+            
+            {/* Type indicator */}
+            <text x="90" y="25" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Transfer Switch'}</text>
+            <text x="90" y="135" textAnchor="middle" className="fill-foreground text-[9px] capitalize">{switchType}</text>
           </svg>
         );
       }
