@@ -47,11 +47,23 @@ export function ExportDialog({
 
       const items = await response.json();
       
-      // Convert to CSV
+      // Convert to CSV with disclaimer
+      const disclaimer = [
+        "⚠️ IMPORTANT DISCLAIMER",
+        "Do not trust calculations without verification.",
+        "This tool is in active development and calculations may contain errors.",
+        "Always double-check wire sizing, current ratings, and voltage drop calculations",
+        "against ABYC/NEC standards and manufacturer specifications.",
+        "Verify all component ratings and connections before installation.",
+        "This tool is for planning purposes only and does not replace professional electrical engineering review.",
+        "",
+      ];
+      
       const csv = [
+        ...disclaimer.map(line => `"${line.replace(/"/g, '""')}"`),
         "Category,Item,Quantity,Notes",
         ...items.map((item: any) => 
-          `"${item.category}","${item.name}",${item.quantity},"${item.notes || ''}"`
+          `"${item.category}","${item.item || item.name}",${item.quantity},"${item.description || item.notes || ''}"`
         )
       ].join("\n");
 
@@ -92,10 +104,22 @@ export function ExportDialog({
 
       const labels = await response.json();
       
-      // Convert to printable format
-      const text = labels.map((label: any) => 
-        `Wire: ${label.from} → ${label.to}\nGauge: ${label.gauge}\nLength: ${label.length}m\nPolarity: ${label.polarity}\n${"─".repeat(30)}`
-      ).join("\n\n");
+      // Convert to printable format (labels is an array of strings from generateWireLabels)
+      const disclaimer = [
+        "⚠️ IMPORTANT DISCLAIMER",
+        "Do not trust calculations without verification.",
+        "This tool is in active development and calculations may contain errors.",
+        "Always double-check wire sizing, current ratings, and voltage drop calculations",
+        "against ABYC/NEC standards and manufacturer specifications.",
+        "Verify all component ratings and connections before installation.",
+        "This tool is for planning purposes only and does not replace professional electrical engineering review.",
+        "",
+        "=".repeat(50),
+        "",
+      ];
+      
+      // labels is already an array of strings (with disclaimer at the start from generateWireLabels)
+      const text = disclaimer.join("\n") + labels.join("\n");
 
       const blob = new Blob([text], { type: "text/plain" });
       const url = URL.createObjectURL(blob);

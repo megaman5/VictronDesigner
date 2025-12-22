@@ -270,8 +270,8 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
         description: "Generic AC consumer (Outlet, Appliance).",
         category: "load",
         terminals: [
-            { id: "line", type: "ac-out", label: "L", mandatory: true, description: "Line/Hot" },
-            { id: "neutral", type: "ac-out", label: "N", mandatory: true, description: "Neutral" },
+            { id: "line", type: "ac-in", label: "L", mandatory: true, description: "Line/Hot" },
+            { id: "neutral", type: "ac-in", label: "N", mandatory: true, description: "Neutral" },
             { id: "ground", type: "ground", label: "G", mandatory: true, description: "Ground" }
         ],
         wiringRules: [

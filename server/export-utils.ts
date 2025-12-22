@@ -127,7 +127,16 @@ export function generateWireLabels(schematic: Schematic): string[] {
   const components = schematic.components as SchematicComponent[];
   const componentMap = new Map(components.map((c) => [c.id, c]));
   
-  const labels: string[] = [];
+  const labels: string[] = [
+    "⚠️ IMPORTANT DISCLAIMER",
+    "Do not trust calculations without verification.",
+    "This tool is in active development and calculations may contain errors.",
+    "Always double-check wire sizing, current ratings, and voltage drop calculations",
+    "against ABYC/NEC standards and manufacturer specifications.",
+    "Verify all component ratings and connections before installation.",
+    "This tool is for planning purposes only and does not replace professional electrical engineering review.",
+    "",
+  ];
 
   wires.forEach((wire, index) => {
     const fromComp = componentMap.get(wire.fromComponentId);
@@ -157,7 +166,19 @@ export function generateCSV(items: ShoppingListItem[]): string {
     item.estimatedPrice || "",
   ]);
 
+  const disclaimer = [
+    "⚠️ IMPORTANT DISCLAIMER",
+    "Do not trust calculations without verification.",
+    "This tool is in active development and calculations may contain errors.",
+    "Always double-check wire sizing, current ratings, and voltage drop calculations",
+    "against ABYC/NEC standards and manufacturer specifications.",
+    "Verify all component ratings and connections before installation.",
+    "This tool is for planning purposes only and does not replace professional electrical engineering review.",
+    "",
+  ].map(line => `"${line.replace(/"/g, '""')}"`).join(",");
+
   const csvContent = [
+    disclaimer,
     headers.join(","),
     ...rows.map((row) =>
       row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")
@@ -176,6 +197,14 @@ export function generateSystemReport(schematic: Schematic): string {
   const validation = validateDesign(components, wires, schematic.systemVoltage);
   
   let report = `VICTRON ELECTRICAL SYSTEM DESIGN REPORT\n`;
+  report += `=========================================\n\n`;
+  report += `⚠️ IMPORTANT DISCLAIMER\n`;
+  report += `Do not trust calculations without verification.\n`;
+  report += `This tool is in active development and calculations may contain errors.\n`;
+  report += `Always double-check wire sizing, current ratings, and voltage drop calculations\n`;
+  report += `against ABYC/NEC standards and manufacturer specifications.\n`;
+  report += `Verify all component ratings and connections before installation.\n`;
+  report += `This tool is for planning purposes only and does not replace professional electrical engineering review.\n\n`;
   report += `=========================================\n\n`;
   report += `Project: ${schematic.name}\n`;
   if (schematic.description) {
@@ -356,6 +385,40 @@ export function generateSystemReport(schematic: Schematic): string {
         report += `   Total Power: ${totalWatts.toFixed(0)}W @ ${acVoltage}V AC (${totalCurrent.toFixed(1)}A)\n`;
       }
     }
+    
+    // For DC panels, calculate totals
+    if (comp.type === "dc-panel") {
+      const panelWires = wires.filter(
+        w => (w.fromComponentId === comp.id || w.toComponentId === comp.id) &&
+             w.polarity === "positive" // Only count from positive wires
+      );
+      
+      let totalWatts = 0;
+      let dcVoltage = schematic.systemVoltage;
+      const visitedLoads = new Set<string>();
+      
+      panelWires.forEach(wire => {
+        const otherCompId = wire.fromComponentId === comp.id 
+          ? wire.toComponentId 
+          : wire.fromComponentId;
+        
+        if (!visitedLoads.has(otherCompId)) {
+          visitedLoads.add(otherCompId);
+          const otherComp = componentMap.get(otherCompId);
+          if (otherComp && otherComp.type === "dc-load") {
+            const loadWatts = (otherComp.properties?.watts || otherComp.properties?.power || 0) as number;
+            totalWatts += loadWatts;
+            const loadVoltage = (otherComp.properties?.voltage as number || dcVoltage);
+            if (loadVoltage !== dcVoltage) dcVoltage = loadVoltage;
+          }
+        }
+      });
+      
+      if (totalWatts > 0) {
+        const totalCurrent = totalWatts / dcVoltage;
+        report += `   Total Power: ${totalWatts.toFixed(0)}W @ ${dcVoltage}V DC (${totalCurrent.toFixed(1)}A)\n`;
+      }
+    }
   });
 
   report += `\nWIRING CONNECTIONS (${wires.length})\n`;
@@ -404,6 +467,18 @@ export function generateSystemReport(schematic: Schematic): string {
             wireCurrent = inverterDC.dcInputCurrent;
             wireVoltage = schematic.systemVoltage;
           }
+        } else if (from.type === "solar-panel") {
+          // For solar panel wires, use Vmp (maximum power voltage) not system voltage
+          const panelWatts = (from.properties?.watts || from.properties?.power || 0) as number;
+          let panelVoltage = from.properties?.voltage as number;
+          if (!panelVoltage) {
+            // Default to typical Vmp: 18V for 12V system, 36V for 24V, 72V for 48V
+            panelVoltage = schematic.systemVoltage * 1.5;
+          }
+          if (panelWatts > 0 && panelVoltage > 0) {
+            wireCurrent = panelWatts / panelVoltage;
+            wireVoltage = panelVoltage;
+          }
         } else if (to.type === "dc-load" || to.type === "ac-load") {
           const loadWatts = (to.properties?.watts || to.properties?.power || 0) as number;
           const loadVoltage = to.type === "ac-load"
@@ -421,6 +496,57 @@ export function generateSystemReport(schematic: Schematic): string {
           if (loadWatts > 0 && loadVoltage > 0) {
             wireCurrent = loadWatts / loadVoltage;
             wireVoltage = loadVoltage;
+          }
+        } else if (isACWire && (from.type === "inverter" || from.type === "multiplus" || from.type === "phoenix-inverter")) {
+          // For inverter AC output wires, calculate from connected AC loads
+          const inverterDC = calculateInverterDCInput(from.id, components, wires, schematic.systemVoltage);
+          if (inverterDC.acLoadWatts > 0) {
+            // Hot and neutral carry current, ground carries no current
+            wireCurrent = (wire.polarity === "hot" || wire.polarity === "neutral")
+              ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
+              : 0;
+            wireVoltage = inverterDC.acVoltage;
+          }
+        } else if (isACWire && (to.type === "inverter" || to.type === "multiplus" || to.type === "phoenix-inverter")) {
+          // For inverter AC input wires (from panel to inverter)
+          const inverterDC = calculateInverterDCInput(to.id, components, wires, schematic.systemVoltage);
+          if (inverterDC.acLoadWatts > 0) {
+            wireCurrent = (wire.polarity === "hot" || wire.polarity === "neutral")
+              ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
+              : 0;
+            wireVoltage = inverterDC.acVoltage;
+          }
+        } else if (isACWire && to.type === "ac-panel" && wire.polarity === "hot") {
+          // For AC panel hot wires, sum connected AC loads
+          const panelWires = wires.filter(
+            w => (w.fromComponentId === to.id || w.toComponentId === to.id) &&
+                 w.polarity === "hot"
+          );
+          
+          let totalWatts = 0;
+          let acVoltage = 120;
+          const visitedLoads = new Set<string>();
+          
+          for (const panelWire of panelWires) {
+            const otherCompId = panelWire.fromComponentId === to.id 
+              ? panelWire.toComponentId 
+              : panelWire.fromComponentId;
+            
+            if (!visitedLoads.has(otherCompId)) {
+              visitedLoads.add(otherCompId);
+              const otherComp = componentMap.get(otherCompId);
+              if (otherComp && otherComp.type === "ac-load") {
+                const loadWatts = (otherComp.properties?.watts || otherComp.properties?.power || 0) as number;
+                totalWatts += loadWatts;
+                const loadVoltage = getACVoltage(otherComp);
+                if (loadVoltage !== 120) acVoltage = loadVoltage;
+              }
+            }
+          }
+          
+          if (totalWatts > 0) {
+            wireCurrent = totalWatts / acVoltage;
+            wireVoltage = acVoltage;
           }
         } else if (to.type === "ac-panel" && wire.polarity === "hot") {
           // For AC panel hot wire connections, calculate from connected AC loads

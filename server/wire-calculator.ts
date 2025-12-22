@@ -63,6 +63,24 @@ export function getWireAmpacity(gauge: string, insulationType: "60C" | "75C" | "
   return baseAmpacity * tempDeratingFactor * bundlingFactor;
 }
 
+/**
+ * Compare two wire gauges - returns true if gauge1 >= gauge2 (gauge1 is same size or larger/thicker)
+ * AWG sizes: 18 < 16 < 14 < 12 < 10 < 8 < 6 < 4 < 2 < 1 < 1/0 < 2/0 < 3/0 < 4/0
+ * In gaugeOrder array: lower index = thinner wire, higher index = thicker wire
+ */
+function compareGaugeSizes(gauge1: string, gauge2: string): boolean {
+  const gaugeOrder = ["18", "16", "14", "12", "10", "8", "6", "4", "2", "1", "1/0", "2/0", "3/0", "4/0"];
+  const index1 = gaugeOrder.indexOf(gauge1);
+  const index2 = gaugeOrder.indexOf(gauge2);
+  
+  // If either gauge not found, return false (can't compare)
+  if (index1 === -1 || index2 === -1) return false;
+  
+  // Higher index = thicker wire, so gauge1 >= gauge2 if index1 >= index2
+  // (gauge1 is same or thicker than gauge2)
+  return index1 >= index2;
+}
+
 export function calculateWireSize(params: {
   current: number;
   length: number;
@@ -72,6 +90,7 @@ export function calculateWireSize(params: {
   insulationType?: "60C" | "75C" | "90C";
   bundlingFactor?: number;
   maxVoltageDrop?: number;
+  currentGauge?: string; // Optional: current wire gauge - will never recommend smaller
 }): WireCalculation {
   const {
     current,
@@ -82,7 +101,11 @@ export function calculateWireSize(params: {
     insulationType = "75C",
     bundlingFactor = 1.0,
     maxVoltageDrop = 3.0, // 3% per ABYC standard
+    currentGauge,
   } = params;
+  
+  // Normalize current gauge (remove " AWG" suffix if present)
+  const normalizedCurrentGauge = currentGauge ? currentGauge.replace(" AWG", "").trim() : undefined;
 
   // Calculate maximum allowable voltage drop
   const maxVDropVolts = (voltage * maxVoltageDrop) / 100;
@@ -102,9 +125,15 @@ export function calculateWireSize(params: {
   let message = "";
 
   // Iterate from smallest to largest to find the smallest gauge that meets requirements
+  // BUT: Never recommend a gauge smaller than the current gauge
   for (const gauge of gaugeOrder) {
     const wireData = WIRE_DATA[gauge as keyof typeof WIRE_DATA];
     if (!wireData) continue;
+    
+    // If we have a current gauge, skip any gauges smaller than it
+    if (normalizedCurrentGauge && !compareGaugeSizes(gauge, normalizedCurrentGauge)) {
+      continue; // Skip this gauge - it's smaller than current
+    }
     
     // Calculate voltage drop: VD = 2 × I × R × L / 1000
     // (2 for round trip, R is ohms/1000ft, L in feet)
@@ -130,7 +159,7 @@ export function calculateWireSize(params: {
         status = "valid";
         message = "Wire size meets ABYC/NEC standards.";
       }
-      break; // Found the smallest gauge that works
+      break; // Found the smallest gauge that works (and is >= current gauge)
     }
   }
 

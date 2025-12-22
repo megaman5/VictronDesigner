@@ -13,6 +13,23 @@ interface WireEditDialogProps {
     onSave: (wireId: string, updates: Partial<Wire>) => void;
 }
 
+// Helper function to detect if a wire is AC
+function isACWire(wire: Wire | null): boolean {
+    if (!wire) return false;
+    
+    // Check if polarity is already AC type
+    if (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground") {
+        return true;
+    }
+    
+    // Check if terminals are AC type
+    if (wire.fromTerminal?.startsWith("ac-") || wire.toTerminal?.startsWith("ac-")) {
+        return true;
+    }
+    
+    return false;
+}
+
 export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDialogProps) {
     const [gauge, setGauge] = useState<string>("");
     const [polarity, setPolarity] = useState<string>("");
@@ -41,7 +58,7 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
 
         onSave(wire.id, {
             gauge: formattedGauge,
-            polarity: polarity as "positive" | "negative" | "ground",
+            polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
             length: parseFloat(length),
             conductorMaterial: material as "copper" | "aluminum"
         });
@@ -77,9 +94,21 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
                                 <SelectValue placeholder="Select polarity" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="positive">Positive (+)</SelectItem>
-                                <SelectItem value="negative">Negative (-)</SelectItem>
-                                <SelectItem value="ground">Ground</SelectItem>
+                                {isACWire(wire) ? (
+                                    // AC wire options
+                                    <>
+                                        <SelectItem value="hot">Hot</SelectItem>
+                                        <SelectItem value="neutral">Neutral</SelectItem>
+                                        <SelectItem value="ground">Ground</SelectItem>
+                                    </>
+                                ) : (
+                                    // DC wire options
+                                    <>
+                                        <SelectItem value="positive">Positive (+)</SelectItem>
+                                        <SelectItem value="negative">Negative (-)</SelectItem>
+                                        <SelectItem value="ground">Ground</SelectItem>
+                                    </>
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
