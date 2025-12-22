@@ -537,7 +537,7 @@ export default function SchematicDesigner() {
           prompt,
           systemVoltage,
           minQualityScore: 70,
-          maxIterations: 5,
+          maxIterations: 6,
           // Include existing design context when iterating
           existingDesign: isIterating ? {
             components,
@@ -1769,6 +1769,13 @@ export default function SchematicDesigner() {
     }
   });
 
+  // Check if there are any wire-related issues
+  const hasWireIssues = validationResult?.issues.some(issue => 
+    issue.category === "wire-sizing" || 
+    issue.wireId !== undefined || 
+    (issue.wireIds && issue.wireIds.length > 0)
+  ) ?? false;
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <TopBar
@@ -1793,6 +1800,7 @@ export default function SchematicDesigner() {
         showWireLabels={showWireLabels}
         onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
         systemVoltage={systemVoltage}
+        hasWireIssues={hasWireIssues}
       />
 
       {/* Alpha Warning Banner */}

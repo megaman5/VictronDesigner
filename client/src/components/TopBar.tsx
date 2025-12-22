@@ -46,6 +46,7 @@ interface TopBarProps {
   showWireLabels?: boolean;
   onToggleWireLabels?: () => void;
   systemVoltage?: number;
+  hasWireIssues?: boolean;
 }
 
 export function TopBar({ 
@@ -69,7 +70,8 @@ export function TopBar({
   isAIWiring = false,
   showWireLabels = true,
   onToggleWireLabels,
-  systemVoltage = 12
+  systemVoltage = 12,
+  hasWireIssues = false
 }: TopBarProps) {
   const isLoggedIn = !!user;
 
@@ -109,12 +111,12 @@ export function TopBar({
           </Button>
 
           <Button
-            variant="outline"
+            variant={hasWireIssues ? "default" : "outline"}
             size="sm"
             onClick={onAIWire}
             disabled={isAIWiring}
             data-testid="button-ai-wire"
-            className="gap-2"
+            className={`gap-2 ${hasWireIssues ? "bg-destructive hover:bg-destructive/90" : ""}`}
           >
             {isAIWiring ? (
               <>

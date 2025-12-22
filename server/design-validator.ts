@@ -2,6 +2,22 @@ import type { SchematicComponent, Wire } from "@shared/schema";
 import { TERMINAL_CONFIGS } from "../client/src/lib/terminal-config";
 import { getWireAmpacity, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
 
+// Helper function to check if two wires are different (handles null IDs)
+function isDifferentWire(w1: Wire, w2: Wire): boolean {
+  // If both have IDs, compare them
+  if (w1.id && w2.id) {
+    return w1.id !== w2.id;
+  }
+  // If IDs are null/undefined, compare by component IDs and terminals
+  return !(
+    w1.fromComponentId === w2.fromComponentId &&
+    w1.toComponentId === w2.toComponentId &&
+    w1.fromTerminal === w2.fromTerminal &&
+    w1.toTerminal === w2.toTerminal &&
+    w1.polarity === w2.polarity
+  );
+}
+
 export interface ValidationIssue {
   severity: "error" | "warning" | "info";
   category: "electrical" | "wire-sizing" | "layout" | "terminal" | "ai-quality";
@@ -711,12 +727,71 @@ export class DesignValidator {
 
       // Find parallel wires (same from/to components, same polarity)
       const parallelWires = this.wires.filter(w => 
-        w.id !== wire.id &&
+        isDifferentWire(w, wire) &&
         w.polarity === wire.polarity &&
         ((w.fromComponentId === wire.fromComponentId && w.toComponentId === wire.toComponentId) ||
          (w.fromComponentId === wire.toComponentId && w.toComponentId === wire.fromComponentId))
       );
       const parallelCount = parallelWires.length + 1; // +1 for the current wire
+      
+      // Validate parallel wire usage (NEC/ABYC requirements)
+      if (parallelCount > 1) {
+        const allParallelWires = [...parallelWires, wire];
+        // For parallel wires, each wire's current field should contain the TOTAL current
+        // (the system divides it automatically). So we use the first wire's current as the total.
+        const totalCurrent = wire.current || allParallelWires[0]?.current || 0;
+        const currentPerWire = totalCurrent / parallelCount;
+        const gauges = [...new Set(allParallelWires.map(w => w.gauge).filter(Boolean))];
+        
+        // Check 1: Parallel wires should only be used for currents >230A (4/0 AWG max)
+        // Only flag if we can determine the current and it's <= 230A
+        if (totalCurrent > 0 && totalCurrent <= 230) {
+          this.issues.push({
+            severity: "error",
+            category: "wire-sizing",
+            message: `Parallel wire runs used for ${totalCurrent.toFixed(1)}A total (${currentPerWire.toFixed(1)}A per wire). Use single larger gauge instead (e.g., ${this.suggestWireGauge(totalCurrent)})`,
+            wireId: wire.id,
+            wireIds: allParallelWires.map(w => w.id),
+            componentIds: [wire.fromComponentId, wire.toComponentId],
+            suggestion: `Remove parallel runs and use single ${this.suggestWireGauge(totalCurrent)} wire for ${totalCurrent.toFixed(1)}A`,
+          });
+        }
+        
+        // Check 2: All parallel conductors must be 4/0 AWG (per NEC/ABYC standard practice)
+        if (gauges.length > 1 || (gauges.length > 0 && !gauges.some(g => g && g.includes("4/0")))) {
+          this.issues.push({
+            severity: "error",
+            category: "wire-sizing",
+            message: `Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: ${gauges.join(", ")}`,
+            wireId: wire.id,
+            wireIds: allParallelWires.map(w => w.id),
+            componentIds: [wire.fromComponentId, wire.toComponentId],
+            suggestion: `All parallel conductors must be 4/0 AWG. Update all ${parallelCount} wires to 4/0 AWG`,
+          });
+        }
+        
+        // Check 3: Parallel conductors must be at least 1/0 AWG (NEC/ABYC minimum)
+        const hasInvalidGauge = gauges.some(g => {
+          if (!g) return true;
+          const gaugeNum = g.replace(/ AWG$/i, "").trim();
+          const gaugeOrder = ["18", "16", "14", "12", "10", "8", "6", "4", "2", "1", "1/0", "2/0", "3/0", "4/0"];
+          const gaugeIndex = gaugeOrder.indexOf(gaugeNum);
+          const minParallelIndex = gaugeOrder.indexOf("1/0");
+          return gaugeIndex >= 0 && gaugeIndex < minParallelIndex;
+        });
+        
+        if (hasInvalidGauge) {
+          this.issues.push({
+            severity: "error",
+            category: "wire-sizing",
+            message: `Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: ${gauges.join(", ")}`,
+            wireId: wire.id,
+            wireIds: allParallelWires.map(w => w.id),
+            componentIds: [wire.fromComponentId, wire.toComponentId],
+            suggestion: `Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)`,
+          });
+        }
+      }
 
       // Calculate current from connected components if not set
       let current = wire.current || 0;
@@ -868,7 +943,7 @@ export class DesignValidator {
           // Battery supplies power to loads, receives power from sources
           if (comp.type === "battery") {
             const connectedWires = this.wires.filter(
-              w => (w.fromComponentId === componentId || w.toComponentId === componentId) && w.id !== wire.id
+              w => (w.fromComponentId === componentId || w.toComponentId === componentId) && isDifferentWire(w, wire)
             );
             
             let totalLoadCurrent = 0;
@@ -903,7 +978,7 @@ export class DesignValidator {
           // For other components (fuses, switches, etc.), trace through to find loads
           // Find wires connected to this component (excluding the current wire)
           const connectedWires = this.wires.filter(
-            w => (w.fromComponentId === componentId || w.toComponentId === componentId) && w.id !== wire.id
+            w => (w.fromComponentId === componentId || w.toComponentId === componentId) && isDifferentWire(w, wire)
           );
           
           // Trace through to find loads
@@ -1032,6 +1107,50 @@ export class DesignValidator {
                   : 0;
               }
             }
+            // For AC panel → AC load wires
+            else if (fromComp && fromComp.type === "ac-panel" && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+              const acVoltage = getACVoltage(toComp) || 120;
+              if (loadWatts > 0) {
+                // Hot and neutral carry current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") 
+                  ? (loadWatts / acVoltage)
+                  : 0;
+              }
+            }
+            // For AC load → AC panel wires (reverse direction)
+            else if (fromComp && fromComp.type === "ac-load" && toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+              const acVoltage = getACVoltage(fromComp) || 120;
+              if (loadWatts > 0) {
+                // Hot and neutral carry current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") 
+                  ? (loadWatts / acVoltage)
+                  : 0;
+              }
+            }
+            // For direct inverter → AC load wires (no panel in between)
+            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+              const acVoltage = getACVoltage(toComp) || 120;
+              if (loadWatts > 0) {
+                // Hot and neutral carry current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") 
+                  ? (loadWatts / acVoltage)
+                  : 0;
+              }
+            }
+            // For AC load → inverter wires (reverse direction)
+            else if (fromComp && fromComp.type === "ac-load" && toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+              const acVoltage = getACVoltage(fromComp) || 120;
+              if (loadWatts > 0) {
+                // Hot and neutral carry current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") 
+                  ? (loadWatts / acVoltage)
+                  : 0;
+              }
+            }
           } else {
             // For DC wires, determine direction and calculate accordingly
             
@@ -1068,7 +1187,7 @@ export class DesignValidator {
             else if (toComp?.type?.includes("busbar") && (fromComp?.type === "fuse" || fromComp?.type === "battery" || fromComp?.type === "smartshunt")) {
               // Calculate net current on bus bar: sum of loads minus sum of sources
               const connectedWires = this.wires.filter(
-                w => (w.fromComponentId === toComp.id || w.toComponentId === toComp.id) && w.id !== wire.id
+                w => (w.fromComponentId === toComp.id || w.toComponentId === toComp.id) && isDifferentWire(w, wire)
               );
               
               let totalLoadCurrent = 0;
@@ -1103,6 +1222,10 @@ export class DesignValidator {
                   } else if (otherComp.properties?.current || otherComp.properties?.amps) {
                     totalLoadCurrent += (otherComp.properties?.current || otherComp.properties?.amps || 0) as number;
                   }
+                }
+                // For Cerbo GX - low current monitoring device (~1A)
+                else if (otherComp.type === "cerbo") {
+                  totalLoadCurrent += 1; // Cerbo draws ~1A
                 }
                 // For DC panels, trace through to find DC loads
                 else if (otherComp.type === "dc-panel") {
@@ -1198,6 +1321,11 @@ export class DesignValidator {
                 const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
                 current = inverterDC.dcInputCurrent;
               }
+              // For Cerbo GX - low current monitoring device (~1A typical)
+              else if (toComp.type === "cerbo") {
+                // Cerbo GX typically draws 0.5-1A, use 1A as safe default for wire sizing
+                current = 1;
+              }
             }
             // If wire is FROM a load TO a DC panel, use the load's current directly
             // (wire direction might be reversed in data, but current is still from the load)
@@ -1225,7 +1353,7 @@ export class DesignValidator {
               const panelWires = this.wires.filter(
                 w => (w.fromComponentId === toComp.id || w.toComponentId === toComp.id) &&
                      w.polarity === "positive" &&
-                     w.id !== wire.id // Exclude the current wire
+                     isDifferentWire(w, wire) // Exclude the current wire
               );
               
               let totalWatts = 0;
@@ -1261,6 +1389,138 @@ export class DesignValidator {
                 current = loadWatts / loadVoltage;
               }
             }
+            // For Cerbo GX wires - low current monitoring device (~1A typical)
+            else if (fromComp?.type === "cerbo" || toComp?.type === "cerbo") {
+              // Cerbo GX typically draws 0.5-1A, use 1A as safe default for wire sizing
+              current = 1;
+            }
+            // For SmartShunt wires - carry the same current as the main battery path
+            else if ((fromComp?.type === "smartshunt" || toComp?.type === "smartshunt") && current === 0) {
+              const smartShuntComp = fromComp?.type === "smartshunt" ? fromComp : toComp;
+              const otherComp = fromComp?.type === "smartshunt" ? toComp : fromComp;
+              
+              // For battery → SmartShunt wire, trace through SmartShunt to bus bar and calculate
+              if (smartShuntComp && otherComp?.type === "battery") {
+                // Find the bus bar connected to the SmartShunt
+                const busBarWires = this.wires.filter(
+                  w => (w.fromComponentId === smartShuntComp.id || w.toComponentId === smartShuntComp.id) && isDifferentWire(w, wire)
+                );
+                
+                for (const busBarWire of busBarWires) {
+                  const busBarCompId = busBarWire.fromComponentId === smartShuntComp.id 
+                    ? busBarWire.toComponentId 
+                    : busBarWire.fromComponentId;
+                  
+                  const busBarComp = this.components.find(c => c.id === busBarCompId);
+                  if (busBarComp && busBarComp.type?.includes("busbar")) {
+                    // Calculate net current on this bus bar (loads minus sources)
+                    const connectedWires = this.wires.filter(
+                      w => (w.fromComponentId === busBarComp.id || w.toComponentId === busBarComp.id) && w.id !== busBarWire.id
+                    );
+                    
+                    let totalLoadCurrent = 0;
+                    let totalSourceCurrent = 0;
+                    const visitedComps = new Set<string>();
+                    
+                    for (const connectedWire of connectedWires) {
+                      const connCompId = connectedWire.fromComponentId === busBarComp.id 
+                        ? connectedWire.toComponentId 
+                        : connectedWire.fromComponentId;
+                      
+                      if (visitedComps.has(connCompId)) continue;
+                      visitedComps.add(connCompId);
+                      
+                      const connComp = this.components.find(c => c.id === connCompId);
+                      if (!connComp) continue;
+                      
+                      // Skip AC loads/panels
+                      if (connComp.type === "ac-load" || connComp.type === "ac-panel") continue;
+                      
+                      // For inverters, get DC input current (load)
+                      if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter") {
+                        const inverterDC = calculateInverterDCInput(connComp.id, this.components, this.wires, this.systemVoltage);
+                        totalLoadCurrent += inverterDC.dcInputCurrent;
+                      }
+                      // For DC loads
+                      else if (connComp.type === "dc-load") {
+                        const loadWatts = (connComp.properties?.watts || connComp.properties?.power || 0) as number;
+                        const loadVoltage = (connComp.properties?.voltage as number || this.systemVoltage);
+                        if (loadWatts > 0 && loadVoltage > 0) {
+                          totalLoadCurrent += loadWatts / loadVoltage;
+                        }
+                      }
+                      // For Cerbo GX - low current (~1A)
+                      else if (connComp.type === "cerbo") {
+                        totalLoadCurrent += 1;
+                      }
+                      // For MPPT/chargers (sources - subtract)
+                      else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc") {
+                        const chargeCurrent = connComp.type === "mppt"
+                          ? (connComp.properties?.maxCurrent || connComp.properties?.amps || connComp.properties?.current || 0) as number
+                          : (connComp.properties?.amps || connComp.properties?.current || 0) as number;
+                        totalSourceCurrent += chargeCurrent;
+                      }
+                    }
+                    
+                    current = Math.max(0, totalLoadCurrent - totalSourceCurrent);
+                    break;
+                  }
+                }
+              }
+              // If SmartShunt → bus bar wire, calculate total system current
+              else if (smartShuntComp && otherComp?.type?.includes("busbar")) {
+                // Calculate net current flowing through the SmartShunt (all loads minus all sources)
+                const connectedWires = this.wires.filter(
+                  w => (w.fromComponentId === otherComp.id || w.toComponentId === otherComp.id) && isDifferentWire(w, wire)
+                );
+                
+                let totalLoadCurrent = 0;
+                let totalSourceCurrent = 0;
+                const visitedComps = new Set<string>();
+                
+                for (const connectedWire of connectedWires) {
+                  const connCompId = connectedWire.fromComponentId === otherComp.id 
+                    ? connectedWire.toComponentId 
+                    : connectedWire.fromComponentId;
+                  
+                  if (visitedComps.has(connCompId)) continue;
+                  visitedComps.add(connCompId);
+                  
+                  const connComp = this.components.find(c => c.id === connCompId);
+                  if (!connComp) continue;
+                  
+                  // Skip AC loads/panels
+                  if (connComp.type === "ac-load" || connComp.type === "ac-panel") continue;
+                  
+                  // For inverters, get DC input current (load)
+                  if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter") {
+                    const inverterDC = calculateInverterDCInput(connComp.id, this.components, this.wires, this.systemVoltage);
+                    totalLoadCurrent += inverterDC.dcInputCurrent;
+                  }
+                  // For DC loads
+                  else if (connComp.type === "dc-load") {
+                    const loadWatts = (connComp.properties?.watts || connComp.properties?.power || 0) as number;
+                    const loadVoltage = (connComp.properties?.voltage as number || this.systemVoltage);
+                    if (loadWatts > 0 && loadVoltage > 0) {
+                      totalLoadCurrent += loadWatts / loadVoltage;
+                    }
+                  }
+                  // For Cerbo GX - low current monitoring device (~1A)
+                  else if (connComp.type === "cerbo") {
+                    totalLoadCurrent += 1; // Cerbo draws ~1A
+                  }
+                  // For MPPT/chargers (sources - subtract)
+                  else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc") {
+                    const chargeCurrent = connComp.type === "mppt"
+                      ? (connComp.properties?.maxCurrent || connComp.properties?.amps || connComp.properties?.current || 0) as number
+                      : (connComp.properties?.amps || connComp.properties?.current || 0) as number;
+                    totalSourceCurrent += chargeCurrent;
+                  }
+                }
+                
+                current = Math.max(0, totalLoadCurrent - totalSourceCurrent);
+              }
+            }
             // Special handling for battery wires - calculate net current through fuse/SmartShunt to bus bar
             else if ((fromComp?.type === "battery" || toComp?.type === "battery") && current === 0) {
               const batteryComp = fromComp?.type === "battery" ? fromComp : toComp;
@@ -1275,7 +1535,7 @@ export class DesignValidator {
                   // For battery → fuse or battery → SmartShunt, trace through to bus bar and calculate net current
                   // Find the bus bar connected to the fuse/SmartShunt
                   const busBarWires = this.wires.filter(
-                    w => (w.fromComponentId === otherComp.id || w.toComponentId === otherComp.id) && w.id !== wire.id
+                    w => (w.fromComponentId === otherComp.id || w.toComponentId === otherComp.id) && isDifferentWire(w, wire)
                   );
                   
                   for (const busBarWire of busBarWires) {
@@ -1320,6 +1580,10 @@ export class DesignValidator {
                           if (loadWatts > 0 && loadVoltage > 0) {
                             totalLoadCurrent += loadWatts / loadVoltage;
                           }
+                        }
+                        // For Cerbo GX - low current monitoring device (~1A)
+                        else if (connectedComp.type === "cerbo") {
+                          totalLoadCurrent += 1; // Cerbo draws ~1A
                         }
                         // For DC panels, trace through to find DC loads
                         else if (connectedComp.type === "dc-panel") {
@@ -1398,13 +1662,16 @@ export class DesignValidator {
             wireId: wire.id,
           });
         } else if (currentPerWire > maxAmpacity) {
+          const currentDisplay = parallelCount > 1 
+            ? `${currentPerWire.toFixed(1)}A per wire (${current.toFixed(1)}A total, ${parallelCount} parallel)`
+            : `${currentPerWire.toFixed(1)}A`;
           this.issues.push({
             severity: "error",
             category: "wire-sizing",
-            message: `Wire gauge ${wire.gauge} insufficient for ${current.toFixed(1)}A (max ${maxAmpacity.toFixed(1)}A at 75°C)`,
+            message: `Wire gauge ${wire.gauge} insufficient for ${currentDisplay} (max ${maxAmpacity.toFixed(1)}A at 75°C per wire)`,
             wireId: wire.id,
             componentIds: [wire.fromComponentId, wire.toComponentId],
-            suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGauge(current)})`,
+            suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGauge(currentPerWire)})`,
           });
         } else if (currentPerWire > maxAmpacity * 0.8) {
           // Warning if wire is above 80% of capacity
@@ -1423,9 +1690,9 @@ export class DesignValidator {
         if (wire.polarity === "ground") {
           // Find associated hot/neutral wires in the same circuit (same from/to components)
           const associatedWires = this.wires.filter(w => 
-            w.id !== wire.id &&
-            (w.fromComponentId === wire.fromComponentId && w.toComponentId === wire.toComponentId) ||
-            (w.fromComponentId === wire.toComponentId && w.toComponentId === wire.fromComponentId)
+            isDifferentWire(w, wire) &&
+            ((w.fromComponentId === wire.fromComponentId && w.toComponentId === wire.toComponentId) ||
+             (w.fromComponentId === wire.toComponentId && w.toComponentId === wire.fromComponentId))
           );
           
           // Find hot or neutral wire in the same circuit
@@ -1455,8 +1722,111 @@ export class DesignValidator {
               suggestion: `Ensure ground wire matches the gauge of hot/neutral wires in the same circuit`,
             });
           }
+        } else if (wire.polarity === "negative") {
+          // For negative DC wires, find the corresponding positive wire in the same circuit
+          // Negative wires are return paths that carry the same current as positive wires
+          const fromComp = this.components.find(c => c.id === wire.fromComponentId);
+          const toComp = this.components.find(c => c.id === wire.toComponentId);
+          
+          // Look for positive wire between the same components
+          const correspondingPositiveWire = this.wires.find(w => 
+            w.polarity === "positive" &&
+            ((w.fromComponentId === wire.fromComponentId && w.toComponentId === wire.toComponentId) ||
+             (w.fromComponentId === wire.toComponentId && w.toComponentId === wire.fromComponentId))
+          );
+          
+          if (correspondingPositiveWire) {
+            // Use this wire's current (will be calculated elsewhere)
+            // For now, mark as valid since it matches the positive wire
+            current = correspondingPositiveWire.current || 0;
+          }
+          
+          // If still no current, try to calculate from connected loads
+          if (current === 0) {
+            // For DC loads, calculate from the load
+            if (fromComp?.type === "dc-load") {
+              const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+              const loadVoltage = (fromComp.properties?.voltage as number || this.systemVoltage);
+              if (loadWatts > 0 && loadVoltage > 0) {
+                current = loadWatts / loadVoltage;
+              }
+            } else if (toComp?.type === "dc-load") {
+              const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+              const loadVoltage = (toComp.properties?.voltage as number || this.systemVoltage);
+              if (loadWatts > 0 && loadVoltage > 0) {
+                current = loadWatts / loadVoltage;
+              }
+            }
+            // For DC panels, trace through to find loads
+            else if (fromComp?.type === "dc-panel" || toComp?.type === "dc-panel") {
+              const panelComp = fromComp?.type === "dc-panel" ? fromComp : toComp;
+              const panelWires = this.wires.filter(
+                w => (w.fromComponentId === panelComp?.id || w.toComponentId === panelComp?.id) &&
+                     w.polarity === "positive" && isDifferentWire(w, wire)
+              );
+              
+              let totalWatts = 0;
+              const visitedLoads = new Set<string>();
+              
+              for (const panelWire of panelWires) {
+                const loadCompId = panelWire.fromComponentId === panelComp?.id 
+                  ? panelWire.toComponentId 
+                  : panelWire.fromComponentId;
+                
+                if (!visitedLoads.has(loadCompId)) {
+                  visitedLoads.add(loadCompId);
+                  const loadComp = this.components.find(c => c.id === loadCompId);
+                  if (loadComp && loadComp.type === "dc-load") {
+                    const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
+                    totalWatts += loadWatts;
+                  }
+                }
+              }
+              
+              if (totalWatts > 0) {
+                current = totalWatts / this.systemVoltage;
+              }
+            }
+            // For inverters (DC negative), use DC input current
+            else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") {
+              const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
+              current = inverterDC.dcInputCurrent;
+            } else if (toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") {
+              const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
+              current = inverterDC.dcInputCurrent;
+            }
+            // For MPPT/chargers (output negative), use their output current
+            else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc") {
+              const chargeCurrent = fromComp.type === "mppt"
+                ? (fromComp.properties?.maxCurrent || fromComp.properties?.amps || fromComp.properties?.current || 0) as number
+                : (fromComp.properties?.amps || fromComp.properties?.current || 0) as number;
+              current = chargeCurrent;
+            } else if (toComp?.type === "mppt" || toComp?.type === "blue-smart-charger" || toComp?.type === "orion-dc-dc") {
+              const chargeCurrent = toComp.type === "mppt"
+                ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
+                : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
+              current = chargeCurrent;
+            }
+            // For Cerbo (power-negative), use 1A
+            else if (fromComp?.type === "cerbo" || toComp?.type === "cerbo") {
+              current = 1;
+            }
+          }
+          
+          // If we still can't determine current for negative wire, it's OK
+          // Negative wires should match positive wire gauge in the same circuit
+          // Only warn if we couldn't find ANY way to calculate
+          if (current === 0) {
+            this.issues.push({
+              severity: "warning",
+              category: "wire-sizing",
+              message: `Cannot determine current for negative wire - gauge validation skipped`,
+              wireId: wire.id,
+              suggestion: `Negative wires should match positive wire gauge in the same circuit`,
+            });
+          }
         } else {
-          // Warn if we can't determine current for non-ground wires
+          // Warn if we can't determine current for other non-ground wires
           this.issues.push({
             severity: "warning",
             category: "wire-sizing",
@@ -1468,8 +1838,9 @@ export class DesignValidator {
       }
 
       // Check voltage drop (voltage drop calculations are separate from ampacity)
+      // IMPORTANT: Use currentPerWire for voltage drop calculation since each wire only carries its share
       const length = wire.length || 0;
-      if (length > 0 && current > 0) {
+      if (length > 0 && currentPerWire > 0) {
         const fromComp = this.components.find(c => c.id === wire.fromComponentId);
         const toComp = this.components.find(c => c.id === wire.toComponentId);
         
@@ -1515,17 +1886,22 @@ export class DesignValidator {
         }
         
         const resistancePerFoot = wireData.resistance / 1000;
-        const voltageDrop = 2 * current * resistancePerFoot * length; // 2 for round trip
+        const voltageDrop = 2 * currentPerWire * resistancePerFoot * length; // 2 for round trip, use currentPerWire
         const voltageDropPercent = (voltageDrop / voltage) * 100;
+        
+        // Format current display: show per-wire current, and total if parallel
+        const currentDisplay = parallelCount > 1 
+          ? `${currentPerWire.toFixed(1)}A (${current.toFixed(1)}A total, ${parallelCount} parallel)`
+          : `${currentPerWire.toFixed(1)}A`;
 
         if (voltageDropPercent > 3) {
           this.issues.push({
             severity: "error",
             category: "wire-sizing",
-            message: `Excessive voltage drop: ${voltageDropPercent.toFixed(1)}% (max 3% per ABYC) at ${current.toFixed(1)}A, ${length}ft, ${voltage}V`,
+            message: `Excessive voltage drop: ${voltageDropPercent.toFixed(1)}% (max 3% per ABYC) at ${currentDisplay}, ${length}ft, ${voltage}V`,
             wireId: wire.id,
             componentIds: [wire.fromComponentId, wire.toComponentId],
-            suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length)}) or shorten run (current: ${length}ft)`,
+            suggestion: `Use larger gauge wire (e.g., ${this.suggestWireGaugeForVoltageDrop(currentPerWire, length)}) or shorten run (current: ${length}ft)`,
           });
         } else if (voltageDropPercent > 2.5) {
           // Get current wire gauge to recommend a larger one
@@ -1533,10 +1909,10 @@ export class DesignValidator {
           this.issues.push({
             severity: "warning",
             category: "wire-sizing",
-            message: `High voltage drop: ${voltageDropPercent.toFixed(1)}% at ${current.toFixed(1)}A, ${length}ft, ${voltage}V`,
+            message: `High voltage drop: ${voltageDropPercent.toFixed(1)}% at ${currentDisplay}, ${length}ft, ${voltage}V`,
             wireId: wire.id,
             componentIds: [wire.fromComponentId, wire.toComponentId],
-            suggestion: `Consider larger gauge (e.g., ${this.suggestWireGaugeForVoltageDrop(current, length, currentGauge)}) to reduce losses`,
+            suggestion: `Consider larger gauge (e.g., ${this.suggestWireGaugeForVoltageDrop(currentPerWire, length, currentGauge)}) to reduce losses`,
           });
         }
       }
@@ -1699,6 +2075,25 @@ export class DesignValidator {
   }
 
   private componentsTooClose(comp1: SchematicComponent, comp2: SchematicComponent): boolean {
+    // Allow certain component pairs to be close without warning (they're naturally close)
+    const allowedClosePairs = [
+      // Battery and fuse are typically right next to each other
+      { type1: "battery", type2: "fuse" },
+      { type1: "fuse", type2: "battery" },
+      // Battery and SmartShunt are typically right next to each other
+      { type1: "battery", type2: "smartshunt" },
+      { type1: "smartshunt", type2: "battery" },
+    ];
+    
+    const isAllowedPair = allowedClosePairs.some(
+      pair => (comp1.type === pair.type1 && comp2.type === pair.type2) ||
+              (comp1.type === pair.type2 && comp2.type === pair.type1)
+    );
+    
+    if (isAllowedPair) {
+      return false; // Don't warn about these pairs being close
+    }
+    
     const distance = Math.sqrt(
       Math.pow(comp2.x - comp1.x, 2) + Math.pow(comp2.y - comp1.y, 2)
     );
@@ -1930,25 +2325,48 @@ export class DesignValidator {
       });
     }
 
-    // Check for solar panels without watts
-    const solarsWithoutWatts = this.components.filter(c => {
+    // Check for solar panels without watts OR voltage (PV voltage/Vmp)
+    const solarsWithoutProperties = this.components.filter(c => {
       if (c.type === "solar-panel") {
         const props = c.properties as Record<string, unknown> | undefined;
         if (!props) return true;
         const watts = props.watts as number | undefined;
-        return typeof watts !== 'number' || watts <= 0;
+        const voltage = props.voltage as number | undefined; // PV voltage (Vmp)
+        return typeof watts !== 'number' || watts <= 0 || typeof voltage !== 'number' || voltage <= 0;
       }
       return false;
     });
 
-    if (solarsWithoutWatts.length > 0) {
-      this.issues.push({
-        severity: "warning",
-        category: "ai-quality",
-        message: `${solarsWithoutWatts.length} solar panel(s) missing watts property`,
-        componentIds: solarsWithoutWatts.map(c => c.id),
-        suggestion: 'Add properties: {"watts": 300} to solar panels',
+    if (solarsWithoutProperties.length > 0) {
+      const missingWatts = solarsWithoutProperties.filter(c => {
+        const props = c.properties as Record<string, unknown> | undefined;
+        const watts = props?.watts as number | undefined;
+        return typeof watts !== 'number' || watts <= 0;
       });
+      const missingVoltage = solarsWithoutProperties.filter(c => {
+        const props = c.properties as Record<string, unknown> | undefined;
+        const voltage = props?.voltage as number | undefined;
+        return typeof voltage !== 'number' || voltage <= 0;
+      });
+      
+      if (missingWatts.length > 0) {
+        this.issues.push({
+          severity: "error",
+          category: "ai-quality",
+          message: `${missingWatts.length} solar panel(s) missing watts property`,
+          componentIds: missingWatts.map(c => c.id),
+          suggestion: 'Add properties: {"watts": 300, "voltage": 18} to solar panels (voltage is PV voltage/Vmp: 18V, 36V, 72V, etc.)',
+        });
+      }
+      if (missingVoltage.length > 0) {
+        this.issues.push({
+          severity: "error",
+          category: "ai-quality",
+          message: `${missingVoltage.length} solar panel(s) missing voltage property (PV voltage/Vmp)`,
+          componentIds: missingVoltage.map(c => c.id),
+          suggestion: 'Add properties: {"watts": 300, "voltage": 18} to solar panels (voltage is PV voltage/Vmp: 18V for 12V system, 36V for 24V system, 72V for 48V system)',
+        });
+      }
     }
 
     // Check for orphaned components (no wires)
@@ -2186,12 +2604,14 @@ export class DesignValidator {
       if (issue.severity === "info") score -= 1;
     });
 
-    // Deduct for metrics
+    // Deduct for layout metrics (not already counted in issues)
     score -= metrics.overlappingComponents * 15;
-    score -= metrics.invalidTerminalConnections * 10;
-    score -= metrics.wireGaugeIssues * 5;
-    score -= metrics.electricalRuleViolations * 20;
-
+    
+    // Note: Don't double-count wireGaugeIssues and electricalRuleViolations
+    // since they're already deducted in the issues loop above.
+    // Only deduct for terminal issues if they're in metrics but not issues.
+    // Actually, invalidTerminalConnections is also from issues, so skip it too.
+    
     // Bonus for good layout efficiency
     score += (metrics.layoutEfficiency - 50) * 0.3;
 

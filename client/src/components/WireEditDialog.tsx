@@ -63,18 +63,18 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
                 conductorMaterial: material as "copper" | "aluminum"
             });
         } else {
-            // Ensure gauge has AWG suffix if it's a number
-            let formattedGauge = gauge;
-            if (gauge && !gauge.endsWith("AWG")) {
-                formattedGauge = `${gauge} AWG`;
-            }
+        // Ensure gauge has AWG suffix if it's a number
+        let formattedGauge = gauge;
+        if (gauge && !gauge.endsWith("AWG")) {
+            formattedGauge = `${gauge} AWG`;
+        }
 
-            onSave(wire.id, {
-                gauge: formattedGauge,
+        onSave(wire.id, {
+            gauge: formattedGauge,
                 polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
-                length: parseFloat(length),
-                conductorMaterial: material as "copper" | "aluminum"
-            });
+            length: parseFloat(length),
+            conductorMaterial: material as "copper" | "aluminum"
+        });
         }
         onOpenChange(false);
     };
@@ -122,9 +122,9 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
                                 ) : (
                                     // DC wire options
                                     <>
-                                        <SelectItem value="positive">Positive (+)</SelectItem>
-                                        <SelectItem value="negative">Negative (-)</SelectItem>
-                                        <SelectItem value="ground">Ground</SelectItem>
+                                <SelectItem value="positive">Positive (+)</SelectItem>
+                                <SelectItem value="negative">Negative (-)</SelectItem>
+                                <SelectItem value="ground">Ground</SelectItem>
                                     </>
                                 )}
                             </SelectContent>
