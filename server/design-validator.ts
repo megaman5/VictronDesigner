@@ -279,6 +279,147 @@ export class DesignValidator {
     });
   }
 
+  private validateMPPTPVLimits(): void {
+    const mppts = this.components.filter(c => c.type === "mppt");
+
+    mppts.forEach(mppt => {
+      const maxPVVoltage = (mppt.properties?.maxPVVoltage as number | undefined);
+      const maxCurrent = (mppt.properties?.maxCurrent || mppt.properties?.amps || mppt.properties?.current || 0) as number;
+
+      // Skip if MPPT doesn't have max PV voltage specified
+      if (!maxPVVoltage) return;
+
+      // Find all solar panels connected to this MPPT
+      const connectedPanels: Array<{ id: string; voltage: number; current: number }> = [];
+      
+      // Find panels connected via PV wires
+      const pvWires = this.wires.filter(w => {
+        const fromComp = this.components.find(c => c.id === w.fromComponentId);
+        const toComp = this.components.find(c => c.id === w.toComponentId);
+        
+        // Check if this wire connects a solar panel to the MPPT's PV terminals
+        if (fromComp?.type === "solar-panel" && toComp?.id === mppt.id) {
+          return w.toTerminal === "pv-positive" || w.toTerminal === "pv-negative";
+        }
+        if (toComp?.type === "solar-panel" && fromComp?.id === mppt.id) {
+          return w.fromTerminal === "pv-positive" || w.fromTerminal === "pv-negative";
+        }
+        return false;
+      });
+
+      // Get unique panel IDs from PV wires
+      const panelIds = new Set<string>();
+      pvWires.forEach(w => {
+        if (this.components.find(c => c.id === w.fromComponentId)?.type === "solar-panel") {
+          panelIds.add(w.fromComponentId);
+        }
+        if (this.components.find(c => c.id === w.toComponentId)?.type === "solar-panel") {
+          panelIds.add(w.toComponentId);
+        }
+      });
+
+      // Calculate panel voltages and currents
+      panelIds.forEach(panelId => {
+        const panel = this.components.find(c => c.id === panelId);
+        if (panel?.type === "solar-panel") {
+          const panelVoltage = (panel.properties?.voltage || 0) as number; // PV voltage (Vmp)
+          const panelWatts = (panel.properties?.watts || panel.properties?.power || 0) as number;
+          const panelCurrent = panelVoltage > 0 ? panelWatts / panelVoltage : 0; // Current at Vmp
+          
+          connectedPanels.push({
+            id: panelId,
+            voltage: panelVoltage,
+            current: panelCurrent,
+          });
+        }
+      });
+
+      if (connectedPanels.length === 0) return; // No panels connected
+
+      // Determine if panels are in series or parallel by checking wiring topology
+      // Simple heuristic: if multiple panels connect directly to MPPT PV terminals, they're parallel
+      // If panels are chained (panel1+ → panel2-, panel2+ → panel3-), they're in series
+      const directConnections = pvWires.filter(w => {
+        const fromComp = this.components.find(c => c.id === w.fromComponentId);
+        const toComp = this.components.find(c => c.id === w.toComponentId);
+        return (fromComp?.type === "solar-panel" && toComp?.id === mppt.id) ||
+               (toComp?.type === "solar-panel" && fromComp?.id === mppt.id);
+      });
+
+      // Check for series connections (panels connected to each other)
+      const seriesConnections = this.wires.filter(w => {
+        const fromComp = this.components.find(c => c.id === w.fromComponentId);
+        const toComp = this.components.find(c => c.id === w.toComponentId);
+        return fromComp?.type === "solar-panel" && toComp?.type === "solar-panel" &&
+               w.fromTerminal === "positive" && w.toTerminal === "negative";
+      });
+
+      const isSeries = seriesConnections.length > 0;
+      const isParallel = directConnections.length > 1;
+
+      // Calculate worst-case PV voltage and current
+      let totalPVVoltage = 0;
+      let totalPVCurrent = 0;
+
+      if (isSeries) {
+        // Series: voltages add, current is max of any panel
+        totalPVVoltage = connectedPanels.reduce((sum, p) => sum + p.voltage, 0);
+        totalPVCurrent = Math.max(...connectedPanels.map(p => p.current), 0);
+      } else if (isParallel) {
+        // Parallel: voltage is max, currents add
+        totalPVVoltage = Math.max(...connectedPanels.map(p => p.voltage), 0);
+        totalPVCurrent = connectedPanels.reduce((sum, p) => sum + p.current, 0);
+      } else {
+        // Single panel or unknown configuration - use worst case
+        totalPVVoltage = connectedPanels.reduce((sum, p) => sum + p.voltage, 0); // Assume series worst case
+        totalPVCurrent = connectedPanels.reduce((sum, p) => sum + p.current, 0); // Assume parallel worst case
+      }
+
+      // Check PV voltage limit (Voc is typically 1.2x Vmp, but we'll use Vmp for safety)
+      // Add 20% safety margin for Voc (open circuit voltage)
+      const maxPVVoltageWithMargin = maxPVVoltage * 0.83; // 83% of max = ~20% safety margin
+      
+      if (totalPVVoltage > maxPVVoltageWithMargin) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: `MPPT "${mppt.name}" PV voltage exceeded: ${totalPVVoltage.toFixed(1)}V PV (with safety margin) exceeds maximum ${maxPVVoltage}V`,
+          componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
+          suggestion: `Reduce number of panels in series or use an MPPT with higher max PV voltage (e.g., ${Math.ceil(totalPVVoltage / 0.83)}V or higher)`,
+        });
+      } else if (totalPVVoltage > maxPVVoltage * 0.9) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `MPPT "${mppt.name}" PV voltage near limit: ${totalPVVoltage.toFixed(1)}V PV is close to maximum ${maxPVVoltage}V`,
+          componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
+          suggestion: `Consider using an MPPT with higher max PV voltage for safety margin (Voc can be 20% higher than Vmp)`,
+        });
+      }
+
+      // Check PV current limit (Isc is typically 1.1x Imp, but we'll use Imp)
+      // MPPT maxCurrent is the output current, but PV input current can be higher due to efficiency
+      // For safety, we'll check if panel current exceeds MPPT maxCurrent
+      if (totalPVCurrent > maxCurrent * 1.1) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: `MPPT "${mppt.name}" PV current exceeded: ${totalPVCurrent.toFixed(1)}A PV exceeds maximum ${maxCurrent}A output`,
+          componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
+          suggestion: `Reduce number of panels in parallel or use an MPPT with higher current rating (e.g., ${Math.ceil(totalPVCurrent / 1.1)}A or higher)`,
+        });
+      } else if (totalPVCurrent > maxCurrent * 0.9) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `MPPT "${mppt.name}" PV current near limit: ${totalPVCurrent.toFixed(1)}A PV is close to maximum ${maxCurrent}A output`,
+          componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
+          suggestion: `Consider using an MPPT with higher current rating for safety margin`,
+        });
+      }
+    });
+  }
+
   private validateDCACMingling(): void {
     // Check that DC and AC loads aren't mixed on same bus bar or circuit
     // (already covered in validateBusBarPolarity, but this is more general)
@@ -314,6 +455,7 @@ export class DesignValidator {
     // Check all DC components that have voltage properties
     // AC loads and AC panels use AC voltage (110V/120V/220V/230V), not DC system voltage
     // Solar panels use PV voltage (Vmp), not DC system voltage - they're converted by MPPT
+    // Shore power is AC, not DC
     this.components.forEach(comp => {
       // Skip AC loads and AC panels - they use AC voltage, not DC system voltage
       if (comp.type === "ac-load" || comp.type === "ac-panel") return;
@@ -324,6 +466,9 @@ export class DesignValidator {
       // Skip solar panels - they use PV voltage (Vmp), not DC system voltage
       // The MPPT controller converts PV voltage to system voltage
       if (comp.type === "solar-panel") return;
+      
+      // Skip shore power - it's AC, not DC
+      if (comp.type === "shore-power") return;
       
       const compVoltage = comp.properties?.voltage as number | undefined;
       
@@ -358,9 +503,9 @@ export class DesignValidator {
       // Skip AC wires (hot/neutral/ground) - they operate at AC voltage, not DC
       if (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground") return;
       
-      // Skip if either component is an AC load or AC panel
-      if (fromComp.type === "ac-load" || fromComp.type === "ac-panel" ||
-          toComp.type === "ac-load" || toComp.type === "ac-panel") return;
+      // Skip if either component is an AC load, AC panel, or shore power (all AC)
+      if (fromComp.type === "ac-load" || fromComp.type === "ac-panel" || fromComp.type === "shore-power" ||
+          toComp.type === "ac-load" || toComp.type === "ac-panel" || toComp.type === "shore-power") return;
 
       // Skip PV wires (pv-positive/pv-negative) - solar panels use PV voltage (Vmp), not DC system voltage
       // PV voltage is converted by MPPT controller to system voltage
@@ -853,12 +998,37 @@ export class DesignValidator {
                   : 0;
               }
             } else if (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
-              // For inverter AC output wires (from panel to inverter)
+              // For inverter AC output wires (from panel to inverter) - this shouldn't happen, but handle it
               const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
               if (inverterDC.acLoadWatts > 0) {
                 // Hot and neutral carry the full current, ground carries no current
                 current = (wire.polarity === "hot" || wire.polarity === "neutral") 
                   ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
+                  : 0;
+              }
+            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              // For inverter → AC panel wires, calculate from connected AC loads through the panel
+              const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
+              if (inverterDC.acLoadWatts > 0) {
+                // Hot and neutral carry the full current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") 
+                  ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
+                  : 0;
+              }
+            } else if (fromComp && fromComp.type === "shore-power" && toComp && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              // For shore power → charger AC input wires, calculate from charger's DC output
+              // Charger AC input current = (DC output power) / (AC voltage * efficiency)
+              // Typical charger efficiency: ~85-90%, use 87.5% as default
+              if (toComp.type === "blue-smart-charger") {
+                const chargerAmps = (toComp.properties?.amps || toComp.properties?.current || 0) as number;
+                const chargerVoltage = (toComp.properties?.voltage || this.systemVoltage) as number;
+                const dcOutputWatts = chargerAmps * chargerVoltage;
+                const acVoltage = 120; // Default AC voltage for shore power
+                const efficiency = 0.875; // 87.5% efficiency
+                const acInputWatts = dcOutputWatts / efficiency;
+                // Hot and neutral carry current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") 
+                  ? (acInputWatts / acVoltage)
                   : 0;
               }
             }
@@ -975,8 +1145,18 @@ export class DesignValidator {
             // If wire is FROM a bus bar TO a load or distribution panel
             // Trace to find the actual load current
             else if (fromComp?.type?.includes("busbar") && toComp) {
+              // For MPPT/chargers FROM bus bar, use their output current (they're sources, not loads)
+              // This handles wires like "bus-pos → mppt" where MPPT is charging the battery
+              if (toComp.type === "mppt" || toComp.type === "blue-smart-charger" || toComp.type === "orion-dc-dc") {
+                const chargeCurrent = toComp.type === "mppt"
+                  ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
+                  : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
+                if (chargeCurrent > 0) {
+                  current = chargeCurrent;
+                }
+              }
               // For DC panels, trace through to find the actual DC load
-              if (toComp.type === "dc-panel") {
+              else if (toComp.type === "dc-panel") {
                 // Find wires from DC panel to DC loads
                 const panelWires = this.wires.filter(
                   w => (w.fromComponentId === toComp.id || w.toComponentId === toComp.id) &&

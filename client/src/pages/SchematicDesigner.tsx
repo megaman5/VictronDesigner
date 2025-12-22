@@ -675,9 +675,63 @@ export default function SchematicDesigner() {
         throw new Error("Please add components to the canvas first");
       }
 
+      // Prepare validation feedback and wire calculations for AI
+      const validationFeedback = validationResult ? {
+        score: validationResult.score,
+        errors: validationResult.issues.filter(i => i.severity === "error").map(i => ({
+          message: i.message,
+          category: i.category,
+          componentIds: i.componentIds,
+          wireId: i.wireId,
+          wireIds: i.wireIds,
+          suggestion: i.suggestion,
+        })),
+        warnings: validationResult.issues.filter(i => i.severity === "warning").map(i => ({
+          message: i.message,
+          category: i.category,
+          componentIds: i.componentIds,
+          wireId: i.wireId,
+          wireIds: i.wireIds,
+          suggestion: i.suggestion,
+        })),
+      } : null;
+
+      // Prepare wire calculation issues
+      const wireCalculationIssues: Array<{
+        wireId: string;
+        fromComponentId: string;
+        toComponentId: string;
+        issue: string;
+        currentGauge?: string;
+        recommendedGauge?: string;
+        current?: number;
+        voltageDrop?: number;
+      }> = [];
+
+      Object.entries(wireCalculations).forEach(([wireId, calc]) => {
+        if (calc.status === "error" || calc.status === "warning") {
+          const wire = wires.find(w => w.id === wireId);
+          if (wire) {
+            wireCalculationIssues.push({
+              wireId,
+              fromComponentId: wire.fromComponentId,
+              toComponentId: wire.toComponentId,
+              issue: calc.message || `${calc.status}: Wire sizing issue`,
+              currentGauge: wire.gauge,
+              recommendedGauge: calc.recommendedGauge,
+              current: calc.totalCurrent,
+              voltageDrop: calc.voltageDropPercent,
+            });
+          }
+        }
+      });
+
       const res = await apiRequest("POST", "/api/ai-wire-components", {
         components,
+        wires: wires.length > 0 ? wires : undefined, // Include existing wires if any
         systemVoltage,
+        validationFeedback,
+        wireCalculationIssues: wireCalculationIssues.length > 0 ? wireCalculationIssues : undefined,
       });
       return res.json();
     },
@@ -692,7 +746,48 @@ export default function SchematicDesigner() {
 
       console.log("Setting wires with IDs:", newWires.map((w: Wire) => ({ id: w.id, from: w.fromComponentId, to: w.toComponentId })));
 
-      setWires(newWires);
+      // If there were existing wires, merge intelligently:
+      // - Keep existing wires that don't have errors
+      // - Replace wires that have errors with new ones
+      // - Add any new wires that don't conflict
+      if (wires.length > 0 && validationResult) {
+        const errorWireIds = new Set(
+          validationResult.issues
+            .filter(i => i.severity === "error" && i.wireId)
+            .map(i => i.wireId!)
+        );
+        
+        // Keep existing wires that don't have errors
+        const validExistingWires = wires.filter(w => !errorWireIds.has(w.id));
+        
+        // Create a map of new wires by connection signature to avoid duplicates
+        const newWireMap = new Map<string, Wire>();
+        newWires.forEach((wire: Wire) => {
+          const key = `${wire.fromComponentId}:${wire.fromTerminal}→${wire.toComponentId}:${wire.toTerminal}`;
+          newWireMap.set(key, wire);
+        });
+        
+        // Remove existing wires that conflict with new ones (same connection)
+        const existingWireKeys = new Set(
+          validExistingWires.map(w => `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`)
+        );
+        
+        // Only keep existing wires that don't conflict with new ones
+        const preservedWires = validExistingWires.filter(w => {
+          const key = `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`;
+          return !newWireMap.has(key);
+        });
+        
+        // Combine preserved wires with new wires
+        const mergedWires = [...preservedWires, ...newWires];
+        
+        console.log(`Merged wires: ${preservedWires.length} preserved, ${newWires.length} new, ${mergedWires.length} total`);
+        setWires(mergedWires);
+      } else {
+        // No existing wires or no validation - just set new wires
+        setWires(newWires);
+      }
+      
       toast({
         title: "Wiring Generated",
         description: data.description || "AI has wired your components",
@@ -853,8 +948,32 @@ export default function SchematicDesigner() {
             }
           }
         } else {
+          // Check if this is an inverter AC output wire (to AC panel or AC load)
+          const isInverterACWire = 
+            ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") &&
+             (wire.fromTerminal === "ac-out-hot" || wire.fromTerminal === "ac-out-neutral" || wire.fromTerminal === "ac-out-ground") &&
+             (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) ||
+            ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") &&
+             (wire.toTerminal === "ac-out-hot" || wire.toTerminal === "ac-out-neutral" || wire.toTerminal === "ac-out-ground") &&
+             (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground"));
+          
+          if (isInverterACWire) {
+            const inverterId = fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter"
+              ? fromComp.id
+              : toComp?.id;
+            if (inverterId) {
+              const inverterDC = calculateInverterDCInput(inverterId);
+              if (inverterDC.acLoadWatts > 0) {
+                // Hot and neutral carry the full current, ground carries no current
+                current = (wire.polarity === "hot" || wire.polarity === "neutral")
+                  ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
+                  : 0;
+                voltage = inverterDC.acVoltage; // Use AC voltage (110V/120V/220V/230V)
+              }
+            }
+          }
           // Special handling for solar panels - use Vmp (maximum power voltage) not system voltage
-          if (fromComp?.type === "solar-panel") {
+          else if (fromComp?.type === "solar-panel") {
             const panelWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
             // Solar panels operate at Vmp (maximum power voltage), not system voltage
             // Typical Vmp: 18V for 12V system, 36V for 24V system, 72V for 48V system
@@ -903,6 +1022,39 @@ export default function SchematicDesigner() {
               if (loadWatts > 0 && loadVoltage > 0) {
                 current = loadWatts / loadVoltage;
                 voltage = loadVoltage; // Use load's voltage
+              }
+            } else if (toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral")) {
+              // For wires TO an AC panel (from inverter), calculate from connected AC loads
+              const panelWires = wires.filter(
+                w => (w.fromComponentId === toComp.id || w.toComponentId === toComp.id) &&
+                     w.polarity === "hot" &&
+                     w.id !== wire.id
+              );
+              
+              let totalLoadWatts = 0;
+              let acVoltage = 120; // Default
+              const visitedLoads = new Set<string>();
+              
+              for (const panelWire of panelWires) {
+                const loadCompId = panelWire.fromComponentId === toComp.id 
+                  ? panelWire.toComponentId 
+                  : panelWire.fromComponentId;
+                
+                if (!visitedLoads.has(loadCompId)) {
+                  visitedLoads.add(loadCompId);
+                  const loadComp = components.find(c => c.id === loadCompId);
+                  if (loadComp && loadComp.type === "ac-load") {
+                    const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
+                    totalLoadWatts += loadWatts;
+                    const loadVoltage = loadComp.properties?.acVoltage || loadComp.properties?.voltage || 120;
+                    if (loadVoltage !== 120) acVoltage = loadVoltage;
+                  }
+                }
+              }
+              
+              if (totalLoadWatts > 0) {
+                current = totalLoadWatts / acVoltage;
+                voltage = acVoltage; // Use AC voltage
               }
             } else if (toComp && toComp.type === "dc-panel") {
               // For wires TO a DC panel, trace through to find all connected DC loads
@@ -1390,18 +1542,24 @@ export default function SchematicDesigner() {
     const t1 = wireData.fromTerminal.type;
     const t2 = wireData.toTerminal.type;
 
-    if (t1 === "negative" || t2 === "negative" || t1 === "pv-negative" || t2 === "pv-negative") {
-      polarity = "negative";
-    } else if (t1 === "ground" || t2 === "ground") {
+    // Check for AC wire polarities first (hot, neutral, ground)
+    if (t1.includes("hot") || t2.includes("hot") || t1 === "hot" || t2 === "hot") {
+      polarity = "hot";
+    } else if (t1.includes("neutral") || t2.includes("neutral") || t1 === "neutral" || t2 === "neutral") {
+      polarity = "neutral";
+    } else if (t1.includes("ground") || t2.includes("ground") || t1 === "ground" || t2 === "ground") {
       polarity = "ground";
+    } else if (t1 === "negative" || t2 === "negative" || t1 === "pv-negative" || t2 === "pv-negative") {
+      polarity = "negative";
     } else if (t1 === "ac-in" || t2 === "ac-in" || t1 === "ac-out" || t2 === "ac-out") {
-      // Check for specific AC types if available (hot/neutral)
-      // This is a simplification, ideally we track hot/neutral explicitly
+      // Fallback for generic AC terminals - check for specific types
       if (wireData.fromTerminal.id.includes("neutral") || wireData.toTerminal.id.includes("neutral")) {
         polarity = "neutral";
+      } else if (wireData.fromTerminal.id.includes("ground") || wireData.toTerminal.id.includes("ground")) {
+        polarity = "ground";
       } else {
-        // Default to positive color for Hot lines if not explicitly neutral/ground
-        polarity = "positive";
+        // Default to hot for AC if not explicitly neutral/ground
+        polarity = "hot";
       }
     }
 

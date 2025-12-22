@@ -412,7 +412,9 @@ JSON RESPONSE FORMAT:
     {"id": "load-2", "type": "ac-load", "name": "Microwave", "x": 750, "y": 400, "properties": {"watts": 1200}}
   ],
   "wires": [
-    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5},
+    {"fromComponentId": "inverter-1", "toComponentId": "ac-panel-1", "fromTerminal": "ac-out-hot", "toTerminal": "main-in-hot", "polarity": "hot", "gauge": "10 AWG", "length": 10},
+    {"fromComponentId": "ac-panel-1", "toComponentId": "ac-load-1", "fromTerminal": "load-1-hot", "toTerminal": "hot", "polarity": "hot", "gauge": "10 AWG", "length": 5}
   ],
   "description": "System description",
   "recommendations": ["Install tip 1", "Install tip 2"]
@@ -489,20 +491,262 @@ JSON RESPONSE FORMAT:
     const clientIP = getClientIP(req);
     
     try {
-      const { components, systemVoltage = 12 } = req.body;
+      const { 
+        components, 
+        wires = [],
+        systemVoltage = 12,
+        validationFeedback = null,
+        wireCalculationIssues = [],
+        maxIterations = 3,
+        minQualityScore = 70
+      } = req.body;
 
       if (!components || !Array.isArray(components) || components.length === 0) {
         return res.status(400).json({ error: "Components array is required" });
       }
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      let bestWires: any[] = [];
+      let bestScore = 0;
+      let bestValidation: any = null;
+      const iterationHistory: any[] = [];
+      const existingWires = wires.length > 0 ? wires : [];
+
+      // Iterative improvement loop
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        console.log(`\n=== AI Wire Iteration ${iteration + 1}/${maxIterations} ===`);
+
+        // If there are existing wires, validate them to get current issues
+        let currentValidation = null;
+        const wiresToValidate = iteration === 0 ? existingWires : bestWires;
+        
+        if (wiresToValidate.length > 0) {
+          try {
+            currentValidation = validateDesign(components, wiresToValidate, systemVoltage);
+          } catch (error) {
+            console.error("Validation error during AI wire generation:", error);
+          }
+        }
+
+        // Combine validation feedback from client and server
+        const allValidationErrors = [
+          ...(iteration === 0 ? (validationFeedback?.errors || []) : []),
+          ...(currentValidation?.issues.filter((i: any) => i.severity === "error") || [])
+        ];
+        const allValidationWarnings = [
+          ...(iteration === 0 ? (validationFeedback?.warnings || []) : []),
+          ...(currentValidation?.issues.filter((i: any) => i.severity === "warning") || [])
+        ];
+
+        // Calculate wire sizing issues for current wires (always calculate, not just after first iteration)
+        const currentWireCalculationIssues: any[] = [];
+        const wiresToCalculateForIssues = iteration === 0 ? existingWires : (bestWires.length > 0 ? bestWires : []);
+        
+        if (wiresToCalculateForIssues.length > 0) {
+          for (const wire of wiresToCalculateForIssues) {
+            try {
+              const fromComp = components.find((c: any) => c.id === wire.fromComponentId);
+              const toComp = components.find((c: any) => c.id === wire.toComponentId);
+              
+              let current = wire.current || 0;
+              const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
+                               toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
+                               toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
+                               toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
+                               toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
+                               toComp?.type === "inverter" || fromComp?.type === "inverter";
+              
+              let voltage = isACWire ? getACVoltage(toComp || fromComp) : systemVoltage;
+              if (!isACWire && fromComp?.properties?.voltage) {
+                voltage = fromComp.properties.voltage;
+              } else if (!isACWire && toComp?.properties?.voltage) {
+                voltage = toComp.properties.voltage;
+              }
+              
+              // Calculate current from load if not set
+              if (current === 0) {
+                if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
+                  const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+                  const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
+                  if (loadWatts > 0 && loadVoltage > 0) {
+                    current = loadWatts / loadVoltage;
+                  }
+                } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
+                  const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
+                  const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
+                  if (loadWatts > 0 && loadVoltage > 0) {
+                    current = loadWatts / loadVoltage;
+                  }
+                } else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger") {
+                  // For MPPT/charger output wires, use their output current
+                  current = fromComp.type === "mppt"
+                    ? (fromComp.properties?.maxCurrent || fromComp.properties?.amps || 0) as number
+                    : (fromComp.properties?.amps || fromComp.properties?.current || 0) as number;
+                } else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") {
+                  // For inverter AC output wires
+                  if (isACWire && (wire.polarity === "hot" || wire.polarity === "neutral")) {
+                    const inverterDC = calculateInverterDCInput(fromComp.id, components, wiresToCalculateForIssues, systemVoltage);
+                    if (inverterDC.acLoadWatts > 0) {
+                      current = inverterDC.acLoadWatts / inverterDC.acVoltage;
+                    }
+                  }
+                }
+              }
+              
+              if (current > 0 && wire.length) {
+                const calc = calculateWireSize({
+                  current,
+                  length: wire.length,
+                  voltage,
+                  conductorMaterial: (wire as any).conductorMaterial || "copper",
+                  currentGauge: wire.gauge,
+                });
+                
+                // Include all wires with issues: errors, warnings, or gauge mismatches
+                if (calc.status === "error" || calc.status === "warning" || calc.recommendedGauge !== wire.gauge || calc.voltageDropPercent > 3) {
+                  currentWireCalculationIssues.push({
+                    wireId: wire.id,
+                    fromComponentId: wire.fromComponentId,
+                    toComponentId: wire.toComponentId,
+                    issue: calc.message || `${calc.status}: Wire sizing issue`,
+                    currentGauge: wire.gauge,
+                    recommendedGauge: calc.recommendedGauge,
+                    current,
+                    voltageDrop: calc.voltageDropPercent,
+                    status: calc.status,
+                  });
+                }
+              } else if (current === 0 && wire.polarity !== "ground") {
+                // Warn about wires with no current detected
+                currentWireCalculationIssues.push({
+                  wireId: wire.id,
+                  fromComponentId: wire.fromComponentId,
+                  toComponentId: wire.toComponentId,
+                  issue: "Cannot determine current for wire - gauge validation skipped",
+                  currentGauge: wire.gauge,
+                  recommendedGauge: null,
+                  current: 0,
+                  voltageDrop: null,
+                  status: "warning",
+                });
+              }
+            } catch (err) {
+              // Skip wires that can't be calculated
+            }
+          }
+        }
+
+        // Combine wire calculation issues
+        const allWireCalculationIssues = iteration === 0 
+          ? wireCalculationIssues 
+          : currentWireCalculationIssues;
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        // Build iteration feedback if not first iteration
+        let iterationFeedback = "";
+        if (iteration > 0 && currentValidation) {
+          // Separate wire-related issues from other issues
+          const wireErrors = allValidationErrors.filter((e: any) => 
+            e.category === "wire-sizing" || e.wireId || e.wireIds
+          );
+          const wireWarnings = allValidationWarnings.filter((w: any) => 
+            w.category === "wire-sizing" || w.wireId || w.wireIds
+          );
+          const nonWireErrors = allValidationErrors.filter((e: any) => 
+            e.category !== "wire-sizing" && !e.wireId && !e.wireIds
+          );
+          const nonWireWarnings = allValidationWarnings.filter((w: any) => 
+            w.category !== "wire-sizing" && !w.wireId && !w.wireIds
+          );
+          
+          const wireSizingIssues = allWireCalculationIssues.map((issue: any) => 
+            `Wire ${issue.fromComponentId} → ${issue.toComponentId}: ${issue.issue}${issue.currentGauge ? ` (Current: ${issue.currentGauge})` : ""}${issue.recommendedGauge ? ` (Recommended: ${issue.recommendedGauge})` : ""}${issue.current ? ` (Current: ${issue.current}A)` : ""}${issue.voltageDrop ? ` (Voltage Drop: ${issue.voltageDrop.toFixed(2)}%)` : ""}`
+          ).join("\n");
+          
+          iterationFeedback = `
+
+PREVIOUS ITERATION FEEDBACK (Iteration ${iteration}, Score: ${currentValidation.score}/100):
+
+${wireErrors.length > 0 ? `WIRE ERRORS (MUST FIX):
+${wireErrors.map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}${e.componentIds ? ` (Components: ${e.componentIds.join(", ")})` : ""}${e.wireId ? ` (Wire ID: ${e.wireId})` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
+` : ""}
+${wireWarnings.length > 0 ? `WIRE WARNINGS (MUST FIX):
+${wireWarnings.map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}${w.componentIds ? ` (Components: ${w.componentIds.join(", ")})` : ""}${w.wireId ? ` (Wire ID: ${w.wireId})` : ""}${w.wireIds ? ` (Wire IDs: ${w.wireIds.join(", ")})` : ""}`).join("\n")}
+` : ""}
+${wireSizingIssues ? `WIRE CALCULATION ISSUES (MUST FIX):
+${wireSizingIssues}
+` : ""}
+${nonWireErrors.length > 0 ? `OTHER ERRORS:
+${nonWireErrors.map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}`).join("\n")}
+` : ""}
+${nonWireWarnings.length > 0 ? `OTHER WARNINGS:
+${nonWireWarnings.map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}`).join("\n")}
+` : ""}
+
+CRITICAL: You MUST fix ALL wire errors and wire warnings. Use the recommended wire gauges from wire calculation issues. Update wire gauges based on calculated current and voltage drop requirements.`;
+        }
+
+        // Build validation feedback section for AI prompt (first iteration only)
+        let validationSection = "";
+        if (iteration === 0 && (allValidationErrors.length > 0 || allValidationWarnings.length > 0 || allWireCalculationIssues.length > 0)) {
+          // Separate wire-related issues
+          const wireErrors = allValidationErrors.filter((e: any) => 
+            e.category === "wire-sizing" || e.wireId || e.wireIds
+          );
+          const wireWarnings = allValidationWarnings.filter((w: any) => 
+            w.category === "wire-sizing" || w.wireId || w.wireIds
+          );
+          
+          validationSection = `
+
+CURRENT DESIGN VALIDATION FEEDBACK (CRITICAL - FIX THESE ISSUES):
+
+${wireErrors.length > 0 ? `WIRE ERRORS (MUST FIX):
+${wireErrors.map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}${e.componentIds ? ` (Components: ${e.componentIds.join(", ")})` : ""}${e.wireId ? ` (Wire ID: ${e.wireId})` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
+` : ""}
+
+${wireWarnings.length > 0 ? `WIRE WARNINGS (MUST FIX):
+${wireWarnings.map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}${w.componentIds ? ` (Components: ${w.componentIds.join(", ")})` : ""}${w.wireId ? ` (Wire ID: ${w.wireId})` : ""}${w.wireIds ? ` (Wire IDs: ${w.wireIds.join(", ")})` : ""}`).join("\n")}
+` : ""}
+
+${allWireCalculationIssues.length > 0 ? `WIRE CALCULATION ISSUES (MUST FIX):
+${allWireCalculationIssues.map((issue: any, i: number) => `${i + 1}. Wire ${issue.fromComponentId} → ${issue.toComponentId}: ${issue.issue}${issue.currentGauge ? ` (Current: ${issue.currentGauge})` : ""}${issue.recommendedGauge ? ` (Recommended: ${issue.recommendedGauge})` : ""}${issue.current ? ` (Current: ${issue.current}A)` : ""}${issue.voltageDrop ? ` (Voltage Drop: ${issue.voltageDrop.toFixed(2)}%)` : ""}`).join("\n")}
+` : ""}
+
+${allValidationErrors.filter((e: any) => e.category !== "wire-sizing" && !e.wireId && !e.wireIds).length > 0 ? `OTHER ERRORS:
+${allValidationErrors.filter((e: any) => e.category !== "wire-sizing" && !e.wireId && !e.wireIds).map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}`).join("\n")}
+` : ""}
+
+${allValidationWarnings.filter((w: any) => w.category !== "wire-sizing" && !w.wireId && !w.wireIds).length > 0 ? `OTHER WARNINGS:
+${allValidationWarnings.filter((w: any) => w.category !== "wire-sizing" && !w.wireId && !w.wireIds).map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}`).join("\n")}
+` : ""}
+
+${currentValidation ? `Current Design Quality Score: ${currentValidation.score}/100` : ""}
+
+CRITICAL: Your generated wires MUST fix ALL wire errors and wire warnings. Pay special attention to:
+- Wire gauge sizing (use recommended gauges from wire calculation issues)
+- Wire current calculations (ensure all wires have proper current values)
+- Voltage drop requirements (keep voltage drop under 3% per ABYC)
+- Terminal connection correctness
+- Electrical safety rules (fuses, SmartShunt placement, etc.)
+
+`;
+        }
 
       const completion = await openai.chat.completions.create({
         model: "gpt-5.1-chat-latest",
         messages: [
           {
             role: "system",
-            content: `You are an expert Victron electrical system designer. Your task is to create ONLY the wire connections for a set of components that a user has already placed on a canvas.
+            content: `You are an expert Victron electrical system designer. Your task is to create wire connections for a set of components that a user has already placed on a canvas.
+
+CRITICAL INSTRUCTION: If the user provides existing wires, you MUST preserve ALL existing wires that are correct. Only generate NEW wires for:
+1. Missing connections that are needed
+2. Wires that have errors (you'll see these in the validation feedback)
+3. Wires that need to be fixed based on validation warnings
+
+DO NOT regenerate wires that are already correct and have no errors. Preserve the existing wire structure and only add/fix what's needed.${validationSection}${iterationFeedback}
 
 COMPONENT TERMINALS (EXACT NAMES):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
@@ -558,9 +802,10 @@ CRITICAL WIRING RULES:
 6. Data connections: BMV/SmartShunt to Cerbo via data terminals
 7. AC Load Connections (MANDATORY - ALL THREE WIRES):
    - EVERY ac-load MUST have THREE wire connections: hot, neutral, AND ground
-   - Hot wire: From inverter "ac-out-hot" or panel "load-X-hot" to ac-load "hot"
-   - Neutral wire: From inverter "ac-out-neutral" or panel "load-X-neutral" to ac-load "neutral"
-   - Ground wire: From inverter "ac-out-ground" or panel "load-X-ground" to ac-load "ground"
+   - Hot wire: From inverter "ac-out-hot" or panel "load-X-hot" to ac-load "hot" → polarity MUST be "hot"
+   - Neutral wire: From inverter "ac-out-neutral" or panel "load-X-neutral" to ac-load "neutral" → polarity MUST be "neutral"
+   - Ground wire: From inverter "ac-out-ground" or panel "load-X-ground" to ac-load "ground" → polarity MUST be "ground"
+   - CRITICAL: The polarity field MUST match the terminal type (hot/neutral/ground), NOT "positive" or "negative"
 
 DEVICE KNOWLEDGE BASE (STRICTLY FOLLOW THESE RULES):
 ${Object.values(DEVICE_DEFINITIONS).map(d => `
@@ -604,24 +849,147 @@ Calculate wire length using logical defaults based on component types (canvas is
 JSON RESPONSE FORMAT:
 {
   "wires": [
-    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5},
+    {"fromComponentId": "inverter-1", "toComponentId": "ac-panel-1", "fromTerminal": "ac-out-hot", "toTerminal": "main-in-hot", "polarity": "hot", "gauge": "10 AWG", "length": 10},
+    {"fromComponentId": "ac-panel-1", "toComponentId": "ac-load-1", "fromTerminal": "load-1-hot", "toTerminal": "hot", "polarity": "hot", "gauge": "10 AWG", "length": 5},
+    {"fromComponentId": "ac-panel-1", "toComponentId": "ac-load-1", "fromTerminal": "load-1-neutral", "toTerminal": "neutral", "polarity": "neutral", "gauge": "10 AWG", "length": 5},
+    {"fromComponentId": "ac-panel-1", "toComponentId": "ac-load-1", "fromTerminal": "load-1-ground", "toTerminal": "ground", "polarity": "ground", "gauge": "10 AWG", "length": 5}
   ],
   "description": "Brief description of the wiring strategy",
   "recommendations": ["Wiring tip 1", "Wiring tip 2"]
-}`,
+}
+
+CRITICAL: For AC wires, the polarity field MUST match the terminal type:
+- Terminal ends with "-hot" or contains "hot" → polarity: "hot"
+- Terminal ends with "-neutral" or contains "neutral" → polarity: "neutral"  
+- Terminal ends with "-ground" or contains "ground" → polarity: "ground"
+- Terminal is "positive" or "negative" → polarity: "positive" or "negative" (for DC)`,
           },
           {
             role: "user",
-            content: `Create wiring connections for these ${systemVoltage}V components: ${JSON.stringify(components)}`,
+            content: `Create wiring connections for these ${systemVoltage}V components: ${JSON.stringify(components)}${wires.length > 0 ? `\n\nExisting wires (review and improve if needed): ${JSON.stringify(wires)}` : ""}`,
           },
         ],
         response_format: { type: "json_object" },
       });
 
-      const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
+        const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
 
-      console.log("AI Wire Generation Response:", JSON.stringify(response, null, 2));
-      console.log("Generated wires count:", response.wires?.length || 0);
+        console.log(`AI Wire Generation Response (Iteration ${iteration + 1}):`, JSON.stringify(response, null, 2));
+        console.log(`Generated wires count: ${response.wires?.length || 0}`);
+
+        // Post-process wires to ensure polarity matches terminal names (fix any missing/mismatched polarities)
+        if (response.wires && Array.isArray(response.wires)) {
+          response.wires = response.wires.map((wire: any) => {
+            // If polarity is missing or doesn't match terminal type, infer from terminal names
+            const fromTerm = wire.fromTerminal || "";
+            const toTerm = wire.toTerminal || "";
+            
+            // Check for AC wire indicators in terminal names
+            if (fromTerm.includes("hot") || toTerm.includes("hot") || fromTerm === "hot" || toTerm === "hot") {
+              if (!wire.polarity || wire.polarity === "positive" || wire.polarity === "negative") {
+                wire.polarity = "hot";
+              }
+            } else if (fromTerm.includes("neutral") || toTerm.includes("neutral") || fromTerm === "neutral" || toTerm === "neutral") {
+              if (!wire.polarity || wire.polarity === "positive" || wire.polarity === "negative") {
+                wire.polarity = "neutral";
+              }
+            } else if (fromTerm.includes("ground") || toTerm.includes("ground") || fromTerm === "ground" || toTerm === "ground") {
+              if (!wire.polarity || wire.polarity === "positive" || wire.polarity === "negative") {
+                wire.polarity = "ground";
+              }
+            } else if (!wire.polarity) {
+              // Default to positive for DC wires if polarity is missing
+              if (fromTerm.includes("negative") || toTerm.includes("negative") || fromTerm === "negative" || toTerm === "negative") {
+                wire.polarity = "negative";
+              } else {
+                wire.polarity = "positive";
+              }
+            }
+            
+            return wire;
+          });
+        }
+
+        // Merge with existing wires (preserve valid ones)
+        let mergedWires: any[] = [];
+        if (iteration === 0 && existingWires.length > 0) {
+          // First iteration: merge AI wires with existing wires
+          const newWireMap = new Map<string, any>();
+          (response.wires || []).forEach((wire: any) => {
+            const key = `${wire.fromComponentId}:${wire.fromTerminal}→${wire.toComponentId}:${wire.toTerminal}`;
+            newWireMap.set(key, wire);
+          });
+          
+          // Keep existing wires that don't conflict with new ones
+          const existingWireKeys = new Set(
+            existingWires.map((w: any) => `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`)
+          );
+          
+          const preservedWires = existingWires.filter((w: any) => {
+            const key = `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`;
+            return !newWireMap.has(key);
+          });
+          
+          mergedWires = [...preservedWires, ...(response.wires || [])];
+        } else {
+          // Subsequent iterations: use AI-generated wires
+          mergedWires = response.wires || [];
+        }
+
+        // Validate the merged wires
+        let validation = validateDesign(components, mergedWires, systemVoltage);
+        const score = validation.score;
+        
+        console.log(`Iteration ${iteration + 1} validation score: ${score}/100`);
+        console.log(`Errors: ${validation.issues.filter((i: any) => i.severity === "error").length}, Warnings: ${validation.issues.filter((i: any) => i.severity === "warning").length}`);
+
+        iterationHistory.push({
+          iteration: iteration + 1,
+          score,
+          errorCount: validation.issues.filter((i: any) => i.severity === "error").length,
+          warningCount: validation.issues.filter((i: any) => i.severity === "warning").length,
+          wireCount: mergedWires.length,
+        });
+
+        // Keep track of best result
+        if (score > bestScore || (score === bestScore && mergedWires.length > bestWires.length)) {
+          bestScore = score;
+          bestWires = mergedWires;
+          bestValidation = validation;
+        }
+
+        // Check for wire-related errors and warnings
+        const wireErrors = validation.issues.filter((i: any) => 
+          i.severity === "error" && 
+          (i.category === "wire-sizing" || i.wireId || i.wireIds)
+        );
+        const wireWarnings = validation.issues.filter((i: any) => 
+          i.severity === "warning" && 
+          (i.category === "wire-sizing" || i.wireId || i.wireIds)
+        );
+        
+        // If we've achieved the minimum quality score, no errors, AND no wire-related warnings, we're done
+        if (score >= minQualityScore && 
+            validation.issues.filter((i: any) => i.severity === "error").length === 0 &&
+            wireWarnings.length === 0 &&
+            allWireCalculationIssues.length === 0) {
+          console.log(`Achieved target quality score (${score} >= ${minQualityScore}) with no errors and no wire warnings. Stopping iterations.`);
+          break;
+        }
+        
+        // If we have wire errors or warnings, we should continue iterating
+        if (wireErrors.length > 0 || wireWarnings.length > 0 || allWireCalculationIssues.length > 0) {
+          console.log(`Wire issues found: ${wireErrors.length} errors, ${wireWarnings.length} warnings, ${allWireCalculationIssues.length} calculation issues. Continuing iteration.`);
+        }
+
+        // If this is the last iteration, use best result
+        if (iteration === maxIterations - 1) {
+          console.log(`Reached max iterations. Using best result (score: ${bestScore})`);
+          mergedWires = bestWires;
+          validation = bestValidation!;
+        }
+      }
 
       // Log to observability
       await observabilityStorage.logAIRequest({
@@ -634,17 +1002,32 @@ JSON RESPONSE FORMAT:
         systemVoltage,
         success: true,
         durationMs: Date.now() - startTime,
+        iterations: iterationHistory.length,
+        qualityScore: Math.round(bestScore), // Round to integer for database
         componentCount: components.length,
-        wireCount: response.wires?.length || 0,
+        wireCount: bestWires.length,
         model: "gpt-5.1-chat-latest",
         response: {
-          wires: response.wires,
-          description: response.description,
-          recommendations: response.recommendations,
+          wires: bestWires,
+          description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
+          recommendations: [],
         },
+        validationFeedback: {
+          score: bestScore,
+          errors: bestValidation?.issues.filter((i: any) => i.severity === "error").map((i: any) => i.message) || [],
+          warnings: bestValidation?.issues.filter((i: any) => i.severity === "warning").map((i: any) => i.message) || [],
+        },
+        iterationHistory,
       });
 
-      res.json(response);
+      res.json({
+        wires: bestWires,
+        description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
+        recommendations: [],
+        iterations: iterationHistory.length,
+        qualityScore: bestScore,
+        validation: bestValidation,
+      });
     } catch (error: any) {
       console.error("AI wire generation error:", error);
       
@@ -978,7 +1361,9 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
     {"id": "load-ac-1", "type": "ac-load", "name": "Microwave", "x": 750, "y": 400, "properties": {"watts": 1200}}
   ],
   "wires": [
-    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5},
+    {"fromComponentId": "inverter-1", "toComponentId": "ac-panel-1", "fromTerminal": "ac-out-hot", "toTerminal": "main-in-hot", "polarity": "hot", "gauge": "10 AWG", "length": 10},
+    {"fromComponentId": "ac-panel-1", "toComponentId": "ac-load-1", "fromTerminal": "load-1-hot", "toTerminal": "hot", "polarity": "hot", "gauge": "10 AWG", "length": 5}
   ],
   "description": "Brief system description",
   "recommendations": ["recommendation 1", "recommendation 2"]
@@ -1413,7 +1798,9 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
     {"id": "load-ac-1", "type": "ac-load", "name": "Microwave", "x": 750, "y": 400, "properties": {"watts": 1200}}
   ],
   "wires": [
-    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5}
+    {"fromComponentId": "battery-1", "toComponentId": "mppt-1", "fromTerminal": "positive", "toTerminal": "batt-positive", "polarity": "positive", "gauge": "10 AWG", "length": 5},
+    {"fromComponentId": "inverter-1", "toComponentId": "ac-panel-1", "fromTerminal": "ac-out-hot", "toTerminal": "main-in-hot", "polarity": "hot", "gauge": "10 AWG", "length": 10},
+    {"fromComponentId": "ac-panel-1", "toComponentId": "ac-load-1", "fromTerminal": "load-1-hot", "toTerminal": "hot", "polarity": "hot", "gauge": "10 AWG", "length": 5}
   ],
   "description": "Brief system description",
   "recommendations": ["recommendation 1", "recommendation 2"]
@@ -1723,7 +2110,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
             success: true,
             durationMs: Date.now() - startTime,
             iterations: iteration + 1,
-            qualityScore: validation.score,
+            qualityScore: Math.round(validation.score), // Round to integer for database
             componentCount: bestDesign.components?.length || 0,
             wireCount: bestDesign.wires?.length || 0,
             model: "gpt-5.1-chat-latest",

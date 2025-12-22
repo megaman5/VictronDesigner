@@ -732,6 +732,8 @@ export function SchematicCanvas({
               switch: { width: 80, height: 80 },
               'ac-panel': { width: 180, height: 220 },
               'dc-panel': { width: 160, height: 240 },
+              'shore-power': { width: 140, height: 100 },
+              'transfer-switch': { width: 180, height: 140 },
             };
 
             const obstacles: Obstacle[] = components.map(comp => {
@@ -747,37 +749,34 @@ export function SchematicCanvas({
             // Track occupied nodes for wire separation
             const occupiedNodes = new Set<string>();
 
-            return wires.map((wire, wireIndex) => {
-              // Get terminal positions instead of component centers
+            // First pass: calculate all wire routes and store label positions
+            interface WireRouteData {
+              wire: Wire;
+              path: string;
+              labelX: number;
+              labelY: number;
+              labelRotation: number;
+              pathPoints: Array<{ x: number; y: number }>;
+            }
+
+            const wireRoutes: WireRouteData[] = [];
+
+            wires.forEach((wire) => {
               const fromComp = components.find(c => c.id === wire.fromComponentId);
               const toComp = components.find(c => c.id === wire.toComponentId);
 
-              if (!fromComp || !toComp) {
-                console.warn('Wire skipped - missing component:', {
-                  wireId: wire.id,
-                  fromId: wire.fromComponentId,
-                  toId: wire.toComponentId,
-                  foundFrom: !!fromComp,
-                  foundTo: !!toComp,
-                  availableComponentIds: components.map(c => c.id)
-                });
-                return null;
-              }
+              if (!fromComp || !toComp) return;
 
-              // Use preview position if component is being dragged
               const fromCompX = (draggedComponentId === fromComp.id && dragPreviewPos) ? dragPreviewPos.x : fromComp.x;
               const fromCompY = (draggedComponentId === fromComp.id && dragPreviewPos) ? dragPreviewPos.y : fromComp.y;
               const toCompX = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.x : toComp.x;
               const toCompY = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.y : toComp.y;
 
-              // Try to get terminal positions, fall back to component centers
               let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, wire.fromTerminal);
               let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, wire.toTerminal);
 
-              // If either terminal position is null, use component centers as fallback
               if (!fromPos) {
                 if (draggedComponentId === fromComp.id && dragPreviewPos) {
-                  // Use preview position for dragged component
                   const config = TERMINAL_CONFIGS[fromComp.type];
                   const centerX = dragPreviewPos.x + (config?.width || 120) / 2;
                   const centerY = dragPreviewPos.y + (config?.height || 100) / 2;
@@ -789,7 +788,6 @@ export function SchematicCanvas({
               }
               if (!toPos) {
                 if (draggedComponentId === toComp.id && dragPreviewPos) {
-                  // Use preview position for dragged component
                   const config = TERMINAL_CONFIGS[toComp.type];
                   const centerX = dragPreviewPos.x + (config?.width || 120) / 2;
                   const centerY = dragPreviewPos.y + (config?.height || 100) / 2;
@@ -800,7 +798,6 @@ export function SchematicCanvas({
                 }
               }
 
-              // Override endpoint position if this wire is being dragged
               if (draggedWireEndpoint?.wireId === wire.id && draggedEndpointPos) {
                 if (draggedWireEndpoint.endpoint === 'from') {
                   fromPos = { ...draggedEndpointPos };
@@ -809,18 +806,13 @@ export function SchematicCanvas({
                 }
               }
 
-              // Use A* router with obstacles
-              // Get terminal orientations
               const fromOrientation = getTerminalOrientation(fromComp.type, wire.fromTerminal);
               const toOrientation = getTerminalOrientation(toComp.type, wire.toTerminal);
 
-              // Apply dynamic offsets for multiple connections
               const fromKey = `${wire.fromComponentId}-${wire.fromTerminal}`;
               const toKey = `${wire.toComponentId}-${wire.toTerminal}`;
-
               const fromWires = terminalUsage.get(fromKey) || [];
               const toWires = terminalUsage.get(toKey) || [];
-
               const fromIndex = fromWires.indexOf(wire.id);
               const toIndex = toWires.indexOf(wire.id);
 
@@ -847,48 +839,286 @@ export function SchematicCanvas({
                 }
               }
 
-              // Extend wire paths well into terminal positions to ensure proper connection
-              // This prevents gaps when exporting to PNG (html2canvas can have sub-pixel rendering issues)
-              // Terminals have white strokes (2-3px) and radius 7-10px, so we need to extend past the stroke
-              // Orientation is the EXIT direction, so to extend INTO the terminal, we go OPPOSITE direction
-              const extendDistance = 10; // pixels to extend into terminal (past the white stroke)
+              const extendDistance = 10;
               let extendedFromPos = { ...fromPos };
               let extendedToPos = { ...toPos };
               
               if (fromOrientation) {
-                // Extend OPPOSITE to orientation direction (into the terminal center, past the white stroke)
-                if (fromOrientation === 'left') extendedFromPos.x += extendDistance; // Go right (into terminal)
-                else if (fromOrientation === 'right') extendedFromPos.x -= extendDistance; // Go left (into terminal)
-                else if (fromOrientation === 'top') extendedFromPos.y += extendDistance; // Go down (into terminal)
-                else if (fromOrientation === 'bottom') extendedFromPos.y -= extendDistance; // Go up (into terminal)
+                if (fromOrientation === 'left') extendedFromPos.x += extendDistance;
+                else if (fromOrientation === 'right') extendedFromPos.x -= extendDistance;
+                else if (fromOrientation === 'top') extendedFromPos.y += extendDistance;
+                else if (fromOrientation === 'bottom') extendedFromPos.y -= extendDistance;
               }
               
               if (toOrientation) {
-                // Extend OPPOSITE to orientation direction (into the terminal center, past the white stroke)
-                if (toOrientation === 'left') extendedToPos.x += extendDistance; // Go right (into terminal)
-                else if (toOrientation === 'right') extendedToPos.x -= extendDistance; // Go left (into terminal)
-                else if (toOrientation === 'top') extendedToPos.y += extendDistance; // Go down (into terminal)
-                else if (toOrientation === 'bottom') extendedToPos.y -= extendDistance; // Go up (into terminal)
+                if (toOrientation === 'left') extendedToPos.x += extendDistance;
+                else if (toOrientation === 'right') extendedToPos.x -= extendDistance;
+                else if (toOrientation === 'top') extendedToPos.y += extendDistance;
+                else if (toOrientation === 'bottom') extendedToPos.y -= extendDistance;
               }
 
               const result = calculateRoute(
                 extendedFromPos.x, extendedFromPos.y,
                 extendedToPos.x, extendedToPos.y,
                 obstacles,
-                2400, // canvas width
-                1600, // canvas height
+                2400,
+                1600,
                 occupiedNodes,
                 fromOrientation || undefined,
                 toOrientation || undefined
               );
 
-              // Add this wire's path to occupied nodes for next wires
               result.pathNodes.forEach(node => occupiedNodes.add(node));
 
-              const path = result.path;
-              const labelX = result.labelX;
-              const labelY = result.labelY;
-              const labelRotation = result.labelRotation;
+              wireRoutes.push({
+                wire,
+                path: result.path,
+                labelX: result.labelX,
+                labelY: result.labelY,
+                labelRotation: result.labelRotation,
+                pathPoints: result.pathPoints || [],
+              });
+            });
+
+            // Detect and resolve label overlaps
+            const LABEL_WIDTH = 90; // Max label width
+            const LABEL_HEIGHT = 24;
+            const MIN_LABEL_SPACING = 50; // Minimum distance between labels
+
+            function labelsOverlap(
+              x1: number, y1: number, rot1: number,
+              x2: number, y2: number, rot2: number
+            ): boolean {
+              // Transform label bounds to world coordinates
+              const getLabelBounds = (x: number, y: number, rotation: number) => {
+                const w = LABEL_WIDTH / 2;
+                const h = LABEL_HEIGHT / 2;
+                const rad = (rotation * Math.PI) / 180;
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+                
+                // Rotate corners around center
+                const corners = [
+                  { x: -w, y: -h },
+                  { x: w, y: -h },
+                  { x: w, y: h },
+                  { x: -w, y: h },
+                ].map(c => ({
+                  x: x + c.x * cos - c.y * sin,
+                  y: y + c.x * sin + c.y * cos,
+                }));
+
+                const xs = corners.map(c => c.x);
+                const ys = corners.map(c => c.y);
+                return {
+                  minX: Math.min(...xs),
+                  maxX: Math.max(...xs),
+                  minY: Math.min(...ys),
+                  maxY: Math.max(...ys),
+                };
+              };
+
+              const bounds1 = getLabelBounds(x1, y1, rot1);
+              const bounds2 = getLabelBounds(x2, y2, rot2);
+
+              return !(
+                bounds1.maxX < bounds2.minX ||
+                bounds1.minX > bounds2.maxX ||
+                bounds1.maxY < bounds2.minY ||
+                bounds1.minY > bounds2.maxY
+              );
+            }
+
+            // Check if a label position overlaps with any other label
+            function overlapsWithAny(
+              x: number, y: number, rot: number,
+              excludeIndex: number,
+              routes: WireRouteData[]
+            ): boolean {
+              for (let i = 0; i < routes.length; i++) {
+                if (i === excludeIndex) continue;
+                if (labelsOverlap(x, y, rot, routes[i].labelX, routes[i].labelY, routes[i].labelRotation)) {
+                  return true;
+                }
+              }
+              return false;
+            }
+
+            // Adjust overlapping labels by sliding them along their paths
+            // Use multiple passes to handle cascading overlaps
+            const MAX_PASSES = 5;
+            for (let pass = 0; pass < MAX_PASSES; pass++) {
+              let anyOverlaps = false;
+              
+              for (let i = 0; i < wireRoutes.length; i++) {
+                // Check if this label overlaps with any other label
+                if (overlapsWithAny(
+                  wireRoutes[i].labelX,
+                  wireRoutes[i].labelY,
+                  wireRoutes[i].labelRotation,
+                  i,
+                  wireRoutes
+                )) {
+                  anyOverlaps = true;
+                  
+                  // Try to adjust this label's position along its path
+                  if (wireRoutes[i].pathPoints.length >= 2) {
+                    const adjusted = adjustLabelPosition(
+                      wireRoutes[i].pathPoints,
+                      wireRoutes[i].labelRotation,
+                      i,
+                      wireRoutes
+                    );
+                    if (adjusted) {
+                      wireRoutes[i].labelX = adjusted.x;
+                      wireRoutes[i].labelY = adjusted.y;
+                      wireRoutes[i].labelRotation = adjusted.rotation;
+                    }
+                  }
+                }
+              }
+              
+              // If no overlaps found, we're done
+              if (!anyOverlaps) break;
+            }
+
+            // Helper function to find a non-overlapping position along a path
+            function adjustLabelPosition(
+              pathPoints: Array<{ x: number; y: number }>,
+              currentRotation: number,
+              routeIndex: number,
+              allRoutes: WireRouteData[]
+            ): { x: number; y: number; rotation: number } | null {
+              if (pathPoints.length < 2) return null;
+
+              // Calculate path midpoint distance
+              let totalPathLength = 0;
+              for (let i = 1; i < pathPoints.length; i++) {
+                totalPathLength += Math.hypot(
+                  pathPoints[i].x - pathPoints[i - 1].x,
+                  pathPoints[i].y - pathPoints[i - 1].y
+                );
+              }
+              
+              const midpointIndex = Math.floor(pathPoints.length / 2);
+              let midpointDistance = 0;
+              for (let k = 1; k <= midpointIndex; k++) {
+                if (k < pathPoints.length) {
+                  midpointDistance += Math.hypot(
+                    pathPoints[k].x - pathPoints[k - 1].x,
+                    pathPoints[k].y - pathPoints[k - 1].y
+                  );
+                }
+              }
+
+              // Try positions at different distances along the path
+              const stepSize = 30; // Try every 30px along the path
+              const maxOffset = Math.min(150, totalPathLength * 0.3); // Max 30% of path length or 150px
+
+              for (let offset = stepSize; offset <= maxOffset; offset += stepSize) {
+                // Try both directions
+                for (const direction of [-1, 1]) {
+                  const targetDistance = midpointDistance + (offset * direction);
+                  
+                  // Find position along path at targetDistance
+                  let accumulatedDistance = 0;
+                  
+                  for (let i = 1; i < pathPoints.length; i++) {
+                    const p1 = pathPoints[i - 1];
+                    const p2 = pathPoints[i];
+                    const segLength = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                    const segStart = accumulatedDistance;
+                    const segEnd = accumulatedDistance + segLength;
+
+                    if (targetDistance >= segStart && targetDistance <= segEnd) {
+                      const t = (targetDistance - segStart) / segLength;
+                      const x = p1.x + (p2.x - p1.x) * t;
+                      const y = p1.y + (p2.y - p1.y) * t;
+                      
+                      // Determine rotation based on segment direction
+                      let rotation = 0;
+                      if (Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y)) {
+                        rotation = 0; // Horizontal
+                      } else {
+                        rotation = 90; // Vertical
+                      }
+
+                      // Check if this position doesn't overlap with any other label
+                      if (!overlapsWithAny(x, y, rotation, routeIndex, allRoutes)) {
+                        return { x, y, rotation };
+                      }
+                    }
+
+                    accumulatedDistance = segEnd;
+                  }
+                }
+              }
+
+              // If we can't find a non-overlapping position, try staggering labels vertically/horizontally
+              // This is a fallback to ensure labels remain visible even when paths are very close
+              // Get the current label position from allRoutes
+              const currentRoute = allRoutes[routeIndex];
+              const originalX = currentRoute.labelX;
+              const originalY = currentRoute.labelY;
+              const originalRot = currentRoute.labelRotation;
+              if (pathPoints.length >= 2) {
+                // Try offsetting perpendicular to the wire direction
+                const p1 = pathPoints[0];
+                const p2 = pathPoints[1];
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const isHorizontal = Math.abs(dx) > Math.abs(dy);
+                
+                // Offset perpendicular to wire direction
+                const offset = 35; // Offset by label height + spacing
+                if (isHorizontal) {
+                  // Wire is horizontal, offset vertically
+                  const newY = originalY + offset;
+                  if (!overlapsWithAny(originalX, newY, originalRot, routeIndex, allRoutes)) {
+                    return { x: originalX, y: newY, rotation: originalRot };
+                  }
+                  const newY2 = originalY - offset;
+                  if (!overlapsWithAny(originalX, newY2, originalRot, routeIndex, allRoutes)) {
+                    return { x: originalX, y: newY2, rotation: originalRot };
+                  }
+                } else {
+                  // Wire is vertical, offset horizontally
+                  const newX = originalX + offset;
+                  if (!overlapsWithAny(newX, originalY, originalRot, routeIndex, allRoutes)) {
+                    return { x: newX, y: originalY, rotation: originalRot };
+                  }
+                  const newX2 = originalX - offset;
+                  if (!overlapsWithAny(newX2, originalY, originalRot, routeIndex, allRoutes)) {
+                    return { x: newX2, y: originalY, rotation: originalRot };
+                  }
+                }
+              }
+              
+              // Last resort: keep original position (label will be visible even if overlapping)
+              return null;
+            }
+
+            return wireRoutes.map((routeData) => {
+              const wire = routeData.wire;
+              const fromComp = components.find(c => c.id === wire.fromComponentId);
+              const toComp = components.find(c => c.id === wire.toComponentId);
+
+              if (!fromComp || !toComp) {
+                console.warn('Wire skipped - missing component:', {
+                  wireId: wire.id,
+                  fromId: wire.fromComponentId,
+                  toId: wire.toComponentId,
+                  foundFrom: !!fromComp,
+                  foundTo: !!toComp,
+                  availableComponentIds: components.map(c => c.id)
+                });
+                return null;
+              }
+
+              const path = routeData.path;
+              const labelX = routeData.labelX;
+              const labelY = routeData.labelY;
+              const labelRotation = routeData.labelRotation;
 
               const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
               const isSelected = selectedWireId === wire.id;
