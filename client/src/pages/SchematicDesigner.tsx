@@ -1001,8 +1001,14 @@ export default function SchematicDesigner() {
               voltage = toComp.properties.voltage as number;
             }
             
+            // Special case: Alternator → Orion DC-DC wire carries Orion's charge current, not alternator output
+            if (fromComp?.type === "alternator" && toComp?.type === "orion-dc-dc") {
+              // Wire from alternator to Orion carries what Orion draws, not alternator's full output
+              const orionAmps = (toComp.properties?.amps || toComp.properties?.current || 20) as number;
+              current = orionAmps;
+            }
             // If wire is FROM an MPPT/charger TO a bus bar or load, use source output current
-            if (fromComp && (fromComp.type === "mppt" || fromComp.type === "blue-smart-charger" || fromComp.type === "orion-dc-dc")) {
+            else if (fromComp && (fromComp.type === "mppt" || fromComp.type === "blue-smart-charger" || fromComp.type === "orion-dc-dc")) {
               // For MPPT/chargers, use their output current
               // MPPT uses maxCurrent, chargers use amps/current
               const chargeCurrent = fromComp.type === "mppt"
@@ -1011,6 +1017,11 @@ export default function SchematicDesigner() {
               if (chargeCurrent > 0) {
                 current = chargeCurrent;
               }
+            }
+            // Alternator output wire (to bus bar, not to Orion) uses alternator's amps
+            else if (fromComp?.type === "alternator") {
+              const altAmps = (fromComp.properties?.amps || fromComp.properties?.current || 60) as number;
+              current = altAmps;
             }
             // Calculate current from load watts
             else if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
@@ -1162,7 +1173,7 @@ export default function SchematicDesigner() {
                   }
                 }
                 // For MPPT/chargers, get their output current (source - subtract it)
-                else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") {
+                else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
                   const chargeCurrent = otherComp.type === "mppt"
                     ? (otherComp.properties?.maxCurrent || otherComp.properties?.amps || otherComp.properties?.current || 0) as number
                     : (otherComp.properties?.amps || otherComp.properties?.current || 0) as number;
@@ -1179,7 +1190,7 @@ export default function SchematicDesigner() {
               
               if (batteryComp && otherComp) {
                 // For battery wires, only count loads (inverter, DC loads), not sources (MPPT, chargers)
-                if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") {
+                if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
                   // Sources don't draw from battery, skip
                   current = 0;
                 } else if (otherComp.type === "fuse" || otherComp.type === "smartshunt") {
@@ -1259,7 +1270,7 @@ export default function SchematicDesigner() {
                           }
                         }
                         // For MPPT/chargers, get their output current (source - subtract it)
-                        else if (connectedComp.type === "mppt" || connectedComp.type === "blue-smart-charger" || connectedComp.type === "orion-dc-dc") {
+                        else if (connectedComp.type === "mppt" || connectedComp.type === "blue-smart-charger" || connectedComp.type === "orion-dc-dc" || connectedComp.type === "alternator") {
                           const chargeCurrent = connectedComp.type === "mppt"
                             ? (connectedComp.properties?.maxCurrent || connectedComp.properties?.amps || connectedComp.properties?.current || 0) as number
                             : (connectedComp.properties?.amps || connectedComp.properties?.current || 0) as number;
@@ -1374,6 +1385,7 @@ export default function SchematicDesigner() {
         'phoenix-inverter': { watts: 1200, voltage: systemVoltage },
         'blue-smart-charger': { amps: 15, voltage: systemVoltage },
         'orion-dc-dc': { amps: 30, voltage: systemVoltage },
+        alternator: { amps: 100, current: 100, voltage: systemVoltage },
         'battery-protect': { amps: 100, voltage: systemVoltage },
         fuse: { fuseRating: 400, amps: 400 },
         switch: { voltage: systemVoltage },
@@ -1881,7 +1893,8 @@ export default function SchematicDesigner() {
           onComponentSelect={handleComponentSelect}
           onCreateParallelWires={handleCreateParallelWires}
           onUpdateComponent={(id, updates) => {
-            setComponents(prev => prev.map(comp => {
+            // Create updated components list first
+            const updatedComponents = components.map(comp => {
               if (comp.id === id) {
                 const updatedComp = { ...comp, ...updates };
                 // Also update selected component state to reflect changes immediately
@@ -1891,17 +1904,23 @@ export default function SchematicDesigner() {
                 return updatedComp;
               }
               return comp;
-            }));
+            });
+            
+            setComponents(updatedComponents);
 
             // Trigger wire recalculation if properties changed
             if (updates.properties) {
-              // Find connected wires and recalculate
+              // Find ALL connected wires and recalculate them
               const connectedWires = wires.filter(
                 (w) => w.fromComponentId === id || w.toComponentId === id
               );
-              if (connectedWires.length > 0) {
-                calculateWire(connectedWires[0]);
-              }
+              
+              // Use setTimeout to ensure React state has updated before recalculating
+              setTimeout(() => {
+                connectedWires.forEach(wire => {
+                  calculateWire(wire);
+                });
+              }, 0);
             }
           }}
         />

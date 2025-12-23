@@ -31,6 +31,7 @@ const genericComponents: Component[] = [
   { id: "battery", name: "Battery Bank", icon: <Battery className="h-5 w-5" />, category: "generic" },
   { id: "inverter", name: "Inverter", icon: <Cable className="h-5 w-5" />, category: "generic" },
   { id: "solar-panel", name: "Solar Panel", icon: <Sun className="h-5 w-5" />, category: "generic" },
+  { id: "alternator", name: "Alternator", icon: <Gauge className="h-5 w-5" />, category: "generic" },
   { id: "ac-load", name: "AC Load", icon: <Gauge className="h-5 w-5" />, category: "generic" },
   { id: "dc-load", name: "DC Load", icon: <Cable className="h-5 w-5" />, category: "generic" },
   { id: "busbar-positive", name: "Positive Bus Bar", icon: <Cable className="h-5 w-5" />, category: "generic" },

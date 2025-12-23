@@ -424,4 +424,22 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
         ],
         usageNotes: "Allows seamless switching between inverter power and shore power. Automatic switches provide uninterrupted power.",
     },
+    alternator: {
+        type: "alternator",
+        name: "Alternator",
+        description: "Vehicle alternator that charges the starter battery while engine is running. Can charge house battery via DC-DC charger (Orion).",
+        category: "source",
+        terminals: [
+            { id: "output-positive", type: "positive", label: "B+", mandatory: true, description: "Alternator output positive (to starter battery)" },
+            { id: "output-negative", type: "negative", label: "B-", mandatory: true, description: "Alternator ground (chassis)" },
+        ],
+        wiringRules: [
+            "Output connects to starter battery positive terminal.",
+            "Ground is typically through engine block/chassis.",
+            "Use Orion DC-DC charger to charge house battery from alternator.",
+            "Never connect alternator directly to house battery - use isolator or DC-DC charger.",
+            "Typical alternator output: 60-200A depending on size.",
+        ],
+        usageNotes: "Primary charging source while driving. Most alternators are 12V or 24V with typical outputs of 60-200A. Use with Orion DC-DC charger for safe house battery charging.",
+    },
 };
