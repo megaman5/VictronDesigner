@@ -89,6 +89,7 @@ function getAvailableVoltages(componentType: string): number[] {
       return [12, 24, 48];
     case 'blue-smart-charger':
     case 'orion-dc-dc':
+    case 'alternator':
       return [12, 24];
     case 'dc-load':
       // DC loads use DC voltages
@@ -1882,7 +1883,69 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   </div>
                 )}
 
-                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel'].includes(selectedComponent.type) && (
+                {/* Alternator - Vehicle charging source */}
+                {selectedComponent.type === 'alternator' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Alternator Specifications</h3>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded mb-2">
+                      Vehicle alternator charges the starter battery while engine runs. Use an Orion DC-DC charger to safely charge house battery from alternator.
+                    </div>
+                    <div className="space-y-2">
+                      <Label>System Voltage (V)</Label>
+                      <Select
+                        value={voltage.toString()}
+                        onValueChange={(value) => {
+                          const v = parseInt(value);
+                          handleVoltageChange(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select voltage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12">12V (Cars, small trucks)</SelectItem>
+                          <SelectItem value="24">24V (Large trucks, buses)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Output Current (A)</Label>
+                      <Select
+                        value={(current || 100).toString()}
+                        onValueChange={(value) => {
+                          const amps = parseInt(value);
+                          setCurrent(amps);
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, amps, current: amps, voltage }
+                          });
+                          triggerSaveFeedback();
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select output current" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="60">60A (Small alternator)</SelectItem>
+                          <SelectItem value="80">80A (Standard)</SelectItem>
+                          <SelectItem value="100">100A (Standard+)</SelectItem>
+                          <SelectItem value="120">120A (High output)</SelectItem>
+                          <SelectItem value="150">150A (High output+)</SelectItem>
+                          <SelectItem value="180">180A (Heavy duty)</SelectItem>
+                          <SelectItem value="200">200A (Heavy duty+)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded space-y-1">
+                      <p className="font-medium">Charging Estimates (typical driving):</p>
+                      <p>• City driving: {Math.round((current || 100) * 0.3)}A avg (~{Math.round((current || 100) * 0.3 * voltage)}W)</p>
+                      <p>• Highway driving: {Math.round((current || 100) * 0.6)}A avg (~{Math.round((current || 100) * 0.6 * voltage)}W)</p>
+                      <p>• Idle: {Math.round((current || 100) * 0.15)}A avg (~{Math.round((current || 100) * 0.15 * voltage)}W)</p>
+                      <p className="text-[10px] text-muted-foreground pt-1">Note: Actual output varies with RPM, temperature, and electrical load.</p>
+                    </div>
+                  </div>
+                )}
+
+                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel', 'alternator'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">

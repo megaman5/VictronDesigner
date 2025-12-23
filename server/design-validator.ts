@@ -878,7 +878,7 @@ export class DesignValidator {
                 }
               }
               // For MPPT/chargers, get their output current
-              else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") {
+              else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
                 // MPPT uses maxCurrent, chargers use amps/current
                 const chargeCurrent = otherComp.type === "mppt"
                   ? (otherComp.properties?.maxCurrent || otherComp.properties?.amps || otherComp.properties?.current || 0) as number
@@ -961,7 +961,7 @@ export class DesignValidator {
               if (!otherComp) continue;
               
               // Skip sources (MPPT, chargers) - they don't draw from battery
-              if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") {
+              if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
                 continue;
               }
               
@@ -1106,6 +1106,28 @@ export class DesignValidator {
                   ? (acInputWatts / acVoltage)
                   : 0;
               }
+              // For shore power → transfer switch, trace through to find downstream loads
+              else if (toComp.type === "transfer-switch") {
+                // Find what's connected to transfer switch output (usually AC panel)
+                const tsOutputCurrent = this.calculateTransferSwitchOutputCurrent(toComp.id);
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") ? tsOutputCurrent : 0;
+              }
+            }
+            // For inverter → transfer switch wires
+            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && 
+                     toComp && toComp.type === "transfer-switch" && 
+                     (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              // Find what's connected to transfer switch output
+              const tsOutputCurrent = this.calculateTransferSwitchOutputCurrent(toComp.id);
+              current = (wire.polarity === "hot" || wire.polarity === "neutral") ? tsOutputCurrent : 0;
+            }
+            // For transfer switch → AC panel wires
+            else if (fromComp && fromComp.type === "transfer-switch" && 
+                     toComp && toComp.type === "ac-panel" && 
+                     (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+              // Calculate total AC panel load
+              const panelCurrent = this.calculateACPanelTotalCurrent(toComp.id);
+              current = (wire.polarity === "hot" || wire.polarity === "neutral") ? panelCurrent : 0;
             }
             // For AC panel → AC load wires
             else if (fromComp && fromComp.type === "ac-panel" && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
@@ -1172,6 +1194,12 @@ export class DesignValidator {
               if (panelWatts > 0 && panelVoltage > 0) {
                 current = panelWatts / panelVoltage;
               }
+            }
+            // Special case: Alternator → Orion DC-DC wire carries Orion's charge current, not alternator output
+            else if (fromComp?.type === "alternator" && toComp?.type === "orion-dc-dc") {
+              // Wire from alternator to Orion carries what Orion draws, not alternator's full output
+              const orionAmps = (toComp.properties?.amps || toComp.properties?.current || 20) as number;
+              current = orionAmps;
             } else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc") {
               // For MPPT/chargers, use their output current
               // MPPT uses maxCurrent, chargers use amps/current
@@ -1181,6 +1209,11 @@ export class DesignValidator {
               if (chargeCurrent > 0) {
                 current = chargeCurrent;
               }
+            }
+            // Alternator output wire (to bus bar, not to Orion) uses alternator's amps
+            else if (fromComp?.type === "alternator") {
+              const altAmps = (fromComp.properties?.amps || fromComp.properties?.current || 60) as number;
+              current = altAmps;
             }
             // If wire is TO a bus bar FROM a fuse/battery/SmartShunt, calculate NET current (loads minus sources)
             // This applies to BOTH positive and negative bus bars
@@ -1254,7 +1287,7 @@ export class DesignValidator {
                   }
                 }
                 // For MPPT/chargers, get their output current (this is a source, subtract it)
-                else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") {
+                else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
                   const chargeCurrent = otherComp.type === "mppt"
                     ? (otherComp.properties?.maxCurrent || otherComp.properties?.amps || otherComp.properties?.current || 0) as number
                     : (otherComp.properties?.amps || otherComp.properties?.current || 0) as number;
@@ -1270,7 +1303,7 @@ export class DesignValidator {
             else if (fromComp?.type?.includes("busbar") && toComp) {
               // For MPPT/chargers FROM bus bar, use their output current (they're sources, not loads)
               // This handles wires like "bus-pos → mppt" where MPPT is charging the battery
-              if (toComp.type === "mppt" || toComp.type === "blue-smart-charger" || toComp.type === "orion-dc-dc") {
+              if (toComp.type === "mppt" || toComp.type === "blue-smart-charger" || toComp.type === "orion-dc-dc" || toComp.type === "alternator") {
                 const chargeCurrent = toComp.type === "mppt"
                   ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
                   : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
@@ -1454,7 +1487,7 @@ export class DesignValidator {
                         totalLoadCurrent += 1;
                       }
                       // For MPPT/chargers (sources - subtract)
-                      else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc") {
+                      else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc" || connComp.type === "alternator") {
                         const chargeCurrent = connComp.type === "mppt"
                           ? (connComp.properties?.maxCurrent || connComp.properties?.amps || connComp.properties?.current || 0) as number
                           : (connComp.properties?.amps || connComp.properties?.current || 0) as number;
@@ -1510,7 +1543,7 @@ export class DesignValidator {
                     totalLoadCurrent += 1; // Cerbo draws ~1A
                   }
                   // For MPPT/chargers (sources - subtract)
-                  else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc") {
+                  else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc" || connComp.type === "alternator") {
                     const chargeCurrent = connComp.type === "mppt"
                       ? (connComp.properties?.maxCurrent || connComp.properties?.amps || connComp.properties?.current || 0) as number
                       : (connComp.properties?.amps || connComp.properties?.current || 0) as number;
@@ -1528,7 +1561,7 @@ export class DesignValidator {
               
               if (batteryComp && otherComp) {
                 // For battery wires, only count loads (inverter, DC loads), not sources (MPPT, chargers)
-                if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") {
+                if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
                   // Sources don't draw from battery, skip
                   current = 0;
                 } else if (otherComp.type === "fuse" || otherComp.type === "smartshunt") {
@@ -1612,7 +1645,7 @@ export class DesignValidator {
                           }
                         }
                         // For MPPT/chargers, get their output current (source - subtract it)
-                        else if (connectedComp.type === "mppt" || connectedComp.type === "blue-smart-charger" || connectedComp.type === "orion-dc-dc") {
+                        else if (connectedComp.type === "mppt" || connectedComp.type === "blue-smart-charger" || connectedComp.type === "orion-dc-dc" || connectedComp.type === "alternator") {
                           const chargeCurrent = connectedComp.type === "mppt"
                             ? (connectedComp.properties?.maxCurrent || connectedComp.properties?.amps || connectedComp.properties?.current || 0) as number
                             : (connectedComp.properties?.amps || connectedComp.properties?.current || 0) as number;
@@ -1796,12 +1829,12 @@ export class DesignValidator {
               current = inverterDC.dcInputCurrent;
             }
             // For MPPT/chargers (output negative), use their output current
-            else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc") {
+            else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc" || fromComp?.type === "alternator") {
               const chargeCurrent = fromComp.type === "mppt"
                 ? (fromComp.properties?.maxCurrent || fromComp.properties?.amps || fromComp.properties?.current || 0) as number
                 : (fromComp.properties?.amps || fromComp.properties?.current || 0) as number;
               current = chargeCurrent;
-            } else if (toComp?.type === "mppt" || toComp?.type === "blue-smart-charger" || toComp?.type === "orion-dc-dc") {
+            } else if (toComp?.type === "mppt" || toComp?.type === "blue-smart-charger" || toComp?.type === "orion-dc-dc" || toComp?.type === "alternator") {
               const chargeCurrent = toComp.type === "mppt"
                 ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
                 : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
@@ -2621,6 +2654,78 @@ export class DesignValidator {
   private getComponentName(id: string): string {
     const comp = this.components.find(c => c.id === id);
     return comp ? comp.name : id;
+  }
+
+  /**
+   * Calculate total current through transfer switch output
+   * by tracing downstream to AC panel and its loads
+   */
+  private calculateTransferSwitchOutputCurrent(transferSwitchId: string): number {
+    // Find wires from transfer switch output to AC panel
+    const outputWires = this.wires.filter(
+      w => w.fromComponentId === transferSwitchId && 
+           (w.fromTerminal?.startsWith("output") || w.polarity === "hot" || w.polarity === "neutral")
+    );
+    
+    // Find connected AC panel
+    for (const wire of outputWires) {
+      const toComp = this.components.find(c => c.id === wire.toComponentId);
+      if (toComp?.type === "ac-panel") {
+        return this.calculateACPanelTotalCurrent(toComp.id);
+      }
+    }
+    
+    // If no AC panel found, check for direct load connections
+    let totalCurrent = 0;
+    const visitedLoads = new Set<string>();
+    
+    for (const wire of outputWires) {
+      const toComp = this.components.find(c => c.id === wire.toComponentId);
+      if (toComp?.type === "ac-load" && !visitedLoads.has(toComp.id)) {
+        visitedLoads.add(toComp.id);
+        const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
+        const acVoltage = getACVoltage(toComp) || 120;
+        if (loadWatts > 0) {
+          totalCurrent += loadWatts / acVoltage;
+        }
+      }
+    }
+    
+    return totalCurrent;
+  }
+
+  /**
+   * Calculate total AC current for an AC panel by summing connected AC loads
+   */
+  private calculateACPanelTotalCurrent(acPanelId: string): number {
+    // Find all wires from/to this AC panel to AC loads
+    const panelWires = this.wires.filter(
+      w => (w.fromComponentId === acPanelId || w.toComponentId === acPanelId) &&
+           (w.polarity === "hot") // Only count hot wires to avoid double counting
+    );
+    
+    let totalCurrent = 0;
+    const visitedLoads = new Set<string>();
+    
+    for (const wire of panelWires) {
+      const loadCompId = wire.fromComponentId === acPanelId 
+        ? wire.toComponentId 
+        : wire.fromComponentId;
+      
+      if (visitedLoads.has(loadCompId)) continue;
+      
+      const loadComp = this.components.find(c => c.id === loadCompId);
+      if (loadComp?.type === "ac-load") {
+        visitedLoads.add(loadCompId);
+        const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
+        const acVoltage = getACVoltage(loadComp) || 120;
+        if (loadWatts > 0) {
+          totalCurrent += loadWatts / acVoltage;
+        }
+      }
+    }
+    
+    return totalCurrent;
   }
 }
 

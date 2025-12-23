@@ -724,6 +724,38 @@ export function SchematicComponent({
         );
       }
 
+      case "alternator": {
+        const altAmps = properties.amps || properties.current || 100;
+        const altVoltage = properties.voltage || 12;
+        const altWatts = altAmps * altVoltage;
+        
+        return (
+          <svg width="140" height="120" viewBox="0 0 140 120">
+            {/* Alternator body - circular like real alternator */}
+            <ellipse cx="55" cy="60" rx="45" ry="40" fill="#3a3a4a" stroke="#5a5a6a" strokeWidth="2" />
+            
+            {/* Pulley groove */}
+            <ellipse cx="55" cy="60" rx="20" ry="15" fill="#2a2a3a" stroke="#4a4a5a" strokeWidth="1.5" />
+            <ellipse cx="55" cy="60" rx="12" ry="8" fill="#1a1a2a" stroke="#3a3a4a" strokeWidth="1" />
+            
+            {/* Coil windings representation */}
+            <path d="M 30 40 Q 55 35, 80 40" fill="none" stroke="#cd7f32" strokeWidth="3" opacity="0.7" />
+            <path d="M 25 60 Q 55 55, 85 60" fill="none" stroke="#cd7f32" strokeWidth="3" opacity="0.7" />
+            <path d="M 30 80 Q 55 85, 80 80" fill="none" stroke="#cd7f32" strokeWidth="3" opacity="0.7" />
+            
+            {/* Output connector block */}
+            <rect x="100" y="40" width="30" height="40" fill="#2a2a3a" stroke="#4a4a5a" strokeWidth="1.5" rx="3" />
+            <text x="115" y="55" textAnchor="middle" className="fill-red-400 text-[9px] font-bold">B+</text>
+            <text x="115" y="72" textAnchor="middle" className="fill-gray-400 text-[9px]">B-</text>
+            
+            {/* Specs */}
+            <text x="55" y="10" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Alternator'}</text>
+            <text x="70" y="105" textAnchor="middle" className="fill-cyan-400 text-[10px] font-bold">{altAmps}A @ {altVoltage}V</text>
+            <text x="70" y="115" textAnchor="middle" className="fill-gray-400 text-[9px]">{altWatts}W Output</text>
+          </svg>
+        );
+      }
+
       case "transfer-switch": {
         const switchType = properties.switchType || 'manual';
         return (
@@ -735,14 +767,14 @@ export function SchematicComponent({
             <line x1="90" y1="50" x2={switchType === 'automatic' ? "120" : "110"} y2="70" stroke="white" strokeWidth="3" strokeLinecap="round" />
             <circle cx={switchType === 'automatic' ? "120" : "110"} cy="70" r="5" fill="white" />
             
-            {/* Source labels */}
-            <text x="20" y="45" textAnchor="middle" className="fill-foreground text-[9px]">S1</text>
-            <text x="160" y="45" textAnchor="middle" className="fill-foreground text-[9px]">S2</text>
-            <text x="90" y="125" textAnchor="middle" className="fill-foreground text-[9px]">OUT</text>
+            {/* Source labels updated for new layout (S1 Top, S2 Left, OUT Right) */}
+            <text x="90" y="45" textAnchor="middle" className="fill-foreground text-[9px]">S1 (Primary)</text>
+            <text x="45" y="75" textAnchor="middle" className="fill-foreground text-[9px]">S2</text>
+            <text x="135" y="75" textAnchor="middle" className="fill-foreground text-[9px]">OUT</text>
             
             {/* Type indicator */}
             <text x="90" y="25" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Transfer Switch'}</text>
-            <text x="90" y="135" textAnchor="middle" className="fill-foreground text-[9px] capitalize">{switchType}</text>
+            <text x="90" y="100" textAnchor="middle" className="fill-foreground text-[9px] capitalize">{switchType}</text>
           </svg>
         );
       }

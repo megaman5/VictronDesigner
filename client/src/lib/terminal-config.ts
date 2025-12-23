@@ -279,16 +279,25 @@ export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> 
     ],
   },
 
+  alternator: {
+    width: 140,
+    height: 120,
+    terminals: [
+      { id: "output-positive", type: "positive", label: "B+", x: 132, y: 50, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "output-negative", type: "negative", label: "B-", x: 132, y: 70, color: "hsl(var(--wire-negative))", orientation: "right" },
+    ],
+  },
+
   "transfer-switch": {
     width: 180,
     height: 140,
     terminals: [
-      { id: "source1-hot", type: "ac-in", label: "S1 L", x: 8, y: 30, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
-      { id: "source1-neutral", type: "ac-in", label: "S1 N", x: 8, y: 50, color: "hsl(var(--wire-neutral))", orientation: "left" },
-      { id: "source1-ground", type: "ground", label: "S1 G", x: 8, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
-      { id: "source2-hot", type: "ac-in", label: "S2 L", x: 8, y: 90, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
-      { id: "source2-neutral", type: "ac-in", label: "S2 N", x: 8, y: 110, color: "hsl(var(--wire-neutral))", orientation: "left" },
-      { id: "source2-ground", type: "ground", label: "S2 G", x: 8, y: 130, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
+      { id: "source1-hot", type: "ac-in", label: "S1 L", x: 60, y: 20, color: "hsl(var(--wire-ac-hot))", orientation: "top" },
+      { id: "source1-neutral", type: "ac-in", label: "S1 N", x: 90, y: 20, color: "hsl(var(--wire-neutral))", orientation: "top" },
+      { id: "source1-ground", type: "ground", label: "S1 G", x: 120, y: 20, color: "hsl(var(--wire-ac-ground))", orientation: "top" },
+      { id: "source2-hot", type: "ac-in", label: "S2 L", x: 8, y: 50, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "source2-neutral", type: "ac-in", label: "S2 N", x: 8, y: 70, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "source2-ground", type: "ground", label: "S2 G", x: 8, y: 90, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
       { id: "output-hot", type: "ac-out", label: "OUT L", x: 172, y: 50, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
       { id: "output-neutral", type: "ac-out", label: "OUT N", x: 172, y: 70, color: "hsl(var(--wire-neutral))", orientation: "right" },
       { id: "output-ground", type: "ground", label: "OUT G", x: 172, y: 90, color: "hsl(var(--wire-ac-ground))", orientation: "right" },

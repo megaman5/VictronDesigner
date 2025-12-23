@@ -288,6 +288,11 @@ COMPONENT DIMENSIONS & SPACING:
 - smartshunt: 140×130px
 - battery: 160×110px
 - solar-panel: 140×160px
+- alternator: 140×120px (vehicle alternator - use with Orion DC-DC)
+- shore-power: 140×100px (AC power source for boats/RVs)
+- orion-dc-dc: 160×120px (DC-DC charger for alternator charging)
+- blue-smart-charger: 140×120px (AC shore charger)
+- transfer-switch: 180×140px (switches between AC sources)
 - ac-load: 100×100px
 - dc-load: 100×100px
 - busbar-positive: 200×60px
@@ -297,6 +302,8 @@ COMPONENT DIMENSIONS & SPACING:
 - breaker-panel: 160×200px
 - ac-panel: 180×220px
 - dc-panel: 160×240px
+- phoenix-inverter: 160×130px
+- inverter: 160×120px (generic inverter)
 
 LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
 1. Minimum 300px horizontal spacing between component centers
@@ -407,6 +414,30 @@ Other Components:
 - solar-panel: { "watts": <realistic value, e.g., 100-400W per panel> }
 - mppt: { "maxCurrent": <amps, e.g., 30-100A> }
 - multiplus: { "powerRating": <watts, e.g., 1200-3000W> }
+- alternator: { "amps": <output current 60-200A>, "voltage": <12 or 24> }
+- orion-dc-dc: { "amps": <charge current 12-50A>, "voltage": <12 or 24> }
+- blue-smart-charger: { "amps": <charge current 15-30A>, "voltage": <12 or 24> }
+- shore-power: { "voltage": <120 or 230>, "maxAmps": <15/30/50A> }
+- inverter: { "watts": <power rating 1000-3000W> }
+- transfer-switch: { "switchType": "automatic" or "manual" }
+
+ALTERNATOR CHARGING SETUP (for boats/RVs):
+When user mentions alternator charging:
+1. Add "alternator" component (represents vehicle alternator)
+2. Add "orion-dc-dc" component (Orion DC-DC charger)
+3. Wire: alternator output-positive → orion input-positive
+4. Wire: alternator output-negative → orion input-negative  
+5. Wire: orion output-positive → busbar (or battery)
+6. Wire: orion output-negative → busbar (or SmartShunt)
+7. The Orion isolates and regulates alternator charging to house battery
+
+SHORE POWER SETUP (for boats/RVs):
+When user mentions shore power:
+1. Add "shore-power" component (AC power source)
+2. For charging only: Wire shore-power to blue-smart-charger AC inputs
+3. For full AC: Wire shore-power to multiplus AC inputs OR transfer-switch
+4. Transfer switch: shore-power → source2 (primary), inverter → source1 (backup)
+5. Transfer switch output → AC panel
 
 NEVER use 0 or placeholder values for watts/amps - always provide realistic numbers!
 
@@ -1460,6 +1491,13 @@ COMPONENT DIMENSIONS (width × height):
 - smartshunt: 140×130px
 - battery: 160×110px
 - solar-panel: 140×120px
+- alternator: 140×120px (vehicle alternator - use with Orion DC-DC)
+- shore-power: 140×100px (AC power source for boats/RVs)
+- orion-dc-dc: 160×120px (DC-DC charger for alternator charging)
+- blue-smart-charger: 140×120px (AC shore charger)
+- transfer-switch: 180×140px (switches between AC sources)
+- inverter: 160×120px (generic inverter)
+- phoenix-inverter: 160×130px
 - ac-load: 120×100px
 - dc-load: 120×100px
 - busbar-positive: 200×60px
@@ -1487,6 +1525,13 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
+- alternator: "output-positive", "output-negative"
+- shore-power: "ac-out-hot", "ac-out-neutral", "ac-out-ground"
+- orion-dc-dc: "input-positive", "input-negative", "output-positive", "output-negative", "remote"
+- blue-smart-charger: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "dc-positive", "dc-negative"
+- transfer-switch: "source1-hot", "source1-neutral", "source1-ground", "source2-hot", "source2-neutral", "source2-ground", "output-hot", "output-neutral", "output-ground"
+- inverter: "dc-positive", "dc-negative", "ac-out-hot", "ac-out-neutral", "ac-out-ground"
+- phoenix-inverter: "dc-positive", "dc-negative", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "remote"
 - ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
@@ -1590,6 +1635,29 @@ Other Components - ALL need properties:
 - multiplus: {"powerRating": 3000} - REQUIRED: powerRating property
 - cerbo: {"voltage": 12} - REQUIRED: voltage property (typically 12V or 24V). MUST connect power-positive and power-negative terminals!
 - fuse: {"fuseRating": 400} - REQUIRED: fuseRating property (amps)
+- alternator: {"amps": 100, "voltage": 12} - REQUIRED: amps (60-200A) and voltage (12 or 24)
+- orion-dc-dc: {"amps": 20, "voltage": 12} - REQUIRED: amps (12-50A) and voltage
+- blue-smart-charger: {"amps": 30, "voltage": 12} - REQUIRED: amps (15-30A) and voltage
+- shore-power: {"voltage": 120, "maxAmps": 30} - REQUIRED: AC voltage and max amps
+- inverter: {"watts": 3000} - REQUIRED: power rating in watts
+- transfer-switch: {"switchType": "automatic"} - REQUIRED: "automatic" or "manual"
+
+ALTERNATOR CHARGING SETUP (for boats/RVs):
+When user mentions alternator charging:
+1. Add "alternator" component (vehicle alternator)
+2. Add "orion-dc-dc" component (Orion DC-DC charger)
+3. Wire: alternator output-positive → orion input-positive
+4. Wire: alternator output-negative → orion input-negative  
+5. Wire: orion output-positive → busbar (or battery)
+6. Wire: orion output-negative → busbar (or SmartShunt)
+
+SHORE POWER SETUP (for boats/RVs):
+When user mentions shore power:
+1. Add "shore-power" component (AC power source)
+2. For charging only: Wire shore-power to blue-smart-charger AC inputs (hot/neutral/ground)
+3. For full AC: Wire shore-power to transfer-switch source2 inputs
+4. Transfer switch: shore-power → source2 (primary), inverter → source1 (backup)
+5. Transfer switch output → AC panel
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
@@ -1989,6 +2057,13 @@ COMPONENT DIMENSIONS (width × height):
 - smartshunt: 140×130px
 - battery: 160×110px
 - solar-panel: 140×120px
+- alternator: 140×120px (vehicle alternator - use with Orion DC-DC)
+- shore-power: 140×100px (AC power source for boats/RVs)
+- orion-dc-dc: 160×120px (DC-DC charger for alternator charging)
+- blue-smart-charger: 140×120px (AC shore charger)
+- transfer-switch: 180×140px (switches between AC sources)
+- inverter: 160×120px (generic inverter)
+- phoenix-inverter: 160×130px
 - ac-load: 120×100px
 - dc-load: 120×100px
 - busbar-positive: 200×60px
@@ -2016,6 +2091,13 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
 - solar-panel: "positive", "negative"
+- alternator: "output-positive", "output-negative"
+- shore-power: "ac-out-hot", "ac-out-neutral", "ac-out-ground"
+- orion-dc-dc: "input-positive", "input-negative", "output-positive", "output-negative", "remote"
+- blue-smart-charger: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "dc-positive", "dc-negative"
+- transfer-switch: "source1-hot", "source1-neutral", "source1-ground", "source2-hot", "source2-neutral", "source2-ground", "output-hot", "output-neutral", "output-ground"
+- inverter: "dc-positive", "dc-negative", "ac-out-hot", "ac-out-neutral", "ac-out-ground"
+- phoenix-inverter: "dc-positive", "dc-negative", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "remote"
 - ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
@@ -2119,6 +2201,29 @@ Other Components - ALL need properties:
 - multiplus: {"powerRating": 3000} - REQUIRED: powerRating property
 - cerbo: {"voltage": 12} - REQUIRED: voltage property (typically 12V or 24V). MUST connect power-positive and power-negative terminals!
 - fuse: {"fuseRating": 400} - REQUIRED: fuseRating property (amps)
+- alternator: {"amps": 100, "voltage": 12} - REQUIRED: amps (60-200A) and voltage (12 or 24)
+- orion-dc-dc: {"amps": 20, "voltage": 12} - REQUIRED: amps (12-50A) and voltage
+- blue-smart-charger: {"amps": 30, "voltage": 12} - REQUIRED: amps (15-30A) and voltage
+- shore-power: {"voltage": 120, "maxAmps": 30} - REQUIRED: AC voltage and max amps
+- inverter: {"watts": 3000} - REQUIRED: power rating in watts
+- transfer-switch: {"switchType": "automatic"} - REQUIRED: "automatic" or "manual"
+
+ALTERNATOR CHARGING SETUP (for boats/RVs):
+When user mentions alternator charging:
+1. Add "alternator" component (vehicle alternator)
+2. Add "orion-dc-dc" component (Orion DC-DC charger)
+3. Wire: alternator output-positive → orion input-positive
+4. Wire: alternator output-negative → orion input-negative  
+5. Wire: orion output-positive → busbar (or battery)
+6. Wire: orion output-negative → busbar (or SmartShunt)
+
+SHORE POWER SETUP (for boats/RVs):
+When user mentions shore power:
+1. Add "shore-power" component (AC power source)
+2. For charging only: Wire shore-power to blue-smart-charger AC inputs (hot/neutral/ground)
+3. For full AC: Wire shore-power to transfer-switch source2 inputs
+4. Transfer switch: shore-power → source2 (primary), inverter → source1 (backup)
+5. Transfer switch output → AC panel
 
 VALIDATION CHECKLIST:
 ✓ All components within canvas bounds (100-1800, 100-1300)
