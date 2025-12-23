@@ -68,6 +68,9 @@ export function SchematicCanvas({
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragPreviewPos, setDragPreviewPos] = useState<{ x: number; y: number } | null>(null);
+  
+  // Multi-drag state - stores initial positions of all selected components during drag
+  const [draggedComponentPositions, setDraggedComponentPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
 
   // Selection box state
   const [selectionBox, setSelectionBox] = useState<{
@@ -185,6 +188,7 @@ export function SchematicCanvas({
 
       setDraggedComponentId(null);
       setDragPreviewPos(null);
+      setDraggedComponentPositions(new Map());
     } else {
       // New component from library
       onDrop?.(dropX, dropY);
@@ -441,6 +445,18 @@ export function SchematicCanvas({
     e.stopPropagation();
     setDraggedComponentId(component.id);
     setDragStartPos({ x: component.x, y: component.y });
+
+    // Store initial positions of all selected components for multi-drag
+    // If the dragged component is in selection, drag all selected; otherwise just drag this one
+    const componentsToDrag = selectedIds.includes(component.id) ? selectedIds : [component.id];
+    const positionsMap = new Map<string, { x: number; y: number }>();
+    componentsToDrag.forEach(id => {
+      const comp = components.find(c => c.id === id);
+      if (comp) {
+        positionsMap.set(id, { x: comp.x, y: comp.y });
+      }
+    });
+    setDraggedComponentPositions(positionsMap);
 
     // Calculate where on the component the user grabbed it
     // rect is already in screen coordinates (scaled), so we need to convert back to canvas coordinates
@@ -1289,16 +1305,34 @@ export function SchematicCanvas({
               highlightedTerminals.push(wireStart.terminal.id);
             }
 
+            // Calculate position - use preview position if this component is being dragged
+            const isBeingDragged = draggedComponentPositions.has(component.id);
+            let posX = component.x;
+            let posY = component.y;
+            
+            if (isBeingDragged && dragPreviewPos && draggedComponentId) {
+              // Calculate delta from the primary dragged component's movement
+              const primaryOrigPos = draggedComponentPositions.get(draggedComponentId);
+              const thisOrigPos = draggedComponentPositions.get(component.id);
+              if (primaryOrigPos && thisOrigPos) {
+                const deltaX = dragPreviewPos.x - primaryOrigPos.x;
+                const deltaY = dragPreviewPos.y - primaryOrigPos.y;
+                posX = thisOrigPos.x + deltaX;
+                posY = thisOrigPos.y + deltaY;
+              }
+            }
+
             return (
               <div
                 key={component.id}
                 draggable
                 onDragStart={(e) => handleComponentDragStart(component, e)}
                 className={`absolute cursor-move pointer-events-none ${wireStartComponent === component.id ? 'ring-4 ring-primary' : ''
-                  }`}
+                  } ${isBeingDragged ? 'opacity-70' : ''}`}
                 style={{
-                  left: component.x,
-                  top: component.y,
+                  left: posX,
+                  top: posY,
+                  transition: isBeingDragged ? 'none' : undefined,
                 }}
                 data-testid={`canvas-component-${component.id}`}
               >
@@ -1316,32 +1350,7 @@ export function SchematicCanvas({
             );
           })}
 
-          {/* Drag preview - shows component position while dragging */}
-          {draggedComponentId && dragPreviewPos && (() => {
-            const draggedComp = components.find(c => c.id === draggedComponentId);
-            if (!draggedComp) return null;
-
-            return (
-              <div
-                key={`preview-${draggedComponentId}`}
-                className="absolute pointer-events-none opacity-50"
-                style={{
-                  left: dragPreviewPos.x,
-                  top: dragPreviewPos.y,
-                }}
-              >
-                <SchematicComponent
-                  type={draggedComp.type}
-                  name={draggedComp.name}
-                  properties={draggedComp.properties}
-                  selected={false}
-                  onClick={() => {}}
-                  onTerminalClick={() => {}}
-                  highlightedTerminals={[]}
-                />
-              </div>
-            );
-          })()}
+          {/* Drag preview removed - components now show their preview positions directly during drag */}
         </div>
 
         {/* Wire drag handles overlay - rendered on top of everything */}
