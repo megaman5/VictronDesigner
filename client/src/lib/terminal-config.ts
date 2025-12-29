@@ -32,7 +32,6 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
 
       { id: "dc-positive", type: "positive", label: "DC+", x: 140, y: 148, color: "hsl(var(--wire-positive))", orientation: "bottom" },
       { id: "dc-negative", type: "negative", label: "DC-", x: 160, y: 148, color: "hsl(var(--wire-negative))", orientation: "bottom" },
-      { id: "chassis-ground", type: "ground", label: "GND", x: 188, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "right" },
     ],
   },
 

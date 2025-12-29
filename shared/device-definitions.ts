@@ -32,8 +32,7 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             { id: "ac-out-ground", type: "ground", label: "AC OUT G", mandatory: true, description: "Load Ground" },
 
             { id: "dc-positive", type: "positive", label: "DC+", mandatory: true, description: "Battery Positive" },
-            { id: "dc-negative", type: "negative", label: "DC-", mandatory: true, description: "Battery Negative" },
-            { id: "chassis-ground", type: "ground", label: "GND", mandatory: true, description: "Chassis Ground" }
+            { id: "dc-negative", type: "negative", label: "DC-", mandatory: true, description: "Battery Negative" }
         ],
         wiringRules: [
             "DC Positive must be fused close to the battery.",

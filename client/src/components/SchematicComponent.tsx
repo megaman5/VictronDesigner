@@ -19,6 +19,7 @@ interface SchematicComponentProps {
   onClick?: (e?: React.MouseEvent) => void;
   onTerminalClick?: (terminal: Terminal, e: React.MouseEvent) => void;
   highlightedTerminals?: string[]; // Terminal IDs to highlight
+  viewMode?: 'standard' | 'load';
 }
 
 export function SchematicComponent({
@@ -29,9 +30,35 @@ export function SchematicComponent({
   validationStatus,
   onClick,
   onTerminalClick,
-  highlightedTerminals = []
+  highlightedTerminals = [],
+  viewMode = 'standard'
 }: SchematicComponentProps) {
   const config = TERMINAL_CONFIGS[type];
+
+  const getLoadLabel = () => {
+     if (!properties) return null;
+     if (type === 'ac-load' || type === 'dc-load') {
+        return `${properties.watts || properties.power || 0}W`;
+     }
+     if (type === 'inverter' || type === 'phoenix-inverter' || type === 'multiplus') {
+        return `${properties.watts || 3000}W`;
+     }
+     if (type === 'mppt') {
+        return `${properties.maxCurrent || properties.amps || 0}A`;
+     }
+     if (type === 'alternator' || type === 'blue-smart-charger' || type === 'orion-dc-dc') {
+         return `${properties.amps || properties.current || 0}A`;
+     }
+     if (type === 'solar-panel') {
+         return `${properties.watts || 0}W`;
+     }
+     if (type === 'battery') {
+         return `${properties.capacity || 0}Ah`;
+     }
+     return null;
+  };
+
+  const loadLabel = getLoadLabel();
 
   const handleTerminalClick = (terminal: Terminal, e: React.MouseEvent) => {
     console.log('Terminal clicked:', terminal.id, 'on component type:', type);
@@ -773,8 +800,8 @@ export function SchematicComponent({
             <text x="135" y="75" textAnchor="middle" className="fill-foreground text-[9px]">OUT</text>
             
             {/* Type indicator */}
-            <text x="90" y="25" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Transfer Switch'}</text>
-            <text x="90" y="100" textAnchor="middle" className="fill-foreground text-[9px] capitalize">{switchType}</text>
+            <text x="90" y="118" textAnchor="middle" className="fill-foreground text-[9px] capitalize">{switchType}</text>
+            <text x="90" y="130" textAnchor="middle" className="fill-foreground text-xs font-semibold">{name || 'Transfer Switch'}</text>
           </svg>
         );
       }
@@ -804,6 +831,14 @@ export function SchematicComponent({
     >
       <div className="hover-elevate active-elevate-2 rounded-md relative" style={{ background: 'transparent' }}>
         {renderShape()}
+
+        {viewMode === 'load' && loadLabel && (
+           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+             <div className="bg-background/95 border border-primary text-foreground px-2 py-0.5 rounded shadow-sm text-[10px] font-bold">
+               {loadLabel}
+             </div>
+           </div>
+        )}
 
         {/* Terminal connection points overlay */}
         {config && (

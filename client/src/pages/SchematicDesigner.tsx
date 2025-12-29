@@ -114,6 +114,7 @@ export default function SchematicDesigner() {
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<'standard' | 'load'>('standard');
   const [copiedComponents, setCopiedComponents] = useState<SchematicComponent[]>([]);
   const [copiedWires, setCopiedWires] = useState<Wire[]>([]);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
@@ -363,6 +364,19 @@ export default function SchematicDesigner() {
       }
     }
   }, []); // Only run once on mount
+
+  // Automatically recalculate wire loads when diagram changes
+  // Calculate all wires when diagram changes or Load View is activated
+  useEffect(() => {
+    if (wires.length === 0) return;
+    
+    // Debounce to avoid heavy calculation during drag operations
+    const timer = setTimeout(() => {
+      // Pass components explicitly to avoid stale closure
+      wires.forEach(wire => calculateWire(wire, undefined, components));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [wires, components, systemVoltage, viewMode]); // Re-run when anything electrical changes or view mode changes
 
   // Login/logout handlers
   const handleLogin = () => {
@@ -806,11 +820,13 @@ export default function SchematicDesigner() {
   // Helper function to calculate inverter DC input from AC loads
   const calculateInverterDCInput = (
     inverterId: string,
-    inverterEfficiency: number = 0.875
-  ): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number } => {
-    const inverter = components.find(c => c.id === inverterId);
+    inverterEfficiency: number = 0.875,
+    componentsOverride?: SchematicComponent[]
+  ): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number; maxDCInputCurrent: number } => {
+    const comps = componentsOverride || components;
+    const inverter = comps.find(c => c.id === inverterId);
     if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "inverter")) {
-      return { acLoadWatts: 0, dcInputWatts: 0, dcInputCurrent: 0, acVoltage: 120 };
+      return { acLoadWatts: 0, dcInputWatts: 0, dcInputCurrent: 0, acVoltage: 120, maxDCInputCurrent: 0 };
     }
 
     const inverterACOutputTerminals = ["ac-out-hot", "ac-out-neutral"];
@@ -821,7 +837,7 @@ export default function SchematicDesigner() {
       if (visited.has(componentId)) return { watts: 0, voltage: 120 };
       visited.add(componentId);
 
-      const comp = components.find(c => c.id === componentId);
+      const comp = comps.find(c => c.id === componentId);
       if (!comp) return { watts: 0, voltage: 120 };
 
       if (comp.type === "ac-load") {
@@ -859,17 +875,21 @@ export default function SchematicDesigner() {
              (w.polarity === "hot" || w.polarity === "neutral" || w.polarity === "ground")
       );
 
+      let branchWatts = 0;
+      let branchVoltage = 120;
+
       for (const connectedWire of connectedWires) {
         const otherCompId = connectedWire.fromComponentId === componentId 
           ? connectedWire.toComponentId 
           : connectedWire.fromComponentId;
         const result = findACLoads(otherCompId, new Set(visited));
         if (result.watts > 0) {
-          return result;
+          branchWatts += result.watts;
+          if (result.voltage !== 120) branchVoltage = result.voltage;
         }
       }
 
-      return { watts: 0, voltage: 120 };
+      return { watts: branchWatts, voltage: branchVoltage };
     };
 
     const inverterACWires = wires.filter(
@@ -892,20 +912,20 @@ export default function SchematicDesigner() {
       }
     }
 
-    if (totalACWatts === 0) {
-      const inverterRating = (inverter.properties?.powerRating || inverter.properties?.watts || inverter.properties?.power || 0) as number;
-      if (inverterRating > 0) {
-        totalACWatts = inverterRating * 0.8;
-      }
-    }
+    // Always calculate capacity-based max current for safety sizing
+    const inverterRating = (inverter.properties?.powerRating || inverter.properties?.watts || inverter.properties?.power || 0) as number;
+    const maxDCInputWatts = inverterRating > 0 ? (inverterRating / inverterEfficiency) : 0;
+    const maxDCInputCurrent = systemVoltage > 0 ? maxDCInputWatts / systemVoltage : 0;
 
+    // Actual load current
     const dcInputWatts = totalACWatts / inverterEfficiency;
     const dcInputCurrent = systemVoltage > 0 ? dcInputWatts / systemVoltage : 0;
 
-    return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
+    return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage, maxDCInputCurrent };
   };
 
-  const calculateWire = (wire: Wire, overrideVoltage?: number) => {
+  const calculateWire = (wire: Wire, overrideVoltage?: number, componentsOverride?: SchematicComponent[]) => {
+    const comps = componentsOverride || components;
     try {
       // Find parallel wires (same from/to components, same polarity)
       const parallelWires = wires.filter(w => 
@@ -921,8 +941,8 @@ export default function SchematicDesigner() {
       let voltage = overrideVoltage || systemVoltage;
 
       // Find connected components to calculate current (define at top level for scope)
-      const fromComp = components.find(c => c.id === wire.fromComponentId);
-      const toComp = components.find(c => c.id === wire.toComponentId);
+      const fromComp = comps.find(c => c.id === wire.fromComponentId);
+      const toComp = comps.find(c => c.id === wire.toComponentId);
 
       if (current === 0) {
 
@@ -938,8 +958,14 @@ export default function SchematicDesigner() {
             ? fromComp.id
             : toComp?.id;
           if (inverterId) {
-            const inverterDC = calculateInverterDCInput(inverterId);
+            const inverterDC = calculateInverterDCInput(inverterId, 0.875, comps);
             current = inverterDC.dcInputCurrent;
+            // Use sizingCurrent (based on capacity) for safety recommendations
+            // This ensures main cables are sized for potential load, even if current load is small
+            if (inverterDC.maxDCInputCurrent > 0) {
+              (wire as any)._sizingCurrent = inverterDC.maxDCInputCurrent;
+            }
+            
             // Use system voltage for DC side
             if (fromComp?.properties?.voltage) {
               voltage = fromComp.properties.voltage as number;
@@ -962,7 +988,7 @@ export default function SchematicDesigner() {
               ? fromComp.id
               : toComp?.id;
             if (inverterId) {
-              const inverterDC = calculateInverterDCInput(inverterId);
+              const inverterDC = calculateInverterDCInput(inverterId, 0.875, comps);
               if (inverterDC.acLoadWatts > 0) {
                 // Hot and neutral carry the full current, ground carries no current
                 current = (wire.polarity === "hot" || wire.polarity === "neutral")
@@ -1053,7 +1079,7 @@ export default function SchematicDesigner() {
                 
                 if (!visitedLoads.has(loadCompId)) {
                   visitedLoads.add(loadCompId);
-                  const loadComp = components.find(c => c.id === loadCompId);
+                  const loadComp = comps.find(c => c.id === loadCompId);
                   if (loadComp && loadComp.type === "ac-load") {
                     const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
                     totalLoadWatts += loadWatts;
@@ -1085,7 +1111,7 @@ export default function SchematicDesigner() {
                 
                 if (!visitedLoads.has(loadCompId)) {
                   visitedLoads.add(loadCompId);
-                  const loadComp = components.find(c => c.id === loadCompId);
+                  const loadComp = comps.find(c => c.id === loadCompId);
                   if (loadComp && loadComp.type === "dc-load") {
                     const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
                     const loadVoltage = (loadComp.properties?.voltage as number || voltage);
@@ -1127,7 +1153,7 @@ export default function SchematicDesigner() {
                 if (visitedComps.has(otherCompId)) continue;
                 visitedComps.add(otherCompId);
                 
-                const otherComp = components.find(c => c.id === otherCompId);
+                const otherComp = comps.find(c => c.id === otherCompId);
                 if (!otherComp) continue;
                 
                 // Skip AC loads and AC panels
@@ -1135,7 +1161,7 @@ export default function SchematicDesigner() {
                 
                 // For inverters, get DC input current (load)
                 if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
-                  const inverterDC = calculateInverterDCInput(otherComp.id);
+                  const inverterDC = calculateInverterDCInput(otherComp.id, 0.875, comps);
                   totalLoadCurrent += inverterDC.dcInputCurrent;
                 }
                 // For DC loads, calculate current
@@ -1161,7 +1187,7 @@ export default function SchematicDesigner() {
                     
                     if (!visitedLoads.has(loadCompId)) {
                       visitedLoads.add(loadCompId);
-                      const loadComp = components.find(c => c.id === loadCompId);
+                      const loadComp = comps.find(c => c.id === loadCompId);
                       if (loadComp && loadComp.type === "dc-load") {
                         const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
                         const loadVoltage = (loadComp.properties?.voltage as number || voltage);
@@ -1205,7 +1231,7 @@ export default function SchematicDesigner() {
                       ? busBarWire.toComponentId 
                       : busBarWire.fromComponentId;
                     
-                    const busBarComp = components.find(c => c.id === busBarCompId);
+                    const busBarComp = comps.find(c => c.id === busBarCompId);
                     if (busBarComp && busBarComp.type?.includes("busbar")) {
                       // Calculate net current on this bus bar (loads minus sources)
                       const connectedWires = wires.filter(
@@ -1224,7 +1250,7 @@ export default function SchematicDesigner() {
                         if (visitedComps.has(otherCompId)) continue;
                         visitedComps.add(otherCompId);
                         
-                        const connectedComp = components.find(c => c.id === otherCompId);
+                        const connectedComp = comps.find(c => c.id === otherCompId);
                         if (!connectedComp) continue;
                         
                         // Skip AC loads and AC panels
@@ -1232,7 +1258,7 @@ export default function SchematicDesigner() {
                         
                         // For inverters, get DC input current (load)
                         if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter") {
-                          const inverterDC = calculateInverterDCInput(connectedComp.id);
+                          const inverterDC = calculateInverterDCInput(connectedComp.id, 0.875, comps);
                           totalLoadCurrent += inverterDC.dcInputCurrent;
                         }
                         // For DC loads, calculate current
@@ -1258,7 +1284,7 @@ export default function SchematicDesigner() {
                             
                             if (!visitedLoads.has(loadCompId)) {
                               visitedLoads.add(loadCompId);
-                              const loadComp = components.find(c => c.id === loadCompId);
+                              const loadComp = comps.find(c => c.id === loadCompId);
                               if (loadComp && loadComp.type === "dc-load") {
                                 const loadWatts = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
                                 const loadVoltage = (loadComp.properties?.voltage as number || voltage);
@@ -1298,6 +1324,22 @@ export default function SchematicDesigner() {
         }
       }
 
+      // Fallback for Load components if current is still 0
+      if (current === 0) {
+        const loadComp = (fromComp?.type?.includes("load") ? fromComp : null) || (toComp?.type?.includes("load") ? toComp : null);
+        if (loadComp) {
+           const w = (loadComp.properties?.watts || loadComp.properties?.power || 0) as number;
+           const v = loadComp.type === "ac-load" 
+             ? (loadComp.properties?.acVoltage || loadComp.properties?.voltage || 120)
+             : (loadComp.properties?.voltage as number || voltage);
+             
+           if (w > 0 && v > 0) {
+             current = w / v;
+             if (loadComp.type === "ac-load") voltage = v;
+           }
+        }
+      }
+
       // Default to 10A if still no current found (only for non-inverter wires)
       // But skip this default if we're still calculating (current === 0 might be valid for sources)
       if (current === 0 && !fromComp?.type?.includes("busbar") && !toComp?.type?.includes("busbar")) {
@@ -1307,17 +1349,25 @@ export default function SchematicDesigner() {
       // Use actual wire length and gauge if available
       const wireLength = wire.length || 10;
 
+      // Calculate current for gauge sizing (may be different from display current for safety)
+      const sizingCurrent = (wire as any)._sizingCurrent || current;
+      
       // Divide current by number of parallel wires (each wire carries 1/N of total current)
-      const currentPerWire = current / parallelCount;
+      const currentPerWire = sizingCurrent / parallelCount;
 
       // Calculate wire size client-side (no server request needed)
       const result = calculateWireSize({
-        current: currentPerWire, // Use current per wire, not total current
+        current: currentPerWire, // Use sizing current per wire
         length: wireLength,
         voltage: voltage,
         conductorMaterial: (wire as any).conductorMaterial || "copper",
         currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
       });
+
+      if ((wire as any)._sizingCurrent && (wire as any)._sizingCurrent > current) {
+          // Append note about capacity sizing
+          result.message = (result.message || "") + ` (Sized for Inverter Capacity: ${(wire as any)._sizingCurrent.toFixed(0)}A)`;
+      }
       
       // Store the total current in the result for display purposes
       result.totalCurrent = current;
@@ -1811,6 +1861,8 @@ export default function SchematicDesigner() {
         isAIWiring={aiWireMutation.isPending}
         showWireLabels={showWireLabels}
         onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
+        viewMode={viewMode}
+        onToggleViewMode={() => setViewMode(viewMode === 'standard' ? 'load' : 'standard')}
         systemVoltage={systemVoltage}
         hasWireIssues={hasWireIssues}
       />
@@ -1850,6 +1902,8 @@ export default function SchematicDesigner() {
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}
           showWireLabels={showWireLabels}
+          viewMode={viewMode}
+          wireCalculations={wireCalculations}
           onCopy={handleCopy}
           onPaste={handlePaste}
         />
