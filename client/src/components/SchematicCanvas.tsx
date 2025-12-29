@@ -985,51 +985,104 @@ export function SchematicCanvas({
             // Detect and resolve label overlaps
             const LABEL_WIDTH = 90; // Max label width
             const LABEL_HEIGHT = 24;
-            const MIN_LABEL_SPACING = 50; // Minimum distance between labels
+            const SEGMENT_PADDING = 6;
+            const LABEL_EDGE_PADDING = 10;
+            const LABEL_ALONG_OFFSETS = [0, 40, -40, 80, -80, 120, -120];
+            const LABEL_PERPENDICULAR_OFFSETS = [0, 18, -18, 30, -30, 42, -42];
+
+            type LabelBounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+            const getLabelBounds = (x: number, y: number, rotation: number): LabelBounds => {
+              const w = LABEL_WIDTH / 2;
+              const h = LABEL_HEIGHT / 2;
+              const rad = (rotation * Math.PI) / 180;
+              const cos = Math.cos(rad);
+              const sin = Math.sin(rad);
+              
+              // Rotate corners around center
+              const corners = [
+                { x: -w, y: -h },
+                { x: w, y: -h },
+                { x: w, y: h },
+                { x: -w, y: h },
+              ].map(c => ({
+                x: x + c.x * cos - c.y * sin,
+                y: y + c.x * sin + c.y * cos,
+              }));
+
+              const xs = corners.map(c => c.x);
+              const ys = corners.map(c => c.y);
+              return {
+                minX: Math.min(...xs),
+                maxX: Math.max(...xs),
+                minY: Math.min(...ys),
+                maxY: Math.max(...ys),
+              };
+            };
+
+            const boundsOverlap = (a: LabelBounds, b: LabelBounds): boolean => {
+              return !(
+                a.maxX < b.minX ||
+                a.minX > b.maxX ||
+                a.maxY < b.minY ||
+                a.minY > b.maxY
+              );
+            };
 
             function labelsOverlap(
               x1: number, y1: number, rot1: number,
               x2: number, y2: number, rot2: number
             ): boolean {
-              // Transform label bounds to world coordinates
-              const getLabelBounds = (x: number, y: number, rotation: number) => {
-                const w = LABEL_WIDTH / 2;
-                const h = LABEL_HEIGHT / 2;
-                const rad = (rotation * Math.PI) / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-                
-                // Rotate corners around center
-                const corners = [
-                  { x: -w, y: -h },
-                  { x: w, y: -h },
-                  { x: w, y: h },
-                  { x: -w, y: h },
-                ].map(c => ({
-                  x: x + c.x * cos - c.y * sin,
-                  y: y + c.x * sin + c.y * cos,
-                }));
-
-                const xs = corners.map(c => c.x);
-                const ys = corners.map(c => c.y);
-                return {
-                  minX: Math.min(...xs),
-                  maxX: Math.max(...xs),
-                  minY: Math.min(...ys),
-                  maxY: Math.max(...ys),
-                };
-              };
-
               const bounds1 = getLabelBounds(x1, y1, rot1);
               const bounds2 = getLabelBounds(x2, y2, rot2);
-
-              return !(
-                bounds1.maxX < bounds2.minX ||
-                bounds1.minX > bounds2.maxX ||
-                bounds1.maxY < bounds2.minY ||
-                bounds1.minY > bounds2.maxY
-              );
+              return boundsOverlap(bounds1, bounds2);
             }
+
+            type SegmentBounds = {
+              minX: number;
+              maxX: number;
+              minY: number;
+              maxY: number;
+              routeIndex: number;
+              segmentIndex: number;
+            };
+
+            const segmentBounds: SegmentBounds[] = [];
+
+            wireRoutes.forEach((route, routeIndex) => {
+              const { pathPoints } = route;
+              for (let i = 1; i < pathPoints.length; i++) {
+                const p1 = pathPoints[i - 1];
+                const p2 = pathPoints[i];
+                const minX = Math.min(p1.x, p2.x) - SEGMENT_PADDING;
+                const maxX = Math.max(p1.x, p2.x) + SEGMENT_PADDING;
+                const minY = Math.min(p1.y, p2.y) - SEGMENT_PADDING;
+                const maxY = Math.max(p1.y, p2.y) + SEGMENT_PADDING;
+                segmentBounds.push({
+                  minX,
+                  maxX,
+                  minY,
+                  maxY,
+                  routeIndex,
+                  segmentIndex: i - 1,
+                });
+              }
+            });
+
+            const labelCollidesWithSegments = (
+              x: number,
+              y: number,
+              rotation: number,
+              routeIndex: number
+            ): boolean => {
+              const bounds = getLabelBounds(x, y, rotation);
+              return segmentBounds.some(segment => {
+                if (segment.routeIndex === routeIndex) {
+                  return false;
+                }
+                return boundsOverlap(bounds, segment);
+              });
+            };
 
             // Check if a label position overlaps with any other label
             function overlapsWithAny(
@@ -1045,6 +1098,87 @@ export function SchematicCanvas({
               }
               return false;
             }
+
+            const labelPositionIsClear = (
+              x: number,
+              y: number,
+              rotation: number,
+              routeIndex: number,
+              routes: WireRouteData[]
+            ): boolean => {
+              if (overlapsWithAny(x, y, rotation, routeIndex, routes)) {
+                return false;
+              }
+              return !labelCollidesWithSegments(x, y, rotation, routeIndex);
+            };
+
+            const placeLabelForRoute = (
+              routeIndex: number,
+              route: WireRouteData,
+              routes: WireRouteData[]
+            ): { x: number; y: number; rotation: number } | null => {
+              const { pathPoints } = route;
+              if (pathPoints.length < 2) return null;
+
+              const segments = pathPoints.slice(1).map((point, index) => {
+                const start = pathPoints[index];
+                const end = point;
+                const dx = end.x - start.x;
+                const dy = end.y - start.y;
+                const length = Math.hypot(dx, dy);
+                const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+                return {
+                  start,
+                  end,
+                  dx,
+                  dy,
+                  length,
+                  isHorizontal,
+                  segmentIndex: index,
+                };
+              }).sort((a, b) => b.length - a.length);
+
+              for (const segment of segments) {
+                if (segment.length < 20) continue;
+
+                const rotation = segment.isHorizontal ? 0 : 90;
+                // Labels are aligned with the segment (0° for horizontal, 90° for vertical),
+                // so the span *along* the segment direction is always LABEL_WIDTH.
+                // (On vertical segments, 90° rotation makes the label's vertical extent = LABEL_WIDTH.)
+                const labelSpan = LABEL_WIDTH;
+                const available = Math.max(0, (segment.length - labelSpan - LABEL_EDGE_PADDING) / 2);
+
+                for (const alongOffset of LABEL_ALONG_OFFSETS) {
+                  if (Math.abs(alongOffset) > available) continue;
+
+                  const midX = (segment.start.x + segment.end.x) / 2;
+                  const midY = (segment.start.y + segment.end.y) / 2;
+                  const alongRatio = segment.length === 0 ? 0 : alongOffset / segment.length;
+                  const baseX = midX + segment.dx * alongRatio;
+                  const baseY = midY + segment.dy * alongRatio;
+
+                  for (const perpOffset of LABEL_PERPENDICULAR_OFFSETS) {
+                    const x = segment.isHorizontal ? baseX : baseX + perpOffset;
+                    const y = segment.isHorizontal ? baseY + perpOffset : baseY;
+
+                    if (labelPositionIsClear(x, y, rotation, routeIndex, routes)) {
+                      return { x, y, rotation };
+                    }
+                  }
+                }
+              }
+
+              return null;
+            };
+
+            wireRoutes.forEach((route, index) => {
+              const placement = placeLabelForRoute(index, route, wireRoutes);
+              if (placement) {
+                route.labelX = placement.x;
+                route.labelY = placement.y;
+                route.labelRotation = placement.rotation;
+              }
+            });
 
             // Adjust overlapping labels by sliding them along their paths
             // Use multiple passes to handle cascading overlaps
@@ -1146,7 +1280,7 @@ export function SchematicCanvas({
                       }
 
                       // Check if this position doesn't overlap with any other label
-                      if (!overlapsWithAny(x, y, rotation, routeIndex, allRoutes)) {
+                      if (labelPositionIsClear(x, y, rotation, routeIndex, allRoutes)) {
                         return { x, y, rotation };
                       }
                     }
@@ -1176,21 +1310,21 @@ export function SchematicCanvas({
                 if (isHorizontal) {
                   // Wire is horizontal, offset vertically
                   const newY = originalY + offset;
-                  if (!overlapsWithAny(originalX, newY, originalRot, routeIndex, allRoutes)) {
+                  if (labelPositionIsClear(originalX, newY, originalRot, routeIndex, allRoutes)) {
                     return { x: originalX, y: newY, rotation: originalRot };
                   }
                   const newY2 = originalY - offset;
-                  if (!overlapsWithAny(originalX, newY2, originalRot, routeIndex, allRoutes)) {
+                  if (labelPositionIsClear(originalX, newY2, originalRot, routeIndex, allRoutes)) {
                     return { x: originalX, y: newY2, rotation: originalRot };
                   }
                 } else {
                   // Wire is vertical, offset horizontally
                   const newX = originalX + offset;
-                  if (!overlapsWithAny(newX, originalY, originalRot, routeIndex, allRoutes)) {
+                  if (labelPositionIsClear(newX, originalY, originalRot, routeIndex, allRoutes)) {
                     return { x: newX, y: originalY, rotation: originalRot };
                   }
                   const newX2 = originalX - offset;
-                  if (!overlapsWithAny(newX2, originalY, originalRot, routeIndex, allRoutes)) {
+                  if (labelPositionIsClear(newX2, originalY, originalRot, routeIndex, allRoutes)) {
                     return { x: newX2, y: originalY, rotation: originalRot };
                   }
                 }
