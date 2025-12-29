@@ -202,7 +202,7 @@ export function calculateWireSize(params: {
   };
 }
 
-export function calculateLoadRequirements(components: any[]): {
+export function calculateLoadRequirements(components: any[], systemVoltage: number = 12): {
   dcLoads: number;
   acLoads: number;
   totalPower: number;
@@ -232,9 +232,12 @@ export function calculateLoadRequirements(components: any[]): {
   const peakPower = totalPower * 1.25; // 25% safety margin
   const averagePower = totalPower * 0.7; // Assume 70% duty cycle
 
+  const battery = components.find(comp => comp.type === "battery");
+  const batteryVoltage = (battery?.properties?.voltage as number | undefined) || systemVoltage || 12;
+
   // Battery capacity: enough for 24 hours at average load
   // Ah = (Wh per day) / voltage / depth of discharge
-  const batteryCapacityRequired = (averagePower * 24) / 12 / 0.5; // 50% DOD
+  const batteryCapacityRequired = (averagePower * 24) / batteryVoltage / 0.5; // 50% DOD
 
   // Inverter size: peak AC load + 25% safety margin
   const inverterSizeRequired = acLoads * 1.25;
