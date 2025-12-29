@@ -193,8 +193,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Load calculation endpoint
   app.post("/api/calculate-load", async (req, res) => {
     try {
-      const { components } = req.body;
-      const calculation = calculateLoadRequirements(components);
+      const { components, systemVoltage = 12 } = req.body;
+      const calculation = calculateLoadRequirements(components, systemVoltage);
       res.json(calculation);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
