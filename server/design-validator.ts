@@ -233,10 +233,12 @@ export class DesignValidator {
 
     batteries.forEach(battery => {
       const positiveWires = this.wires.filter(
-        w => w.fromComponentId === battery.id && w.fromTerminal === "positive"
+        w => (w.fromComponentId === battery.id && w.fromTerminal === "positive") ||
+             (w.toComponentId === battery.id && w.toTerminal === "positive")
       );
       const negativeWires = this.wires.filter(
-        w => w.fromComponentId === battery.id && w.fromTerminal === "negative"
+        w => (w.fromComponentId === battery.id && w.fromTerminal === "negative") ||
+             (w.toComponentId === battery.id && w.toTerminal === "negative")
       );
 
       if (positiveWires.length === 0 || negativeWires.length === 0) {
@@ -413,25 +415,27 @@ export class DesignValidator {
         });
       }
 
-      // Check PV current limit (Isc is typically 1.1x Imp, but we'll use Imp)
-      // MPPT maxCurrent is the output current, but PV input current can be higher due to efficiency
-      // For safety, we'll check if panel current exceeds MPPT maxCurrent
-      if (totalPVCurrent > maxCurrent * 1.1) {
-        this.issues.push({
-          severity: "error",
-          category: "electrical",
-          message: `MPPT "${mppt.name}" PV current exceeded: ${totalPVCurrent.toFixed(1)}A PV exceeds maximum ${maxCurrent}A output`,
-          componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
-          suggestion: `Reduce number of panels in parallel or use an MPPT with higher current rating (e.g., ${Math.ceil(totalPVCurrent / 1.1)}A or higher)`,
-        });
-      } else if (totalPVCurrent > maxCurrent * 0.9) {
-        this.issues.push({
-          severity: "warning",
-          category: "electrical",
-          message: `MPPT "${mppt.name}" PV current near limit: ${totalPVCurrent.toFixed(1)}A PV is close to maximum ${maxCurrent}A output`,
-          componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
-          suggestion: `Consider using an MPPT with higher current rating for safety margin`,
-        });
+      if (maxCurrent > 0) {
+        // Check PV current limit (Isc is typically 1.1x Imp, but we'll use Imp)
+        // MPPT maxCurrent is the output current, but PV input current can be higher due to efficiency
+        // For safety, we'll check if panel current exceeds MPPT maxCurrent
+        if (totalPVCurrent > maxCurrent * 1.1) {
+          this.issues.push({
+            severity: "error",
+            category: "electrical",
+            message: `MPPT "${mppt.name}" PV current exceeded: ${totalPVCurrent.toFixed(1)}A PV exceeds maximum ${maxCurrent}A output`,
+            componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
+            suggestion: `Reduce number of panels in parallel or use an MPPT with higher current rating (e.g., ${Math.ceil(totalPVCurrent / 1.1)}A or higher)`,
+          });
+        } else if (totalPVCurrent > maxCurrent * 0.9) {
+          this.issues.push({
+            severity: "warning",
+            category: "electrical",
+            message: `MPPT "${mppt.name}" PV current near limit: ${totalPVCurrent.toFixed(1)}A PV is close to maximum ${maxCurrent}A output`,
+            componentIds: [mppt.id, ...connectedPanels.map(p => p.id)],
+            suggestion: `Consider using an MPPT with higher current rating for safety margin`,
+          });
+        }
       }
     });
   }
