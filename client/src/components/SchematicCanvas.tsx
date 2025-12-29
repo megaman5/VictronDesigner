@@ -1056,7 +1056,10 @@ export function SchematicCanvas({
                 if (segment.length < 20) continue;
 
                 const rotation = segment.isHorizontal ? 0 : 90;
-                const labelSpan = segment.isHorizontal ? LABEL_WIDTH : LABEL_HEIGHT;
+                // Labels are aligned with the segment (0° for horizontal, 90° for vertical),
+                // so the span *along* the segment direction is always LABEL_WIDTH.
+                // (On vertical segments, 90° rotation makes the label's vertical extent = LABEL_WIDTH.)
+                const labelSpan = LABEL_WIDTH;
                 const available = Math.max(0, (segment.length - labelSpan - LABEL_EDGE_PADDING) / 2);
 
                 for (const alongOffset of LABEL_ALONG_OFFSETS) {
