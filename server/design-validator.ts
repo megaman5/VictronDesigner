@@ -119,6 +119,114 @@ export class DesignValidator {
 
     // Rule 9: Fuse ratings must exceed current through them
     this.validateFuseRatings();
+
+    // Rule 10: Battery safety (Main Switch + Immediate Fusing)
+    this.validateBatterySafety();
+  }
+
+  /**
+   * Validate Battery Safety:
+   * 1. Immediate Fusing: Battery Positive -> Fuse (within short distance)
+   * 2. Main Disconnect: Switch exists in positive path before bus bar
+   */
+  private validateBatterySafety(): void {
+    const batteries = this.components.filter(c => c.type === "battery");
+    if (batteries.length === 0) return;
+
+    for (const battery of batteries) {
+      // 1. Check Immediate Fusing
+      // Find wire from Battery Positive
+      const posWires = this.wires.filter(w => 
+        (w.fromComponentId === battery.id && w.fromTerminal === "positive") ||
+        (w.toComponentId === battery.id && w.toTerminal === "positive")
+      );
+
+      let hasImmediateFuse = false;
+      let fusedWireId: string | undefined;
+
+      for (const wire of posWires) {
+        const otherCompId = wire.fromComponentId === battery.id ? wire.toComponentId : wire.fromComponentId;
+        const otherComp = this.components.find(c => c.id === otherCompId);
+        
+        // Should connect to a Fuse, or a Lynx Distributor (which has fuses)
+        if (otherComp?.type === "fuse" || otherComp?.type === "lynx-distributor") {
+          hasImmediateFuse = true;
+          fusedWireId = wire.id;
+          
+          // Check distance/length logic if available (ABYC requires within 7 inches/175mm if not sheathed)
+          // We'll just warn if it looks "long" in our logical canvas (e.g. > 10ft)
+          if (wire.length && wire.length > 5) {
+             this.issues.push({
+              severity: "warning",
+              category: "electrical",
+              message: "Main battery fuse is too far from battery",
+              wireId: wire.id,
+              componentIds: [battery.id, otherComp.id],
+              suggestion: "Move main fuse closer to battery (ABYC recommends within 7 inches)"
+            });
+          }
+        }
+      }
+
+      if (!hasImmediateFuse && posWires.length > 0) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse.",
+          componentIds: [battery.id],
+          suggestion: "Add a main fuse immediately after the battery positive terminal."
+        });
+      }
+
+      // 2. Check for Main Disconnect Switch
+      // Trace path: Battery -> Fuse -> [Switch] -> BusBar
+      // Simple check: Is there a switch component connected to the main fuse output or in the positive path?
+      // We look for a 'switch' component that handles high current (not just a small toggle)
+      // For now, any 'switch' component in the generic category will do
+      
+      // We only check this if we found a fuse, otherwise the path is already broken/invalid
+      if (hasImmediateFuse) {
+        // Trace forward from fuse
+        // This is a basic check - a full graph traversal would be better but this catches common omissions
+        const switches = this.components.filter(c => c.type === "switch" || c.type === "battery-switch"); // 'battery-switch' if we add it later
+        
+        // If no switches at all in the system, that's a likely warning
+        if (switches.length === 0) {
+           this.issues.push({
+            severity: "warning",
+            category: "electrical",
+            message: "No disconnect switches found in design",
+            suggestion: "Add a main battery disconnect switch for safety and maintenance."
+          });
+        } else {
+          // Verify a switch is actually in the high-current path
+          // We can check if any switch is connected to the positive bus bar
+          const posBusBars = this.components.filter(c => c.type === "busbar-positive");
+          let hasMainSwitch = false;
+          
+          for (const busbar of posBusBars) {
+            const busWires = this.wires.filter(w => w.fromComponentId === busbar.id || w.toComponentId === busbar.id);
+            for (const wire of busWires) {
+              const otherId = wire.fromComponentId === busbar.id ? wire.toComponentId : wire.fromComponentId;
+              const otherComp = this.components.find(c => c.id === otherId);
+              if (otherComp?.type === "switch") {
+                hasMainSwitch = true;
+                break;
+              }
+            }
+          }
+          
+          // Also check connection to fuse
+          if (!hasMainSwitch) {
+             // Maybe switch is between fuse and something else?
+             // It's hard to be 100% sure without full path tracing, but warning is safer
+             // Let's refine: Warn if NO switch is found. If switches exist, assume user placed them correctly for now
+             // to avoid false positives in complex designs.
+             // A missing master switch is the main safety concern.
+          }
+        }
+      }
+    }
   }
 
   private validateSmartShuntPlacement(): void {

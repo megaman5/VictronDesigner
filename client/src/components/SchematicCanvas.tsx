@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
@@ -34,6 +35,8 @@ interface SchematicCanvasProps {
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
   showWireLabels?: boolean;
+  viewMode?: 'standard' | 'load';
+  wireCalculations?: Record<string, any>;
   onCopy?: (componentIds: string[]) => void;
   onPaste?: () => void;
 }
@@ -57,9 +60,12 @@ export function SchematicCanvas({
   wireConnectionMode = false,
   wireStartComponent = null,
   showWireLabels = true,
+  viewMode = 'standard',
+  wireCalculations = {},
   onCopy,
   onPaste,
 }: SchematicCanvasProps) {
+  const { toast } = useToast();
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -223,6 +229,86 @@ export function SchematicCanvas({
     } else {
       // Second click - complete wire connection
       if (wireStart.componentId !== component.id) {
+        // Validate connection compatibility
+        const t1 = wireStart.terminal;
+        const t2 = terminal;
+        let valid = true;
+        let errorMsg = "";
+
+        const dcTypes = ['positive', 'negative', 'pv-positive', 'pv-negative'];
+        const acTypes = ['ac-in', 'ac-out'];
+        
+        const isDC1 = dcTypes.includes(t1.type);
+        const isDC2 = dcTypes.includes(t2.type);
+        const isAC1 = acTypes.includes(t1.type);
+        const isAC2 = acTypes.includes(t2.type);
+        const isGND1 = t1.type === 'ground';
+        const isGND2 = t2.type === 'ground';
+
+        // 1. AC vs DC Mixing (Ground is exception)
+        if ((isDC1 && isAC2) || (isAC1 && isDC2)) {
+          valid = false;
+          errorMsg = "Cannot connect AC terminal to DC terminal.";
+        }
+        // 2. Ground Connections
+        else if (isGND1) {
+          if (isAC2) {
+            valid = false;
+            errorMsg = "Ground must connect to Ground (or DC Negative).";
+          } else if (isDC2) {
+            const isNeg = ['negative', 'pv-negative'].includes(t2.type);
+            if (!isNeg) {
+              valid = false;
+              errorMsg = "Ground cannot connect to DC Positive.";
+            }
+          }
+        }
+        else if (isGND2) {
+          if (isAC1) {
+            valid = false;
+            errorMsg = "Ground must connect to Ground (or DC Negative).";
+          } else if (isDC1) {
+            const isNeg = ['negative', 'pv-negative'].includes(t1.type);
+            if (!isNeg) {
+              valid = false;
+              errorMsg = "Ground cannot connect to DC Positive.";
+            }
+          }
+        }
+        // 3. DC Polarity
+        else if (isDC1 && isDC2) {
+          const isPos1 = ['positive', 'pv-positive'].includes(t1.type);
+          const isPos2 = ['positive', 'pv-positive'].includes(t2.type);
+          if (isPos1 !== isPos2) {
+            valid = false;
+            errorMsg = `Cannot connect ${t1.type} to ${t2.type}. Polarity mismatch!`;
+          }
+        }
+        // 4. AC Polarity (L/N)
+        else if (isAC1 && isAC2) {
+          const getPol = (id: string) => {
+            const s = id.toLowerCase();
+            if (s.includes('hot') || s.includes('line') || s.includes(' l') || s.endsWith('-l')) return 'hot';
+            if (s.includes('neutral') || s.includes(' n') || s.endsWith('-n')) return 'neutral';
+            return 'unknown';
+          };
+          const p1 = getPol(t1.id);
+          const p2 = getPol(t2.id);
+          if (p1 !== 'unknown' && p2 !== 'unknown' && p1 !== p2) {
+            valid = false;
+            errorMsg = `Cannot connect AC ${p1} to ${p2}. Phase mismatch!`;
+          }
+        }
+
+        if (!valid) {
+          toast({
+            title: "Invalid Connection",
+            description: errorMsg,
+            variant: "destructive",
+          });
+          return;
+        }
+
         // Get default wire length based on component types
         const fromComp = components.find(c => c.id === wireStart.componentId);
         const toComp = components.find(c => c.id === component.id);
@@ -1197,9 +1283,18 @@ export function SchematicCanvas({
                         dominantBaseline="middle"
                         className="fill-foreground text-xs font-semibold"
                       >
-                        {polaritySymbol} {wire.gauge || "N/A"}
-                        {wire.length && wire.length > 0 && (
-                          <tspan className="text-[10px] font-normal opacity-75"> • {wire.length.toFixed(1)}ft</tspan>
+                        {viewMode === 'load' ? (
+                          <>
+                            {(wireCalculations[wire.id]?.current || 0).toFixed(1)}A
+                            <tspan className="text-[10px] font-normal opacity-75"> ➔</tspan>
+                          </>
+                        ) : (
+                          <>
+                            {polaritySymbol} {wire.gauge || "N/A"}
+                            {wire.length && wire.length > 0 && (
+                              <tspan className="text-[10px] font-normal opacity-75"> • {wire.length.toFixed(1)}ft</tspan>
+                            )}
+                          </>
                         )}
                       </text>
                     </g>
@@ -1345,6 +1440,7 @@ export function SchematicCanvas({
                   onClick={(e) => handleComponentClick(component, e)}
                   onTerminalClick={(terminal, e) => handleTerminalClick(component, terminal, e)}
                   highlightedTerminals={highlightedTerminals}
+                  viewMode={viewMode}
                 />
               </div>
             );

@@ -45,6 +45,8 @@ interface TopBarProps {
   isAIWiring?: boolean;
   showWireLabels?: boolean;
   onToggleWireLabels?: () => void;
+  viewMode?: 'standard' | 'load';
+  onToggleViewMode?: () => void;
   systemVoltage?: number;
   hasWireIssues?: boolean;
 }
@@ -70,6 +72,8 @@ export function TopBar({
   isAIWiring = false,
   showWireLabels = true,
   onToggleWireLabels,
+  viewMode = 'standard',
+  onToggleViewMode,
   systemVoltage = 12,
   hasWireIssues = false
 }: TopBarProps) {
@@ -268,6 +272,17 @@ export function TopBar({
           >
             <Tag className="h-4 w-4" />
             Labels
+          </Button>
+
+          <Button
+            variant={viewMode === 'load' ? "default" : "outline"}
+            size="sm"
+            onClick={onToggleViewMode}
+            data-testid="button-toggle-view-mode"
+            className="gap-2"
+          >
+            <Activity className="h-4 w-4" />
+            Loads
           </Button>
 
           <Button

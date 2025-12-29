@@ -935,7 +935,7 @@ CRITICAL INSTRUCTION: If the user provides existing wires, you MUST preserve ALL
 DO NOT regenerate wires that are already correct and have no errors. Preserve the existing wire structure and only add/fix what's needed.${validationSection}${iterationFeedback}
 
 COMPONENT TERMINALS (EXACT NAMES):
-- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
+- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - bmv: "data"
@@ -1519,7 +1519,7 @@ LAYOUT RULES:
 ⚠️ CRITICAL: USE EXACT TERMINAL IDs - DO NOT ABBREVIATE OR MODIFY ⚠️
 
 TERMINAL IDs BY COMPONENT (copy these EXACTLY):
-- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
+- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - smartshunt: "negative", "system-minus", "data"
@@ -2085,7 +2085,7 @@ LAYOUT RULES:
 ⚠️ CRITICAL: USE EXACT TERMINAL IDs - DO NOT ABBREVIATE OR MODIFY ⚠️
 
 TERMINAL IDs BY COMPONENT (copy these EXACTLY):
-- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative", "chassis-ground"
+- multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - smartshunt: "negative", "system-minus", "data"
