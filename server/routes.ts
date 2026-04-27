@@ -134,7 +134,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/schematics/:id", requireAuth, async (req, res) => {
     try {
-      const schematic = await storage.getSchematic(req.params.id);
+      const user = req.user as AuthUser;
+      const schematic = await storage.getUserSchematic(user.id, req.params.id);
       if (!schematic) {
         return res.status(404).json({ error: "Schematic not found" });
       }
@@ -157,8 +158,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/schematics/:id", requireAuth, async (req, res) => {
     try {
+      const user = req.user as AuthUser;
       const data = updateSchematicSchema.parse(req.body);
-      const schematic = await storage.updateSchematic(req.params.id, data);
+      const schematic = await storage.updateUserSchematic(user.id, req.params.id, data);
       if (!schematic) {
         return res.status(404).json({ error: "Schematic not found" });
       }
@@ -170,7 +172,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/schematics/:id", requireAuth, async (req, res) => {
     try {
-      const success = await storage.deleteSchematic(req.params.id);
+      const user = req.user as AuthUser;
+      const success = await storage.deleteUserSchematic(user.id, req.params.id);
       if (!success) {
         return res.status(404).json({ error: "Schematic not found" });
       }
