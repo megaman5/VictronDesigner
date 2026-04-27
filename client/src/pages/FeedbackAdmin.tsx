@@ -33,7 +33,8 @@ interface Feedback {
   message: string;
   email?: string;
   userAgent: string;
-  timestamp: string;
+  createdAt?: string;
+  timestamp?: string;
   state: {
     components: any[];
     wires: any[];
@@ -179,8 +180,15 @@ export default function FeedbackAdmin() {
     setTimeout(() => setLocation("/"), 500);
   };
 
-  const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString();
+  const getFeedbackDate = (feedbackItem: Feedback) => {
+    return feedbackItem.createdAt || feedbackItem.timestamp;
+  };
+
+  const formatDate = (timestamp?: string) => {
+    if (!timestamp) return "Unknown date";
+
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
   };
 
   // Show loading state while checking auth
@@ -326,7 +334,7 @@ export default function FeedbackAdmin() {
                       <CardDescription className="flex flex-wrap gap-3 mt-2">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {formatDate(item.timestamp)}
+                          {formatDate(getFeedbackDate(item))}
                         </span>
                         {item.email && (
                           <span className="flex items-center gap-1">
@@ -397,7 +405,7 @@ export default function FeedbackAdmin() {
           <DialogHeader>
             <DialogTitle>Feedback Details</DialogTitle>
             <DialogDescription>
-              {selectedFeedback && formatDate(selectedFeedback.timestamp)}
+              {selectedFeedback && formatDate(getFeedbackDate(selectedFeedback))}
             </DialogDescription>
           </DialogHeader>
 

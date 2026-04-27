@@ -104,22 +104,7 @@ export function ExportDialog({
 
       const labels = await response.json();
       
-      // Convert to printable format (labels is an array of strings from generateWireLabels)
-      const disclaimer = [
-        "⚠️ IMPORTANT DISCLAIMER",
-        "Do not trust calculations without verification.",
-        "This tool is in active development and calculations may contain errors.",
-        "Always double-check wire sizing, current ratings, and voltage drop calculations",
-        "against ABYC/NEC standards and manufacturer specifications.",
-        "Verify all component ratings and connections before installation.",
-        "This tool is for planning purposes only and does not replace professional electrical engineering review.",
-        "",
-        "=".repeat(50),
-        "",
-      ];
-      
-      // labels is already an array of strings (with disclaimer at the start from generateWireLabels)
-      const text = disclaimer.join("\n") + labels.join("\n");
+      const text = labels.join("\n");
 
       const blob = new Blob([text], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
