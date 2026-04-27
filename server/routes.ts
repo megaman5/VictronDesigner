@@ -124,7 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Schematic CRUD operations (protected)
   app.get("/api/schematics", requireAuth, async (req, res) => {
     try {
-      const user = getAuthUser(req);
+      const user = req.user as AuthUser;
       const schematics = await storage.getUserSchematics(user.id);
       res.json(schematics);
     } catch (error: any) {
@@ -146,7 +146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/schematics", requireAuth, async (req, res) => {
     try {
-      const user = getAuthUser(req);
+      const user = req.user as AuthUser;
       const data = insertSchematicSchema.parse({ ...req.body, userId: user.id });
       const schematic = await storage.createSchematic(data);
       res.json(schematic);
