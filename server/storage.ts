@@ -15,9 +15,12 @@ export interface IStorage {
   getSchematic(id: string): Promise<Schematic | undefined>;
   getAllSchematics(): Promise<Schematic[]>;
   getUserSchematics(userId: string): Promise<Schematic[]>;
+  getUserSchematic(userId: string, id: string): Promise<Schematic | undefined>;
   createSchematic(schematic: InsertSchematic): Promise<Schematic>;
   updateSchematic(id: string, schematic: UpdateSchematic): Promise<Schematic | undefined>;
+  updateUserSchematic(userId: string, id: string, schematic: UpdateSchematic): Promise<Schematic | undefined>;
   deleteSchematic(id: string): Promise<boolean>;
+  deleteUserSchematic(userId: string, id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -113,6 +116,12 @@ export class MemStorage implements IStorage {
     );
   }
 
+  async getUserSchematic(userId: string, id: string): Promise<Schematic | undefined> {
+    const schematic = this.schematics.get(id);
+    if (!schematic || schematic.userId !== userId) return undefined;
+    return schematic;
+  }
+
   async createSchematic(insertSchematic: InsertSchematic): Promise<Schematic> {
     const id = randomUUID();
     const now = new Date();
@@ -150,7 +159,32 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
+  async updateUserSchematic(userId: string, id: string, updateSchematic: UpdateSchematic): Promise<Schematic | undefined> {
+    const existing = await this.getUserSchematic(userId, id);
+    if (!existing) return undefined;
+
+    const updated: Schematic = {
+      ...existing,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: new Date(),
+      name: updateSchematic.name ?? existing.name,
+      description: updateSchematic.description !== undefined ? updateSchematic.description : existing.description,
+      systemVoltage: updateSchematic.systemVoltage ?? existing.systemVoltage,
+      components: updateSchematic.components ?? existing.components,
+      wires: updateSchematic.wires ?? existing.wires,
+    };
+    this.schematics.set(id, updated);
+    return updated;
+  }
+
   async deleteSchematic(id: string): Promise<boolean> {
+    return this.schematics.delete(id);
+  }
+
+  async deleteUserSchematic(userId: string, id: string): Promise<boolean> {
+    const existing = await this.getUserSchematic(userId, id);
+    if (!existing) return false;
     return this.schematics.delete(id);
   }
 }
