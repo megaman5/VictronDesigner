@@ -2,6 +2,47 @@ import type { Schematic, SchematicComponent, Wire } from "@shared/schema";
 import { validateDesign } from "./design-validator";
 import { calculateInverterDCInput, getACVoltage } from "./wire-calculator";
 
+type WireGaugeFormat = "awg" | "metric";
+
+const AWG_TO_MM2: Record<string, number> = {
+  "4/0": 107,
+  "3/0": 85,
+  "2/0": 67.4,
+  "1/0": 53.5,
+  "1": 42.4,
+  "2": 33.6,
+  "4": 21.2,
+  "6": 13.3,
+  "8": 8.37,
+  "10": 5.26,
+  "12": 3.31,
+  "14": 2.08,
+  "16": 1.31,
+  "18": 0.823,
+};
+
+function normalizeGauge(gauge: string): string {
+  return gauge.replace(" AWG", "").trim().replace(/\\0/g, "/0");
+}
+
+function formatMetricArea(mm2: number): string {
+  return mm2 >= 10 ? mm2.toFixed(1).replace(/\.0$/, "") : mm2.toFixed(2).replace(/0$/, "");
+}
+
+function formatWireGauge(gauge: string | undefined, format: WireGaugeFormat = "awg"): string {
+  if (!gauge) return "";
+
+  const normalizedGauge = normalizeGauge(gauge);
+  const mm2 = AWG_TO_MM2[normalizedGauge];
+  if (!mm2) return gauge;
+
+  if (format === "metric") {
+    return `${formatMetricArea(mm2)} mm²`;
+  }
+
+  return `${normalizedGauge} AWG`;
+}
+
 export interface ShoppingListItem {
   category: string;
   item: string;
@@ -10,7 +51,7 @@ export interface ShoppingListItem {
   estimatedPrice?: string;
 }
 
-export function generateShoppingList(schematic: Schematic): ShoppingListItem[] {
+export function generateShoppingList(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg"): ShoppingListItem[] {
   const components = schematic.components as SchematicComponent[];
   const wires = schematic.wires as Wire[];
   const items: ShoppingListItem[] = [];
@@ -73,7 +114,7 @@ export function generateShoppingList(schematic: Schematic): ShoppingListItem[] {
   // Aggregate wires by gauge
   const wiresByGauge = new Map<string, number>();
   wires.forEach((wire) => {
-    const gauge = wire.gauge || "10 AWG";
+    const gauge = formatWireGauge(wire.gauge || "10 AWG", wireGaugeFormat);
     const length = wire.length || 5;
     wiresByGauge.set(gauge, (wiresByGauge.get(gauge) || 0) + length);
   });
@@ -122,7 +163,7 @@ export function generateShoppingList(schematic: Schematic): ShoppingListItem[] {
   return items;
 }
 
-export function generateWireLabels(schematic: Schematic): string[] {
+export function generateWireLabels(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg"): string[] {
   const wires = schematic.wires as Wire[];
   const components = schematic.components as SchematicComponent[];
   const componentMap = new Map(components.map((c) => [c.id, c]));
@@ -145,7 +186,7 @@ export function generateWireLabels(schematic: Schematic): string[] {
     if (fromComp && toComp) {
       const wireNumber = `W${(index + 1).toString().padStart(3, "0")}`;
       const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
-      const gauge = wire.gauge || "10 AWG";
+      const gauge = formatWireGauge(wire.gauge || "10 AWG", wireGaugeFormat);
       
       labels.push(
         `${wireNumber} | ${fromComp.name} → ${toComp.name} | ${polaritySymbol} ${gauge} | ${wire.length}ft`
@@ -188,7 +229,7 @@ export function generateCSV(items: ShoppingListItem[]): string {
   return csvContent;
 }
 
-export function generateSystemReport(schematic: Schematic): string {
+export function generateSystemReport(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg"): string {
   const components = schematic.components as SchematicComponent[];
   const wires = schematic.wires as Wire[];
   const componentMap = new Map(components.map((c) => [c.id, c]));
@@ -211,6 +252,7 @@ export function generateSystemReport(schematic: Schematic): string {
     report += `Description: ${schematic.description}\n`;
   }
   report += `System Voltage: ${schematic.systemVoltage}V DC\n`;
+  report += `Wire Gauge Format: ${wireGaugeFormat === "metric" ? "mm²" : "AWG"}\n`;
   report += `Date: ${new Date().toLocaleDateString()}\n\n`;
 
   report += `COMPONENTS (${components.length})\n`;
@@ -429,7 +471,7 @@ export function generateSystemReport(schematic: Schematic): string {
     if (from && to) {
       const polarity = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
       report += `${i + 1}. ${from.name} → ${to.name}\n`;
-      report += `   Polarity: ${polarity} | Gauge: ${wire.gauge || "TBD"} | Length: ${wire.length}ft\n`;
+      report += `   Polarity: ${polarity} | Gauge: ${formatWireGauge(wire.gauge || "TBD", wireGaugeFormat)} | Length: ${wire.length}ft\n`;
       
       // Calculate wire power
       let wireCurrent = wire.current || 0;
