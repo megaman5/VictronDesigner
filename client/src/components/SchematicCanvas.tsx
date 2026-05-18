@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -6,6 +6,7 @@ import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, type Obstacle } from "@/lib/wire-routing";
+import { formatWireGauge, type WireGaugeFormat } from "@/lib/wire-calculator";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 
 export interface WireConnectionData {
@@ -35,6 +36,7 @@ interface SchematicCanvasProps {
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
   showWireLabels?: boolean;
+  wireGaugeFormat?: WireGaugeFormat;
   viewMode?: 'standard' | 'load';
   wireCalculations?: Record<string, any>;
   onCopy?: (componentIds: string[]) => void;
@@ -60,6 +62,7 @@ export function SchematicCanvas({
   wireConnectionMode = false,
   wireStartComponent = null,
   showWireLabels = true,
+  wireGaugeFormat = "awg",
   viewMode = 'standard',
   wireCalculations = {},
   onCopy,
@@ -104,6 +107,13 @@ export function SchematicCanvas({
   const [draggedEndpointPos, setDraggedEndpointPos] = useState<{ x: number; y: number } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!wireConnectionMode) {
+      setWireStart(null);
+      setWirePreviewEnd(null);
+    }
+  }, [wireConnectionMode]);
 
   // Calculate minimum canvas size based on component positions
   // This creates a canvas that's always at least as big as the content
@@ -769,6 +779,15 @@ export function SchematicCanvas({
         tabIndex={0}
         data-testid="canvas-drop-zone"
       >
+        {wireConnectionMode && (
+          <div
+            className="absolute top-3 left-3 z-20 rounded-md border bg-background/95 px-3 py-2 text-sm shadow pointer-events-none"
+            data-testid="wire-mode-instructions"
+          >
+            {wireStart ? "Click a destination terminal to finish the wire." : "Click a start terminal, then click a destination terminal."}
+          </div>
+        )}
+
         {/* Inner div to handle scrolling - size based on content */}
         <div 
           style={{ 
@@ -1424,7 +1443,7 @@ export function SchematicCanvas({
                           </>
                         ) : (
                           <>
-                            {polaritySymbol} {wire.gauge || "N/A"}
+                            {polaritySymbol} {formatWireGauge(wire.gauge, wireGaugeFormat) || "N/A"}
                             {wire.length && wire.length > 0 && (
                               <tspan className="text-[10px] font-normal opacity-75"> • {wire.length.toFixed(1)}ft</tspan>
                             )}

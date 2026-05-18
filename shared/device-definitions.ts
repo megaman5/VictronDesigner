@@ -98,7 +98,7 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
     "orion-dc-dc": {
         type: "orion-dc-dc",
         name: "Orion-Tr Smart DC-DC",
-        description: "Isolated DC-DC charger for charging house batteries from alternator or starter battery. Smart version with Bluetooth.",
+        description: "Isolated DC-DC charger for dual-voltage 12/24V or 24/12V systems, charging house batteries from alternator or starter battery. Smart version with Bluetooth.",
         category: "source",
         terminals: [
             { id: "input-positive", type: "positive", label: "IN+", mandatory: true, description: "Input positive (from alternator/starter battery)" },
@@ -113,7 +113,26 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             "Use engine running detection for proper alternator protection.",
             "Ensure adequate ventilation - unit generates heat during charging."
         ],
-        usageNotes: "Essential for dual-battery systems. Charges house bank from alternator while protecting both batteries."
+        usageNotes: "Essential for dual-battery and dual-voltage systems. Use 12/24V models to charge a 24V house bank from a 12V alternator/starter battery, or 24/12V models for 12V loads from 24V systems."
+    },
+    "battery-balancer": {
+        type: "battery-balancer",
+        name: "Victron Battery Balancer",
+        description: "Balances the charge state of two 12V batteries connected in series for a 24V battery bank.",
+        category: "control",
+        terminals: [
+            { id: "bank-positive", type: "positive", label: "24V+", mandatory: true, description: "Positive terminal of the 24V battery bank" },
+            { id: "midpoint", type: "positive", label: "MID", mandatory: true, description: "Series midpoint between the two 12V batteries" },
+            { id: "bank-negative", type: "negative", label: "0V-", mandatory: true, description: "Negative terminal of the 24V battery bank" },
+            { id: "alarm", type: "data", label: "ALARM", mandatory: false, description: "Alarm contact for midpoint deviation" }
+        ],
+        wiringRules: [
+            "Use when a 24V bank is built from two 12V batteries in series.",
+            "Connect 24V+, midpoint, and 0V- sense leads directly to the battery bank with appropriate small fuses.",
+            "Install one balancer per 24V string; use multiple balancers for larger series/parallel banks.",
+            "Do not use on a single 12V battery bank."
+        ],
+        usageNotes: "Keeps series-connected 12V batteries balanced in 24V systems and provides midpoint deviation alarm output."
     },
     "phoenix-inverter": {
         type: "phoenix-inverter",
