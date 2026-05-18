@@ -880,8 +880,7 @@ export function SchematicComponent({
                     className="pointer-events-auto cursor-crosshair"
                     style={{ pointerEvents: 'auto' }}
                     opacity={isHighlighted ? 1 : 0.95}
-                    onClick={(e) => handleTerminalClick(terminal, e as any)}
-                    onPointerDown={(e) => handleTerminalClick(terminal, e as any)}
+                    onClick={(e) => handleTerminalClick(terminal, e)}
                     data-testid={`terminal-${type}-${terminal.id}`}
                   />
 
