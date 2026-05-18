@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { SchematicComponent, Wire } from "@shared/schema";
 import { TERMINAL_CONFIGS } from "@/lib/terminal-config";
+import type { WireGaugeFormat } from "@/lib/wire-calculator";
 
 interface ExportDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ interface ExportDialogProps {
   wires: Wire[];
   systemVoltage: number;
   designName?: string;
+  wireGaugeFormat?: WireGaugeFormat;
 }
 
 export function ExportDialog({ 
@@ -29,7 +31,8 @@ export function ExportDialog({
   components, 
   wires, 
   systemVoltage,
-  designName = "Design"
+  designName = "Design",
+  wireGaugeFormat = "awg"
 }: ExportDialogProps) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function ExportDialog({
       const response = await fetch("/api/export/shopping-list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage, name: designName }),
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat }),
       });
 
       if (!response.ok) throw new Error("Export failed");
@@ -97,7 +100,7 @@ export function ExportDialog({
       const response = await fetch("/api/export/wire-labels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage, name: designName }),
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat }),
       });
 
       if (!response.ok) throw new Error("Export failed");
@@ -507,7 +510,7 @@ export function ExportDialog({
       const response = await fetch("/api/export/system-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage, name: designName }),
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat }),
       });
 
       if (!response.ok) throw new Error("Export failed");
@@ -607,7 +610,7 @@ export function ExportDialog({
               <div className="text-left">
                 <div className="font-medium">Wire Labels</div>
                 <div className="text-xs text-muted-foreground">
-                  {wires.length === 0 ? "No wires to label" : "Printable labels for each wire"}
+                  {wires.length === 0 ? "No wires to label" : `Printable labels for each wire (${wireGaugeFormat === "metric" ? "mm²" : "AWG"})`}
                 </div>
               </div>
             </Button>
@@ -625,7 +628,7 @@ export function ExportDialog({
               )}
               <div className="text-left">
                 <div className="font-medium">System Report</div>
-                <div className="text-xs text-muted-foreground">Full technical summary</div>
+                <div className="text-xs text-muted-foreground">Full technical summary ({wireGaugeFormat === "metric" ? "mm²" : "AWG"} wire sizes)</div>
               </div>
             </Button>
 

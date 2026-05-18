@@ -24,6 +24,8 @@ interface AuthUser {
   isAdmin: boolean;
 }
 
+type WireGaugeFormat = "awg" | "metric";
+
 interface TopBarProps {
   onAIPrompt?: () => void;
   onAIWire?: () => void;
@@ -45,6 +47,8 @@ interface TopBarProps {
   isAIWiring?: boolean;
   showWireLabels?: boolean;
   onToggleWireLabels?: () => void;
+  wireGaugeFormat?: WireGaugeFormat;
+  onWireGaugeFormatChange?: (format: WireGaugeFormat) => void;
   viewMode?: 'standard' | 'load';
   onToggleViewMode?: () => void;
   systemVoltage?: number;
@@ -72,6 +76,8 @@ export function TopBar({
   isAIWiring = false,
   showWireLabels = true,
   onToggleWireLabels,
+  wireGaugeFormat = "awg",
+  onWireGaugeFormatChange,
   viewMode = 'standard',
   onToggleViewMode,
   systemVoltage = 12,
@@ -273,6 +279,16 @@ export function TopBar({
             <Tag className="h-4 w-4" />
             Labels
           </Button>
+
+          <Select value={wireGaugeFormat} onValueChange={(value) => onWireGaugeFormatChange?.(value as WireGaugeFormat)}>
+            <SelectTrigger className="w-[92px] h-9" data-testid="select-wire-gauge-format">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="awg">AWG</SelectItem>
+              <SelectItem value="metric">mm²</SelectItem>
+            </SelectContent>
+          </Select>
 
           <Button
             variant={viewMode === 'load' ? "default" : "outline"}

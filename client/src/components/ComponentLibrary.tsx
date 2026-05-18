@@ -21,6 +21,7 @@ const victronComponents: Component[] = [
   { id: "phoenix-inverter", name: "Phoenix Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
   { id: "mppt", name: "MPPT Controller", icon: <Sun className="h-5 w-5" />, category: "victron" },
   { id: "orion-dc-dc", name: "Orion DC-DC Charger", icon: <Battery className="h-5 w-5" />, category: "victron" },
+  { id: "battery-balancer", name: "Battery Balancer", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "blue-smart-charger", name: "Blue Smart Charger", icon: <Battery className="h-5 w-5" />, category: "victron" },
   { id: "cerbo", name: "Cerbo GX", icon: <Cpu className="h-5 w-5" />, category: "victron" },
   { id: "smartshunt", name: "SmartShunt", icon: <Gauge className="h-5 w-5" />, category: "victron" },

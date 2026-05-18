@@ -6,6 +6,7 @@ import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, type Obstacle } from "@/lib/wire-routing";
+import { formatWireGauge, type WireGaugeFormat } from "@/lib/wire-calculator";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 
 export interface WireConnectionData {
@@ -35,6 +36,7 @@ interface SchematicCanvasProps {
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
   showWireLabels?: boolean;
+  wireGaugeFormat?: WireGaugeFormat;
   viewMode?: 'standard' | 'load';
   wireCalculations?: Record<string, any>;
   onCopy?: (componentIds: string[]) => void;
@@ -60,6 +62,7 @@ export function SchematicCanvas({
   wireConnectionMode = false,
   wireStartComponent = null,
   showWireLabels = true,
+  wireGaugeFormat = "awg",
   viewMode = 'standard',
   wireCalculations = {},
   onCopy,
@@ -1424,7 +1427,7 @@ export function SchematicCanvas({
                           </>
                         ) : (
                           <>
-                            {polaritySymbol} {wire.gauge || "N/A"}
+                            {polaritySymbol} {formatWireGauge(wire.gauge, wireGaugeFormat) || "N/A"}
                             {wire.length && wire.length > 0 && (
                               <tspan className="text-[10px] font-normal opacity-75"> • {wire.length.toFixed(1)}ft</tspan>
                             )}
