@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -107,6 +107,13 @@ export function SchematicCanvas({
   const [draggedEndpointPos, setDraggedEndpointPos] = useState<{ x: number; y: number } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!wireConnectionMode) {
+      setWireStart(null);
+      setWirePreviewEnd(null);
+    }
+  }, [wireConnectionMode]);
 
   // Calculate minimum canvas size based on component positions
   // This creates a canvas that's always at least as big as the content
@@ -772,6 +779,15 @@ export function SchematicCanvas({
         tabIndex={0}
         data-testid="canvas-drop-zone"
       >
+        {wireConnectionMode && (
+          <div
+            className="absolute top-3 left-3 z-20 rounded-md border bg-background/95 px-3 py-2 text-sm shadow pointer-events-none"
+            data-testid="wire-mode-instructions"
+          >
+            {wireStart ? "Click a destination terminal to finish the wire." : "Click a start terminal, then click a destination terminal."}
+          </div>
+        )}
+
         {/* Inner div to handle scrolling - size based on content */}
         <div 
           style={{ 
