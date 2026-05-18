@@ -563,6 +563,22 @@ export function SchematicComponent({
         );
       }
 
+      case "battery-balancer":
+        return (
+          <svg width="150" height="120" viewBox="0 0 150 120">
+            <rect x="10" y="12" width="130" height="96" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+            <rect x="22" y="20" width="106" height="26" fill="hsl(var(--victron-blue-light))" rx="4" />
+            <text x="75" y="32" textAnchor="middle" className="fill-white text-[10px] font-bold">Victron</text>
+            <text x="75" y="43" textAnchor="middle" className="fill-white text-[9px]">Battery Balancer</text>
+            <rect x="35" y="55" width="80" height="30" fill="#0a1a2e" rx="3" />
+            <text x="75" y="68" textAnchor="middle" className="fill-cyan-300 text-[10px] font-mono">24V SERIES</text>
+            <text x="75" y="80" textAnchor="middle" className="fill-gray-300 text-[8px]">12V + 12V</text>
+            <circle cx="32" cy="92" r="4" fill="#00ff00" className="opacity-80" />
+            <text x="44" y="95" className="fill-white text-[8px]">BALANCE</text>
+            <text x="75" y="116" textAnchor="middle" className="fill-foreground text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+
       case "phoenix-inverter": {
         const phoenixWatts = properties.watts || 1200;
         const kw = phoenixWatts >= 1000 ? `${(phoenixWatts / 1000).toFixed(1)}kW` : `${phoenixWatts}W`;
@@ -864,8 +880,7 @@ export function SchematicComponent({
                     className="pointer-events-auto cursor-crosshair"
                     style={{ pointerEvents: 'auto' }}
                     opacity={isHighlighted ? 1 : 0.95}
-                    onClick={(e) => handleTerminalClick(terminal, e as any)}
-                    onPointerDown={(e) => handleTerminalClick(terminal, e as any)}
+                    onClick={(e) => handleTerminalClick(terminal, e)}
                     data-testid={`terminal-${type}-${terminal.id}`}
                   />
 

@@ -27,7 +27,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { trackAction } from "@/lib/tracking";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
-import { calculateWireSize } from "@/lib/wire-calculator";
+import { calculateWireSize, type WireGaugeFormat } from "@/lib/wire-calculator";
 import { AlertTriangle } from "lucide-react";
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
@@ -114,6 +114,7 @@ export default function SchematicDesigner() {
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
+  const [wireGaugeFormat, setWireGaugeFormat] = useState<WireGaugeFormat>("awg");
   const [viewMode, setViewMode] = useState<'standard' | 'load'>('standard');
   const [copiedComponents, setCopiedComponents] = useState<SchematicComponent[]>([]);
   const [copiedWires, setCopiedWires] = useState<Wire[]>([]);
@@ -1434,7 +1435,8 @@ export default function SchematicDesigner() {
         inverter: { watts: 2000, voltage: systemVoltage },
         'phoenix-inverter': { watts: 1200, voltage: systemVoltage },
         'blue-smart-charger': { amps: 15, voltage: systemVoltage },
-        'orion-dc-dc': { amps: 30, voltage: systemVoltage },
+        'orion-dc-dc': { amps: 30, voltage: systemVoltage, inputVoltage: systemVoltage, outputVoltage: systemVoltage === 12 ? 24 : 12 },
+        'battery-balancer': { voltage: 24 },
         alternator: { amps: 100, current: 100, voltage: systemVoltage },
         'battery-protect': { amps: 100, voltage: systemVoltage },
         fuse: { fuseRating: 400, amps: 400 },
@@ -1861,6 +1863,8 @@ export default function SchematicDesigner() {
         isAIWiring={aiWireMutation.isPending}
         showWireLabels={showWireLabels}
         onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
+        wireGaugeFormat={wireGaugeFormat}
+        onWireGaugeFormatChange={setWireGaugeFormat}
         viewMode={viewMode}
         onToggleViewMode={() => setViewMode(viewMode === 'standard' ? 'load' : 'standard')}
         systemVoltage={systemVoltage}
@@ -1902,6 +1906,7 @@ export default function SchematicDesigner() {
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}
           showWireLabels={showWireLabels}
+          wireGaugeFormat={wireGaugeFormat}
           viewMode={viewMode}
           wireCalculations={wireCalculations}
           onCopy={handleCopy}
@@ -1997,6 +2002,7 @@ export default function SchematicDesigner() {
         wires={wires}
         systemVoltage={systemVoltage}
         designName={currentDesignName || "Design"}
+        wireGaugeFormat={wireGaugeFormat}
       />
 
       <FeedbackDialog

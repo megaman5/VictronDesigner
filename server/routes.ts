@@ -293,7 +293,8 @@ COMPONENT DIMENSIONS & SPACING:
 - solar-panel: 140×160px
 - alternator: 140×120px (vehicle alternator - use with Orion DC-DC)
 - shore-power: 140×100px (AC power source for boats/RVs)
-- orion-dc-dc: 160×120px (DC-DC charger for alternator charging)
+- orion-dc-dc: 160×120px (DC-DC charger for 12/24V or 24/12V dual-voltage systems)
+- battery-balancer: 150×120px (balances two 12V batteries in series for 24V banks)
 - blue-smart-charger: 140×120px (AC shore charger)
 - transfer-switch: 180×140px (switches between AC sources)
 - ac-load: 100×100px
@@ -358,7 +359,7 @@ CRITICAL WIRING RULES:
    - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
-4. Use bus bars when connecting 3+ devices of the same type to simplify wiring
+4. Use bus bars when connecting 3+ devices of the same type to simplify wiring; prefer busbar-positive, busbar-negative, and fuse components unless the user explicitly asks for a Lynx Distributor
 5. Main battery cables (battery to inverter): Use largest gauge (4/0 AWG or 2/0 AWG)
 6. Never mix polarities on same bus bar
 7. MultiPlus Connections:
@@ -418,7 +419,8 @@ Other Components:
 - mppt: { "maxCurrent": <amps, e.g., 30-100A> }
 - multiplus: { "powerRating": <watts, e.g., 1200-3000W> }
 - alternator: { "amps": <output current 60-200A>, "voltage": <12 or 24> }
-- orion-dc-dc: { "amps": <charge current 12-50A>, "voltage": <12 or 24> }
+- orion-dc-dc: { "amps": <charge current 12-50A>, "voltage": <output voltage 12 or 24>, "inputVoltage": <12 or 24>, "outputVoltage": <12 or 24> }
+- battery-balancer: { "voltage": 24 }
 - blue-smart-charger: { "amps": <charge current 15-30A>, "voltage": <12 or 24> }
 - shore-power: { "voltage": <120 or 230>, "maxAmps": <15/30/50A> }
 - inverter: { "watts": <power rating 1000-3000W> }
@@ -996,7 +998,7 @@ CRITICAL WIRING RULES:
    - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
-4. Use bus bars when connecting 3+ devices of the same type to simplify wiring
+4. Use bus bars when connecting 3+ devices of the same type to simplify wiring; prefer busbar-positive, busbar-negative, and fuse components unless the user explicitly asks for a Lynx Distributor
    - DISTRIBUTE connections across bus bar terminals (e.g., pos-1, pos-2, pos-3)
    - Do NOT connect all wires to the same terminal (e.g., do not put everything on pos-1)
 5. DC loads connect to battery/bus bars after SmartShunt on negative side
@@ -1496,7 +1498,8 @@ COMPONENT DIMENSIONS (width × height):
 - solar-panel: 140×120px
 - alternator: 140×120px (vehicle alternator - use with Orion DC-DC)
 - shore-power: 140×100px (AC power source for boats/RVs)
-- orion-dc-dc: 160×120px (DC-DC charger for alternator charging)
+- orion-dc-dc: 160×120px (DC-DC charger for 12/24V or 24/12V dual-voltage systems)
+- battery-balancer: 150×120px (balances two 12V batteries in series for 24V banks)
 - blue-smart-charger: 140×120px (AC shore charger)
 - transfer-switch: 180×140px (switches between AC sources)
 - inverter: 160×120px (generic inverter)
@@ -1531,6 +1534,7 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - alternator: "output-positive", "output-negative"
 - shore-power: "ac-out-hot", "ac-out-neutral", "ac-out-ground"
 - orion-dc-dc: "input-positive", "input-negative", "output-positive", "output-negative", "remote"
+- battery-balancer: "bank-positive", "midpoint", "bank-negative", "alarm"
 - blue-smart-charger: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "dc-positive", "dc-negative"
 - transfer-switch: "source1-hot", "source1-neutral", "source1-ground", "source2-hot", "source2-neutral", "source2-ground", "output-hot", "output-neutral", "output-ground"
 - inverter: "dc-positive", "dc-negative", "ac-out-hot", "ac-out-neutral", "ac-out-ground"
@@ -1561,7 +1565,7 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 CRITICAL WIRING RULES:
 1. BATTERY FUSE (BEST PRACTICE): For NEW systems, include fuse: Battery "positive" → Fuse "in", Fuse "out" → system (100px from battery). If modifying existing design, may skip if already wired.
 2. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
-3. Use bus bars when 3+ connections needed (separate bars for positive/negative)
+3. Use bus bars when 3+ connections needed (separate bars for positive/negative); prefer busbar/fuse components over Lynx unless the user explicitly asks for Lynx
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge sizing - CRITICAL: You MUST calculate gauge based on BOTH current AND voltage drop:
@@ -1639,7 +1643,8 @@ Other Components - ALL need properties:
 - cerbo: {"voltage": 12} - REQUIRED: voltage property (typically 12V or 24V). MUST connect power-positive and power-negative terminals!
 - fuse: {"fuseRating": 400} - REQUIRED: fuseRating property (amps)
 - alternator: {"amps": 100, "voltage": 12} - REQUIRED: amps (60-200A) and voltage (12 or 24)
-- orion-dc-dc: {"amps": 20, "voltage": 12} - REQUIRED: amps (12-50A) and voltage
+- orion-dc-dc: {"amps": 20, "voltage": 24, "inputVoltage": 12, "outputVoltage": 24} - REQUIRED: amps (12-50A), inputVoltage, outputVoltage
+- battery-balancer: {"voltage": 24} - Use when 24V bank is built from two 12V batteries in series
 - blue-smart-charger: {"amps": 30, "voltage": 12} - REQUIRED: amps (15-30A) and voltage
 - shore-power: {"voltage": 120, "maxAmps": 30} - REQUIRED: AC voltage and max amps
 - inverter: {"watts": 3000} - REQUIRED: power rating in watts
@@ -2062,7 +2067,8 @@ COMPONENT DIMENSIONS (width × height):
 - solar-panel: 140×120px
 - alternator: 140×120px (vehicle alternator - use with Orion DC-DC)
 - shore-power: 140×100px (AC power source for boats/RVs)
-- orion-dc-dc: 160×120px (DC-DC charger for alternator charging)
+- orion-dc-dc: 160×120px (DC-DC charger for 12/24V or 24/12V dual-voltage systems)
+- battery-balancer: 150×120px (balances two 12V batteries in series for 24V banks)
 - blue-smart-charger: 140×120px (AC shore charger)
 - transfer-switch: 180×140px (switches between AC sources)
 - inverter: 160×120px (generic inverter)
@@ -2097,6 +2103,7 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - alternator: "output-positive", "output-negative"
 - shore-power: "ac-out-hot", "ac-out-neutral", "ac-out-ground"
 - orion-dc-dc: "input-positive", "input-negative", "output-positive", "output-negative", "remote"
+- battery-balancer: "bank-positive", "midpoint", "bank-negative", "alarm"
 - blue-smart-charger: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "dc-positive", "dc-negative"
 - transfer-switch: "source1-hot", "source1-neutral", "source1-ground", "source2-hot", "source2-neutral", "source2-ground", "output-hot", "output-neutral", "output-ground"
 - inverter: "dc-positive", "dc-negative", "ac-out-hot", "ac-out-neutral", "ac-out-ground"
@@ -2127,7 +2134,7 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 CRITICAL WIRING RULES:
 1. BATTERY FUSE (BEST PRACTICE): For NEW systems, include fuse: Battery "positive" → Fuse "in", Fuse "out" → system (100px from battery). If modifying existing design, may skip if already wired.
 2. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
-3. Use bus bars when 3+ connections needed (separate bars for positive/negative)
+3. Use bus bars when 3+ connections needed (separate bars for positive/negative); prefer busbar/fuse components over Lynx unless the user explicitly asks for Lynx
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge sizing - CRITICAL: You MUST calculate gauge based on BOTH current AND voltage drop:
@@ -2205,7 +2212,8 @@ Other Components - ALL need properties:
 - cerbo: {"voltage": 12} - REQUIRED: voltage property (typically 12V or 24V). MUST connect power-positive and power-negative terminals!
 - fuse: {"fuseRating": 400} - REQUIRED: fuseRating property (amps)
 - alternator: {"amps": 100, "voltage": 12} - REQUIRED: amps (60-200A) and voltage (12 or 24)
-- orion-dc-dc: {"amps": 20, "voltage": 12} - REQUIRED: amps (12-50A) and voltage
+- orion-dc-dc: {"amps": 20, "voltage": 24, "inputVoltage": 12, "outputVoltage": 24} - REQUIRED: amps (12-50A), inputVoltage, outputVoltage
+- battery-balancer: {"voltage": 24} - Use when 24V bank is built from two 12V batteries in series
 - blue-smart-charger: {"amps": 30, "voltage": 12} - REQUIRED: amps (15-30A) and voltage
 - shore-power: {"voltage": 120, "maxAmps": 30} - REQUIRED: AC voltage and max amps
 - inverter: {"watts": 3000} - REQUIRED: power rating in watts
@@ -2840,9 +2848,9 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
   // Export endpoints - POST versions for current design (no save required)
   app.post("/api/export/shopping-list", async (req, res) => {
     try {
-      const { components, wires, systemVoltage = 12, name = "Design" } = req.body;
+      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg" } = req.body;
       const schematic = { components, wires, systemVoltage, name };
-      const items = generateShoppingList(schematic as any);
+      const items = generateShoppingList(schematic as any, wireGaugeFormat);
       res.json(items);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2851,9 +2859,9 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
   app.post("/api/export/wire-labels", async (req, res) => {
     try {
-      const { components, wires, systemVoltage = 12, name = "Design" } = req.body;
+      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg" } = req.body;
       const schematic = { components, wires, systemVoltage, name };
-      const labels = generateWireLabels(schematic as any);
+      const labels = generateWireLabels(schematic as any, wireGaugeFormat);
       res.json(labels);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2862,9 +2870,9 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
   app.post("/api/export/system-report", async (req, res) => {
     try {
-      const { components, wires, systemVoltage = 12, name = "Design" } = req.body;
+      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg" } = req.body;
       const schematic = { components, wires, systemVoltage, name };
-      const report = generateSystemReport(schematic as any);
+      const report = generateSystemReport(schematic as any, wireGaugeFormat);
       res.setHeader("Content-Type", "text/plain");
       res.setHeader("Content-Disposition", `attachment; filename="${name}-report.txt"`);
       res.send(report);

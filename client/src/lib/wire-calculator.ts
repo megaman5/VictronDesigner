@@ -19,6 +19,47 @@ const WIRE_DATA = {
   "18": { resistance: 6.385, ampacity60C: 14, ampacity75C: 14, ampacity90C: 14 },
 };
 
+export type WireGaugeFormat = "awg" | "metric";
+
+const AWG_TO_MM2: Record<string, number> = {
+  "4/0": 107,
+  "3/0": 85,
+  "2/0": 67.4,
+  "1/0": 53.5,
+  "1": 42.4,
+  "2": 33.6,
+  "4": 21.2,
+  "6": 13.3,
+  "8": 8.37,
+  "10": 5.26,
+  "12": 3.31,
+  "14": 2.08,
+  "16": 1.31,
+  "18": 0.823,
+};
+
+function normalizeGauge(gauge: string): string {
+  return gauge.replace(" AWG", "").trim().replace(/\\0/g, "/0");
+}
+
+function formatMetricArea(mm2: number): string {
+  return mm2 >= 10 ? mm2.toFixed(1).replace(/\.0$/, "") : mm2.toFixed(2).replace(/0$/, "");
+}
+
+export function formatWireGauge(gauge: string | undefined, format: WireGaugeFormat = "awg"): string {
+  if (!gauge) return "";
+
+  const normalizedGauge = normalizeGauge(gauge);
+  const mm2 = AWG_TO_MM2[normalizedGauge];
+  if (!mm2) return gauge;
+
+  if (format === "metric") {
+    return `${formatMetricArea(mm2)} mm²`;
+  }
+
+  return `${normalizedGauge} AWG`;
+}
+
 function getTemperatureDerating(tempC: number): number {
   if (tempC <= 25) return 1.08;
   if (tempC <= 30) return 1.00;

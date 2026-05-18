@@ -125,6 +125,17 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     ],
   },
 
+  "battery-balancer": {
+    width: 150,
+    height: 120,
+    terminals: [
+      { id: "bank-positive", type: "positive", label: "24V+", x: 75, y: 8, color: "hsl(var(--wire-positive))", orientation: "top" },
+      { id: "midpoint", type: "positive", label: "MID", x: 8, y: 60, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "bank-negative", type: "negative", label: "0V-", x: 75, y: 112, color: "hsl(var(--wire-negative))", orientation: "bottom" },
+      { id: "alarm", type: "ground", label: "ALARM", x: 142, y: 60, color: "hsl(var(--muted))", orientation: "right" },
+    ],
+  },
+
   "phoenix-inverter": {
     width: 160,
     height: 130,

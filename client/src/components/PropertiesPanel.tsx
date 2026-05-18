@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
+import { formatWireGauge } from "@/lib/wire-calculator";
 import { SaveFeedback } from "@/components/SaveFeedback";
 
 interface WireCalculation {
@@ -883,7 +884,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </SelectTrigger>
                       <SelectContent>
                         {["4/0", "3/0", "2/0", "1/0", "1", "2", "4", "6", "8", "10", "12", "14", "16", "18"].map(g => (
-                          <SelectItem key={g} value={g}>{g} AWG</SelectItem>
+                          <SelectItem key={g} value={g}>{formatWireGauge(g)} / {formatWireGauge(g, "metric")}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
