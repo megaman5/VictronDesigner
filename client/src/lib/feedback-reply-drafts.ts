@@ -4,10 +4,12 @@ export interface ReplyDraft {
 }
 
 // Tailored reply drafts for the initial batch of feedback, keyed by feedback id.
-// Any feedback not listed here falls back to the generic template in
-// buildReplyDraft(). Edit freely in the admin UI before sending.
+// Recipient name/email are intentionally NOT stored here (this repo is public);
+// the recipient address comes from the feedback record at send time and the
+// greeting stays generic. Any feedback not listed falls back to the generic
+// template in buildReplyDraft(). Edit freely in the admin UI before sending.
 export const FEEDBACK_REPLY_DRAFTS: Record<string, ReplyDraft> = {
-  // redgonz@gmail.com — "I cannot find or delete this component (a battery)"
+  // Could not find/delete a component
   "2b8e7fe2-ef6f-459f-ab67-8bf6adc2dcc6": {
     subject: "Re: your VictronDesigner feedback — you can now delete components",
     body: `Hi,
@@ -21,12 +23,12 @@ Sean
 VictronDesigner.com`,
   },
 
-  // stefan@fagerstrom.ax — missing Quattro/Argo FET/Cyrix-CT, custom components, 2x12V series
+  // Missing modules (Quattro/Argo FET/Cyrix-CT), custom components, 2x12V series
   "b3330191-36cd-4ba0-b7d6-d9da9b117c88": {
-    subject: "Re: your VictronDesigner feedback from Åland",
-    body: `Hi Stefan,
+    subject: "Re: your VictronDesigner feedback",
+    body: `Hi,
 
-Thanks for the detailed note — greetings to Åland!
+Thanks for the detailed note!
 
 Two of your points are now done:
 
@@ -44,7 +46,7 @@ Sean
 VictronDesigner.com`,
   },
 
-  // jjgixer@gmail.com — crude, no delete, AI doesn't work
+  // Crude, no delete, AI not working
   "be9e5a98-16ed-4c4a-8c16-255dea990757": {
     subject: "Re: your VictronDesigner feedback — a few fixes from your notes",
     body: `Hi,
@@ -55,17 +57,17 @@ A couple of the things you hit are now fixed:
 - Deleting items: there's now a clear Delete button when you select a component or wire (Delete/Backspace also works).
 - AI generation: the wire and system-prompt AI is working again — worth another try.
 
-It's still early and rough in places, but feedback like yours is what pushes it forward. If you do map out the canal boat system, I'd love to hear how it goes.
+It's still early and rough in places, but feedback like yours is what pushes it forward. If you do map out the system, I'd love to hear how it goes.
 
 Thanks,
 Sean
 VictronDesigner.com`,
   },
 
-  // konrad@skeri.com — Orion DC-DC, balancer, Lynx, mm2
+  // Orion DC-DC, balancer, Lynx, mm2 wishlist
   "99117e50-0b91-4186-a08c-fef8882bd3db": {
     subject: "Re: your VictronDesigner feedback — most of your wishlist is in",
-    body: `Hi Konrad,
+    body: `Hi,
 
 Thanks for the kind words and the clear wishlist — most of it is now in:
 - Orion-Tr Smart DC-DC (12/24 and 24/12) — added.
@@ -80,12 +82,12 @@ Sean
 VictronDesigner.com`,
   },
 
-  // martin.travel@gmx.ch — further development? where is file saved?
+  // Further development? Where is file saved?
   "60108fa8-f468-44cc-ad96-760790c12061": {
     subject: "Re: your VictronDesigner questions",
-    body: `Hi Martin,
+    body: `Hi,
 
-Thanks for trying the tool for your RV build!
+Thanks for trying the tool for your build!
 
 To answer your questions:
 - Yes, it's under active development — new components and fixes are landing regularly (recently: more Victron parts, mm² wire sizing, and easier editing).
@@ -98,7 +100,7 @@ Sean
 VictronDesigner.com`,
   },
 
-  // arctic.seacamel@gmail.com — wiring broken, panel lost, mm2
+  // Wiring broken, panel lost, mm2
   "d8e598cf-2181-436d-8c82-4a94b79fe1e8": {
     subject: "Re: your VictronDesigner feedback — wiring + mm² improvements",
     body: `Hi,
