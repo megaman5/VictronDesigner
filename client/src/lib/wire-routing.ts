@@ -34,13 +34,16 @@ export interface WireRoutingOptions {
 export const DEFAULT_WIRE_ROUTING_OPTIONS: WireRoutingOptions = {
   style: DEFAULT_WIRE_ROUTING_STYLE,
   directionBias: "auto",
-  laneOffset: 10,
+  laneOffset: 20,
   separation: 50,
   directness: 50,
 };
 
 export function normalizeRoutingOptions(opts?: Partial<WireRoutingOptions> | null): WireRoutingOptions {
-  return { ...DEFAULT_WIRE_ROUTING_OPTIONS, ...(opts || {}) };
+  const merged = { ...DEFAULT_WIRE_ROUTING_OPTIONS, ...(opts || {}) };
+  // Lane offset must be a whole grid step to survive endpoint grid-snapping.
+  merged.laneOffset = Math.max(0, Math.round(merged.laneOffset / GRID_SIZE) * GRID_SIZE);
+  return merged;
 }
 
 /**
