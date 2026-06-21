@@ -6,6 +6,7 @@ import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, GRID_SIZE, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+import { computeBusbarTerminalOverrides } from "@/lib/busbar-ordering";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -145,12 +146,31 @@ export function SchematicCanvas({
   }, [components]);
 
   // Calculate terminal usage for distributing wires
+  // Auto-arrange bus bar connections to minimize wire crossings. Bus bars are a
+  // single electrical node, so reassigning which slot a wire attaches to is a
+  // pure layout optimization (no data mutation, computed at render time).
+  const busbarOverrides = useMemo(
+    () => computeBusbarTerminalOverrides(components, wires),
+    [components, wires]
+  );
+
+  const resolveTerminals = (wire: Wire): { from: string; to: string } => {
+    const o = busbarOverrides.get(wire.id);
+    return {
+      from: o?.from ?? wire.fromTerminal,
+      to: o?.to ?? wire.toTerminal,
+    };
+  };
+
   const terminalUsage = useMemo(() => {
     const usage = new Map<string, string[]>(); // Key: "compId-termId", Value: [wireId, wireId...]
 
     wires.forEach(wire => {
-      const fromKey = `${wire.fromComponentId}-${wire.fromTerminal}`;
-      const toKey = `${wire.toComponentId}-${wire.toTerminal}`;
+      const o = busbarOverrides.get(wire.id);
+      const fromTerminal = o?.from ?? wire.fromTerminal;
+      const toTerminal = o?.to ?? wire.toTerminal;
+      const fromKey = `${wire.fromComponentId}-${fromTerminal}`;
+      const toKey = `${wire.toComponentId}-${toTerminal}`;
 
       if (!usage.has(fromKey)) usage.set(fromKey, []);
       if (!usage.has(toKey)) usage.set(toKey, []);
@@ -160,7 +180,7 @@ export function SchematicCanvas({
     });
 
     return usage;
-  }, [wires]);
+  }, [wires, busbarOverrides]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1050,8 +1070,12 @@ export function SchematicCanvas({
               const toCompX = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.x : toComp.x;
               const toCompY = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.y : toComp.y;
 
-              let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, wire.fromTerminal);
-              let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, wire.toTerminal);
+              const resolved = resolveTerminals(wire);
+              const fromTerminalId = resolved.from;
+              const toTerminalId = resolved.to;
+
+              let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, fromTerminalId);
+              let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, toTerminalId);
 
               if (!fromPos) {
                 if (draggedComponentId === fromComp.id && dragPreviewPos) {
@@ -1084,11 +1108,25 @@ export function SchematicCanvas({
                 }
               }
 
-              const fromOrientation = getTerminalOrientation(fromComp.type, wire.fromTerminal);
-              const toOrientation = getTerminalOrientation(toComp.type, wire.toTerminal);
+              let fromOrientation = getTerminalOrientation(fromComp.type, fromTerminalId);
+              let toOrientation = getTerminalOrientation(toComp.type, toTerminalId);
 
-              const fromKey = `${wire.fromComponentId}-${wire.fromTerminal}`;
-              const toKey = `${wire.toComponentId}-${wire.toTerminal}`;
+              // Bus bars are horizontal nodes whose slots can exit either up or
+              // down. Point the exit toward the connected component so wires to
+              // components ABOVE the bar don't shoot down and loop all the way
+              // back up (the cause of long overshooting runs).
+              const isBusbar = (t: string) => t === "busbar-positive" || t === "busbar-negative";
+              const fromCenterY = fromCompY + (componentDimensions[fromComp.type]?.height || 100) / 2;
+              const toCenterY = toCompY + (componentDimensions[toComp.type]?.height || 100) / 2;
+              if (isBusbar(fromComp.type)) {
+                fromOrientation = toCenterY < fromCenterY ? "top" : "bottom";
+              }
+              if (isBusbar(toComp.type)) {
+                toOrientation = fromCenterY < toCenterY ? "top" : "bottom";
+              }
+
+              const fromKey = `${wire.fromComponentId}-${fromTerminalId}`;
+              const toKey = `${wire.toComponentId}-${toTerminalId}`;
               const fromWires = terminalUsage.get(fromKey) || [];
               const toWires = terminalUsage.get(toKey) || [];
               const fromIndex = fromWires.indexOf(wire.id);
@@ -1749,8 +1787,9 @@ export function SchematicCanvas({
             const toComp = components.find(c => c.id === wire.toComponentId);
             if (!fromComp || !toComp) return null;
 
-            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal);
-            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal);
+            const handleResolved = resolveTerminals(wire);
+            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, handleResolved.from);
+            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, handleResolved.to);
 
             if (!fromPos) {
               const from = getComponentPosition(wire.fromComponentId);
