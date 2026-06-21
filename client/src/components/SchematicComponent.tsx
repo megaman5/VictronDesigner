@@ -822,6 +822,21 @@ export function SchematicComponent({
         );
       }
 
+      case "custom": {
+        const subtitle = (properties.subtitle as string) || "Custom Component";
+        return (
+          <svg width="160" height="120" viewBox="0 0 160 120">
+            {/* Dashed housing to signal a user-defined component */}
+            <rect x="10" y="15" width="140" height="90" fill="hsl(var(--card))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" strokeDasharray="6 3" rx="8" />
+            <text x="80" y="55" textAnchor="middle" className="fill-foreground text-sm font-semibold">{name || "Custom"}</text>
+            <text x="80" y="72" textAnchor="middle" className="fill-muted-foreground text-[9px]">{subtitle}</text>
+            {/* Terminal hints */}
+            <text x="18" y="44" className="fill-muted-foreground text-[7px]">IN</text>
+            <text x="130" y="44" className="fill-muted-foreground text-[7px]">OUT</text>
+          </svg>
+        );
+      }
+
       default:
         return (
           <svg width="140" height="100" viewBox="0 0 140 100">

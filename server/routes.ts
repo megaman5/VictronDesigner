@@ -3088,6 +3088,22 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
     }
   });
 
+  app.patch("/api/feedback/:id/status", isAdmin, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (status !== "new" && status !== "completed") {
+        return res.status(400).json({ error: "Status must be 'new' or 'completed'" });
+      }
+      const updated = await feedbackStorage.updateStatus(req.params.id, status);
+      if (!updated) {
+        return res.status(404).json({ error: "Feedback not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.delete("/api/feedback/:id", isAdmin, async (req, res) => {
     try {
       const deleted = await feedbackStorage.delete(req.params.id);

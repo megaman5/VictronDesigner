@@ -11,6 +11,7 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { SaveDesignDialog } from "@/components/SaveDesignDialog";
 import { OpenDesignDialog } from "@/components/OpenDesignDialog";
+import { CustomComponentDialog } from "@/components/CustomComponentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -102,6 +103,7 @@ export default function SchematicDesigner() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   const [showEstimates, setShowEstimates] = useState(false);
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
 
   // User auth state
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -1467,6 +1469,25 @@ export default function SchematicDesigner() {
     setDraggedComponentType(null);
   };
 
+  const handleAddCustomComponent = (name: string, subtitle: string) => {
+    // Place near the center of the canvas, snapped to the 20px grid
+    const snap = (v: number) => Math.round(v / 20) * 20;
+    const newComponent: SchematicComponent = {
+      id: `comp-${Date.now()}`,
+      type: "custom",
+      name,
+      x: snap(900),
+      y: snap(700),
+      properties: { subtitle, voltage: systemVoltage },
+    };
+    setComponents(prev => [...prev, newComponent]);
+    setSelectedComponent(newComponent);
+    toast({
+      title: "Custom component added",
+      description: `"${name}" placed on the canvas`,
+    });
+  };
+
   const handleComponentMove = (componentId: string, deltaX: number, deltaY: number) => {
     setComponents(prev => prev.map(comp =>
       comp.id === componentId
@@ -1888,7 +1909,7 @@ export default function SchematicDesigner() {
       <div className="flex-1 flex overflow-hidden">
         <ComponentLibrary
           onDragStart={(comp) => setDraggedComponentType(comp.id)}
-          onAddCustom={() => console.log("Add custom")}
+          onAddCustom={() => setCustomDialogOpen(true)}
         />
 
         <SchematicCanvas
@@ -1949,6 +1970,8 @@ export default function SchematicDesigner() {
           onWireSelect={handleWireSelect}
           onComponentSelect={handleComponentSelect}
           onCreateParallelWires={handleCreateParallelWires}
+          onDeleteComponent={handleComponentDelete}
+          onDeleteWire={handleWireDelete}
           onUpdateComponent={(id, updates) => {
             // Create updated components list first
             const updatedComponents = components.map(comp => {
@@ -2026,6 +2049,12 @@ export default function SchematicDesigner() {
         open={openDialogOpen}
         onOpenChange={setOpenDialogOpen}
         onLoad={handleLoadDesign}
+      />
+
+      <CustomComponentDialog
+        open={customDialogOpen}
+        onOpenChange={setCustomDialogOpen}
+        onAdd={handleAddCustomComponent}
       />
 
       {/* Iteration Progress Overlay */}

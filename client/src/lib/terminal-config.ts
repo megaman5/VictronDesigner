@@ -18,6 +18,19 @@ export interface ComponentTerminalConfig {
 
 // Terminal configurations for each component type
 export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
+  // Generic user-defined component. Provides DC +/- on both sides so it can be
+  // wired inline (e.g. a device we don't have a dedicated symbol for yet).
+  custom: {
+    width: 160,
+    height: 120,
+    terminals: [
+      { id: "in-positive", type: "positive", label: "IN+", x: 8, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "in-negative", type: "negative", label: "IN-", x: 8, y: 80, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "out-positive", type: "positive", label: "OUT+", x: 152, y: 40, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "out-negative", type: "negative", label: "OUT-", x: 152, y: 80, color: "hsl(var(--wire-negative))", orientation: "right" },
+    ],
+  },
+
   multiplus: {
     width: 180,
     height: 140,

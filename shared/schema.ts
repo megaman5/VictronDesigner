@@ -49,6 +49,7 @@ export const feedback = pgTable("feedback", {
   userAgent: text("user_agent").notNull(),
   state: jsonb("state").notNull(), // { components, wires, systemVoltage }
   screenshot: text("screenshot"), // base64 encoded image
+  status: text("status").notNull().default("new"), // "new" | "completed"
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
