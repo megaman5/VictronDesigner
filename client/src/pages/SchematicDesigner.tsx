@@ -29,6 +29,9 @@ import { useToast } from "@/hooks/use-toast";
 import { trackAction } from "@/lib/tracking";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 import { calculateWireSize, type WireGaugeFormat } from "@/lib/wire-calculator";
+import { type WireRoutingStyle, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+
+const WIRE_ROUTING_STYLE_KEY = "wireRoutingStyle";
 import { AlertTriangle } from "lucide-react";
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
@@ -117,6 +120,23 @@ export default function SchematicDesigner() {
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
   const [wireGaugeFormat, setWireGaugeFormat] = useState<WireGaugeFormat>("awg");
+  const validRoutingStyles = WIRE_ROUTING_STYLES.map((s) => s.value);
+  const [wireRoutingStyle, setWireRoutingStyleState] = useState<WireRoutingStyle>(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem(WIRE_ROUTING_STYLE_KEY) : null;
+    return saved && validRoutingStyles.includes(saved as WireRoutingStyle)
+      ? (saved as WireRoutingStyle)
+      : DEFAULT_WIRE_ROUTING_STYLE;
+  });
+  const [wireRoutingSelectorEnabled, setWireRoutingSelectorEnabled] = useState(false);
+
+  const setWireRoutingStyle = (style: WireRoutingStyle) => {
+    setWireRoutingStyleState(style);
+    try {
+      localStorage.setItem(WIRE_ROUTING_STYLE_KEY, style);
+    } catch {
+      // ignore storage errors (e.g. private mode)
+    }
+  };
   const [viewMode, setViewMode] = useState<'standard' | 'load'>('standard');
   const [copiedComponents, setCopiedComponents] = useState<SchematicComponent[]>([]);
   const [copiedWires, setCopiedWires] = useState<Wire[]>([]);
@@ -176,6 +196,27 @@ export default function SchematicDesigner() {
     const newVoltage = inferSystemVoltage(components);
     setSystemVoltage(newVoltage);
   }, [components]);
+
+  // Load public app config (wire routing beta flag + default style)
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/config")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((config) => {
+        if (cancelled || !config) return;
+        setWireRoutingSelectorEnabled(!!config.wireRoutingSelectorEnabled);
+        // Apply the server default only when the user hasn't chosen one locally.
+        const hasLocal = localStorage.getItem(WIRE_ROUTING_STYLE_KEY);
+        if (!hasLocal && config.defaultWireRoutingStyle &&
+            validRoutingStyles.includes(config.defaultWireRoutingStyle)) {
+          setWireRoutingStyleState(config.defaultWireRoutingStyle);
+        }
+      })
+      .catch(() => {
+        // Non-fatal: selector simply stays hidden if config can't load
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Validation state
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
@@ -1935,6 +1976,9 @@ export default function SchematicDesigner() {
           wireCalculations={wireCalculations}
           onCopy={handleCopy}
           onPaste={handlePaste}
+          wireRoutingStyle={wireRoutingStyle}
+          onWireRoutingStyleChange={setWireRoutingStyle}
+          showWireRoutingSelector={wireRoutingSelectorEnabled}
         />
 
         <PropertiesPanel
