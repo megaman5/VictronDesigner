@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -341,6 +341,10 @@ export function TopBar({
                     <DropdownMenuItem onClick={() => window.location.href = '/observability-admin'}>
                       <Activity className="h-4 w-4 mr-2" />
                       Observability Admin
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => window.location.href = '/settings-admin'}>
+                      <Settings className="h-4 w-4 mr-2" />
+                      Admin Settings
                     </DropdownMenuItem>
                   </>
                 )}
