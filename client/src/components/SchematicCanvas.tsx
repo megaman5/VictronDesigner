@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
-import { snapPointToGrid, calculateRoute, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+import { snapPointToGrid, calculateRoute, GRID_SIZE, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -836,12 +836,12 @@ export function SchematicCanvas({
                       <span className="text-xs text-muted-foreground">{wireRoutingOptions.laneOffset}px</span>
                     </div>
                     <Slider
-                      min={0} max={40} step={2}
+                      min={0} max={60} step={20}
                       value={[wireRoutingOptions.laneOffset]}
                       onValueChange={([v]) => update({ laneOffset: v })}
                       data-testid="slider-lane-offset"
                     />
-                    <p className="text-[11px] text-muted-foreground">How far parallel wires fan out from a terminal.</p>
+                    <p className="text-[11px] text-muted-foreground">How far parallel wires (sharing a terminal) fan into separate lanes. Snaps to the 20px grid.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -1095,8 +1095,12 @@ export function SchematicCanvas({
               const toIndex = toWires.indexOf(wire.id);
 
               const getOffset = (index: number, count: number) => {
-                if (count <= 1) return 0;
-                return (index - (count - 1) / 2) * wireRoutingOptions.laneOffset;
+                if (count <= 1 || wireRoutingOptions.laneOffset <= 0) return 0;
+                const raw = (index - (count - 1) / 2) * wireRoutingOptions.laneOffset;
+                // calculateRoute snaps endpoints to the 20px grid, so a sub-grid
+                // offset would be rounded away. Snap each lane to a whole grid
+                // step so parallel wires actually land in distinct lanes.
+                return Math.round(raw / GRID_SIZE) * GRID_SIZE;
               };
 
               if (fromPos && fromOrientation) {
