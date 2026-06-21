@@ -9,6 +9,7 @@ import { initTracking } from "@/lib/tracking";
 import SchematicDesigner from "@/pages/SchematicDesigner";
 import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
+import SettingsAdmin from "@/pages/SettingsAdmin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/" component={SchematicDesigner} />
       <Route path="/feedback-admin" component={FeedbackAdmin} />
       <Route path="/observability-admin" component={ObservabilityAdmin} />
+      <Route path="/settings-admin" component={SettingsAdmin} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -13,7 +13,9 @@ export default function ExportDialogExample() {
         <ExportDialog
           open={open}
           onOpenChange={setOpen}
-          onExport={(options) => console.log("Export options:", options)}
+          components={[]}
+          wires={[]}
+          systemVoltage={12}
         />
       </div>
     </ThemeProvider>

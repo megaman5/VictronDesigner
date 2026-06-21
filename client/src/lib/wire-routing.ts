@@ -282,7 +282,14 @@ function heuristic(a: { x: number, y: number }, b: { x: number, y: number }): nu
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function reconstructPath(endNode: Node): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[] } {
+function reconstructPath(endNode: Node): {
+  path: string;
+  labelX: number;
+  labelY: number;
+  labelRotation: number;
+  pathNodes: string[];
+  pathPoints: Array<{ x: number; y: number }>;
+} {
   const points: { x: number, y: number }[] = [];
   let current: Node | null = endNode;
   const pathNodes: string[] = [];

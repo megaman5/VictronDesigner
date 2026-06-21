@@ -8,10 +8,15 @@ export default function PropertiesPanelExample() {
         <PropertiesPanel
           selectedComponent={{
             id: "multiplus-1",
+            type: "multiplus",
             name: "MultiPlus 1200VA",
-            voltage: 12,
-            current: 100,
-            power: 1200,
+            x: 0,
+            y: 0,
+            properties: {
+              voltage: 12,
+              current: 100,
+              power: 1200,
+            },
           }}
           wireCalculation={{
             current: 100,

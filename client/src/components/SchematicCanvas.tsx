@@ -439,23 +439,25 @@ export function SchematicCanvas({
 
       // Update wire if we found a valid terminal
       if (closestTerminal && closestComponent) {
+        const targetComponent = closestComponent as SchematicComponentType;
+        const targetTerminal = closestTerminal as Terminal;
         const updates: Partial<Wire> = {};
 
         if (endpoint === 'from') {
-          updates.fromComponentId = closestComponent.id;
-          updates.fromTerminal = closestTerminal.id;
+          updates.fromComponentId = targetComponent.id;
+          updates.fromTerminal = targetTerminal.id;
         } else {
-          updates.toComponentId = closestComponent.id;
-          updates.toTerminal = closestTerminal.id;
+          updates.toComponentId = targetComponent.id;
+          updates.toTerminal = targetTerminal.id;
         }
 
         // Recalculate wire length based on new positions
-        const fromComp = endpoint === 'from' ? closestComponent : components.find(c => c.id === wire.fromComponentId);
-        const toComp = endpoint === 'to' ? closestComponent : components.find(c => c.id === wire.toComponentId);
+        const fromComp = endpoint === 'from' ? targetComponent : components.find(c => c.id === wire.fromComponentId);
+        const toComp = endpoint === 'to' ? targetComponent : components.find(c => c.id === wire.toComponentId);
 
         if (fromComp && toComp) {
-          const fromTerm = endpoint === 'from' ? closestTerminal : TERMINAL_CONFIGS[fromComp.type]?.terminals.find(t => t.id === wire.fromTerminal);
-          const toTerm = endpoint === 'to' ? closestTerminal : TERMINAL_CONFIGS[toComp.type]?.terminals.find(t => t.id === wire.toTerminal);
+          const fromTerm = endpoint === 'from' ? targetTerminal : TERMINAL_CONFIGS[fromComp.type]?.terminals.find(t => t.id === wire.fromTerminal);
+          const toTerm = endpoint === 'to' ? targetTerminal : TERMINAL_CONFIGS[toComp.type]?.terminals.find(t => t.id === wire.toTerminal);
 
           if (fromTerm && toTerm) {
             // Use default wire length based on component types
@@ -877,10 +879,37 @@ export function SchematicCanvas({
               labelX: number;
               labelY: number;
               labelRotation: number;
+              labelWidth: number;
+              labelHeight: number;
               pathPoints: Array<{ x: number; y: number }>;
             }
 
             const wireRoutes: WireRouteData[] = [];
+            const LABEL_HEIGHT = 18;
+            const LABEL_X_PADDING = 6;
+
+            const getWireLabelText = (wire: Wire): { primary: string; secondary: string } => {
+              if (viewMode === 'load') {
+                return {
+                  primary: `${(wireCalculations[wire.id]?.current || 0).toFixed(1)}A`,
+                  secondary: '➔',
+                };
+              }
+
+              const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
+              return {
+                primary: `${polaritySymbol} ${formatWireGauge(wire.gauge, wireGaugeFormat) || "N/A"}`,
+                secondary: wire.length && wire.length > 0 ? `• ${wire.length.toFixed(1)}ft` : '',
+              };
+            };
+
+            const getWireLabelWidth = (wire: Wire): number => {
+              const { primary, secondary } = getWireLabelText(wire);
+              const primaryWidth = primary.length * 6.2;
+              const secondaryWidth = secondary.length * 4.6;
+              const gap = secondary ? 4 : 0;
+              return Math.ceil(Math.max(34, primaryWidth + secondaryWidth + gap + LABEL_X_PADDING * 2));
+            };
 
             wires.forEach((wire) => {
               const fromComp = components.find(c => c.id === wire.fromComponentId);
@@ -997,23 +1026,23 @@ export function SchematicCanvas({
                 labelX: result.labelX,
                 labelY: result.labelY,
                 labelRotation: result.labelRotation,
+                labelWidth: getWireLabelWidth(wire),
+                labelHeight: LABEL_HEIGHT,
                 pathPoints: result.pathPoints || [],
               });
             });
 
             // Detect and resolve label overlaps
-            const LABEL_WIDTH = 90; // Max label width
-            const LABEL_HEIGHT = 24;
-            const SEGMENT_PADDING = 6;
-            const LABEL_EDGE_PADDING = 10;
-            const LABEL_ALONG_OFFSETS = [0, 40, -40, 80, -80, 120, -120];
-            const LABEL_PERPENDICULAR_OFFSETS = [0, 18, -18, 30, -30, 42, -42];
+            const SEGMENT_PADDING = 4;
+            const LABEL_EDGE_PADDING = 6;
+            const LABEL_ALONG_OFFSETS = [0, 26, -26, 52, -52, 78, -78, 104, -104];
+            const LABEL_PERPENDICULAR_OFFSETS = [0];
 
             type LabelBounds = { minX: number; maxX: number; minY: number; maxY: number };
 
-            const getLabelBounds = (x: number, y: number, rotation: number): LabelBounds => {
-              const w = LABEL_WIDTH / 2;
-              const h = LABEL_HEIGHT / 2;
+            const getLabelBounds = (x: number, y: number, rotation: number, width: number, height: number): LabelBounds => {
+              const w = width / 2;
+              const h = height / 2;
               const rad = (rotation * Math.PI) / 180;
               const cos = Math.cos(rad);
               const sin = Math.sin(rad);
@@ -1049,11 +1078,11 @@ export function SchematicCanvas({
             };
 
             function labelsOverlap(
-              x1: number, y1: number, rot1: number,
-              x2: number, y2: number, rot2: number
+              x1: number, y1: number, rot1: number, width1: number, height1: number,
+              x2: number, y2: number, rot2: number, width2: number, height2: number
             ): boolean {
-              const bounds1 = getLabelBounds(x1, y1, rot1);
-              const bounds2 = getLabelBounds(x2, y2, rot2);
+              const bounds1 = getLabelBounds(x1, y1, rot1, width1, height1);
+              const bounds2 = getLabelBounds(x2, y2, rot2, width2, height2);
               return boundsOverlap(bounds1, bounds2);
             }
 
@@ -1092,9 +1121,11 @@ export function SchematicCanvas({
               x: number,
               y: number,
               rotation: number,
-              routeIndex: number
+              routeIndex: number,
+              width: number,
+              height: number
             ): boolean => {
-              const bounds = getLabelBounds(x, y, rotation);
+              const bounds = getLabelBounds(x, y, rotation, width, height);
               return segmentBounds.some(segment => {
                 if (segment.routeIndex === routeIndex) {
                   return false;
@@ -1105,13 +1136,16 @@ export function SchematicCanvas({
 
             // Check if a label position overlaps with any other label
             function overlapsWithAny(
-              x: number, y: number, rot: number,
+              x: number, y: number, rot: number, width: number, height: number,
               excludeIndex: number,
               routes: WireRouteData[]
             ): boolean {
               for (let i = 0; i < routes.length; i++) {
                 if (i === excludeIndex) continue;
-                if (labelsOverlap(x, y, rot, routes[i].labelX, routes[i].labelY, routes[i].labelRotation)) {
+                if (labelsOverlap(
+                  x, y, rot, width, height,
+                  routes[i].labelX, routes[i].labelY, routes[i].labelRotation, routes[i].labelWidth, routes[i].labelHeight
+                )) {
                   return true;
                 }
               }
@@ -1125,10 +1159,11 @@ export function SchematicCanvas({
               routeIndex: number,
               routes: WireRouteData[]
             ): boolean => {
-              if (overlapsWithAny(x, y, rotation, routeIndex, routes)) {
+              const route = routes[routeIndex];
+              if (overlapsWithAny(x, y, rotation, route.labelWidth, route.labelHeight, routeIndex, routes)) {
                 return false;
               }
-              return !labelCollidesWithSegments(x, y, rotation, routeIndex);
+              return !labelCollidesWithSegments(x, y, rotation, routeIndex, route.labelWidth, route.labelHeight);
             };
 
             const placeLabelForRoute = (
@@ -1161,10 +1196,8 @@ export function SchematicCanvas({
                 if (segment.length < 20) continue;
 
                 const rotation = segment.isHorizontal ? 0 : 90;
-                // Labels are aligned with the segment (0° for horizontal, 90° for vertical),
-                // so the span *along* the segment direction is always LABEL_WIDTH.
-                // (On vertical segments, 90° rotation makes the label's vertical extent = LABEL_WIDTH.)
-                const labelSpan = LABEL_WIDTH;
+                // Keep labels centered on the segment they describe; overlap handling only slides along the wire.
+                const labelSpan = route.labelWidth;
                 const available = Math.max(0, (segment.length - labelSpan - LABEL_EDGE_PADDING) / 2);
 
                 for (const alongOffset of LABEL_ALONG_OFFSETS) {
@@ -1211,6 +1244,8 @@ export function SchematicCanvas({
                   wireRoutes[i].labelX,
                   wireRoutes[i].labelY,
                   wireRoutes[i].labelRotation,
+                  wireRoutes[i].labelWidth,
+                  wireRoutes[i].labelHeight,
                   i,
                   wireRoutes
                 )) {
@@ -1309,47 +1344,7 @@ export function SchematicCanvas({
                 }
               }
 
-              // If we can't find a non-overlapping position, try staggering labels vertically/horizontally
-              // This is a fallback to ensure labels remain visible even when paths are very close
-              // Get the current label position from allRoutes
-              const currentRoute = allRoutes[routeIndex];
-              const originalX = currentRoute.labelX;
-              const originalY = currentRoute.labelY;
-              const originalRot = currentRoute.labelRotation;
-              if (pathPoints.length >= 2) {
-                // Try offsetting perpendicular to the wire direction
-                const p1 = pathPoints[0];
-                const p2 = pathPoints[1];
-                const dx = p2.x - p1.x;
-                const dy = p2.y - p1.y;
-                const isHorizontal = Math.abs(dx) > Math.abs(dy);
-                
-                // Offset perpendicular to wire direction
-                const offset = 35; // Offset by label height + spacing
-                if (isHorizontal) {
-                  // Wire is horizontal, offset vertically
-                  const newY = originalY + offset;
-                  if (labelPositionIsClear(originalX, newY, originalRot, routeIndex, allRoutes)) {
-                    return { x: originalX, y: newY, rotation: originalRot };
-                  }
-                  const newY2 = originalY - offset;
-                  if (labelPositionIsClear(originalX, newY2, originalRot, routeIndex, allRoutes)) {
-                    return { x: originalX, y: newY2, rotation: originalRot };
-                  }
-                } else {
-                  // Wire is vertical, offset horizontally
-                  const newX = originalX + offset;
-                  if (labelPositionIsClear(newX, originalY, originalRot, routeIndex, allRoutes)) {
-                    return { x: newX, y: originalY, rotation: originalRot };
-                  }
-                  const newX2 = originalX - offset;
-                  if (labelPositionIsClear(newX2, originalY, originalRot, routeIndex, allRoutes)) {
-                    return { x: newX2, y: originalY, rotation: originalRot };
-                  }
-                }
-              }
-              
-              // Last resort: keep original position (label will be visible even if overlapping)
+              // Last resort: keep the original on-wire position instead of floating away from its wire.
               return null;
             }
 
@@ -1374,8 +1369,10 @@ export function SchematicCanvas({
               const labelX = routeData.labelX;
               const labelY = routeData.labelY;
               const labelRotation = routeData.labelRotation;
+              const labelWidth = routeData.labelWidth;
+              const labelHeight = routeData.labelHeight;
+              const labelText = getWireLabelText(wire);
 
-              const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
               const isSelected = selectedWireId === wire.id;
               const glowColor = getWireGlowColor(wire.id);
 
@@ -1422,30 +1419,30 @@ export function SchematicCanvas({
                   {showWireLabels && (
                     <g transform={`translate(${labelX}, ${labelY}) rotate(${labelRotation})`} className="pointer-events-none">
                       <rect
-                        x={wire.length ? "-45" : "-35"}
-                        y="-12"
-                        width={wire.length ? "90" : "70"}
-                        height="24"
+                        x={-labelWidth / 2}
+                        y={-labelHeight / 2}
+                        width={labelWidth}
+                        height={labelHeight}
                         fill="hsl(var(--background))"
                         stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
                         strokeWidth={isSelected ? 2 : 1}
-                        rx="4"
+                        rx="3"
                       />
                       <text
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        className="fill-foreground text-xs font-semibold"
+                        className="fill-foreground text-[11px] font-semibold"
                       >
                         {viewMode === 'load' ? (
                           <>
-                            {(wireCalculations[wire.id]?.current || 0).toFixed(1)}A
-                            <tspan className="text-[10px] font-normal opacity-75"> ➔</tspan>
+                            {labelText.primary}
+                            <tspan className="text-[9px] font-normal opacity-75"> {labelText.secondary}</tspan>
                           </>
                         ) : (
                           <>
-                            {polaritySymbol} {formatWireGauge(wire.gauge, wireGaugeFormat) || "N/A"}
-                            {wire.length && wire.length > 0 && (
-                              <tspan className="text-[10px] font-normal opacity-75"> • {wire.length.toFixed(1)}ft</tspan>
+                            {labelText.primary}
+                            {labelText.secondary && (
+                              <tspan className="text-[9px] font-normal opacity-75"> {labelText.secondary}</tspan>
                             )}
                           </>
                         )}
