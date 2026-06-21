@@ -228,9 +228,12 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             "Positive terminal connects to Class T fuse then positive busbar.",
             "Negative terminal connects ONLY to the Shunt (if present) or negative busbar.",
             "LiFePO4 batteries require a BMS and Class T fuse protection.",
-            "AGM batteries should be charged at lower voltage settings than LiFePO4."
+            "AGM batteries should be charged at lower voltage settings than LiFePO4.",
+            "SERIES wiring (to build a higher voltage, e.g. 2x12V = 24V): connect battery1 'positive' to battery2 'negative' (this is the series link, polarity 'negative'). The bank's output is battery1 'negative' (bank minus) and battery2 'positive' (bank plus). Only the bank output positive needs a fuse - the series link does NOT.",
+            "Series batteries must be identical (same voltage, capacity, age, and chemistry). The series total voltage must match the system voltage.",
+            "For 24V or 48V banks built from 12V batteries in series, add a Victron Battery Balancer across the string."
         ],
-        usageNotes: "Stores DC energy. Set type (LiFePO4/AGM/Lithium), voltage (12V/24V/48V), and capacity (Ah) in properties."
+        usageNotes: "Stores DC energy. Set type (LiFePO4/AGM/Lithium), voltage (12V/24V/48V), and capacity (Ah) in properties. For series banks, set each battery to its individual voltage (e.g. 12V) and the system voltage to the series total (e.g. 24V)."
     },
     inverter: {
         type: "inverter",
