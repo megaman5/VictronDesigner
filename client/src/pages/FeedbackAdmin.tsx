@@ -19,9 +19,15 @@ import {
   LogOut,
   Activity,
   CheckCircle2,
-  Circle
+  Circle,
+  Send,
+  Copy
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { buildReplyDraft, buildGmailComposeUrl } from "@/lib/feedback-reply-drafts";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +63,8 @@ export default function FeedbackAdmin() {
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
+  const [replySubject, setReplySubject] = useState("");
+  const [replyBody, setReplyBody] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [, setLocation] = useLocation();
@@ -125,6 +133,30 @@ export default function FeedbackAdmin() {
       setLoading(false);
     }
   }, [authChecked, user]);
+
+  // Populate the editable reply draft whenever a feedback item is opened
+  useEffect(() => {
+    if (selectedFeedback) {
+      const draft = buildReplyDraft(selectedFeedback);
+      setReplySubject(draft.subject);
+      setReplyBody(draft.body);
+    }
+  }, [selectedFeedback]);
+
+  const handleOpenInGmail = () => {
+    if (!selectedFeedback?.email) return;
+    const url = buildGmailComposeUrl(selectedFeedback.email, replySubject, replyBody);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleCopyReply = async () => {
+    try {
+      await navigator.clipboard.writeText(replyBody);
+      toast({ title: "Copied", description: "Reply copied to clipboard" });
+    } catch {
+      toast({ title: "Error", description: "Could not copy", variant: "destructive" });
+    }
+  };
 
   const handleLogin = () => {
     // Redirect to Google OAuth with return URL
@@ -468,10 +500,47 @@ export default function FeedbackAdmin() {
                 </p>
               </div>
 
-              {selectedFeedback.email && (
-                <div>
-                  <h3 className="font-semibold mb-2">Contact Email</h3>
-                  <p className="text-sm">{selectedFeedback.email}</p>
+              {selectedFeedback.email ? (
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Mail className="h-4 w-4" />
+                      Reply to {selectedFeedback.email}
+                    </h3>
+                    <Button variant="ghost" size="sm" onClick={handleCopyReply} className="gap-2">
+                      <Copy className="h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reply-subject">Subject</Label>
+                    <Input
+                      id="reply-subject"
+                      value={replySubject}
+                      onChange={(e) => setReplySubject(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reply-body">Message</Label>
+                    <Textarea
+                      id="reply-body"
+                      value={replyBody}
+                      onChange={(e) => setReplyBody(e.target.value)}
+                      rows={12}
+                      className="font-sans text-sm"
+                    />
+                  </div>
+                  <Button onClick={handleOpenInGmail} className="gap-2">
+                    <Send className="h-4 w-4" />
+                    Open in Gmail
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Opens a prefilled Gmail compose window in your signed-in account. Review and send from there.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  No email address was provided with this feedback, so there's no one to reply to.
                 </div>
               )}
 
