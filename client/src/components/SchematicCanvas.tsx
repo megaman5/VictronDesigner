@@ -1008,6 +1008,11 @@ export function SchematicCanvas({
             };
 
             const obstacles: Obstacle[] = components.map(comp => {
+              // Bus bars are drawn as a thin bar (~y24-36 of a 60px box). Use a
+              // matching thin obstacle so wires can pass close above/below it.
+              if (comp.type === 'busbar-positive' || comp.type === 'busbar-negative') {
+                return { x: comp.x + 10, y: comp.y + 24, width: 180, height: 12 };
+              }
               const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
               return {
                 x: comp.x,
@@ -1680,6 +1685,11 @@ export function SchematicCanvas({
             };
 
             const obstacles: Obstacle[] = components.map(comp => {
+              // Bus bars are drawn as a thin bar (~y24-36 of a 60px box). Use a
+              // matching thin obstacle so wires can pass close above/below it.
+              if (comp.type === 'busbar-positive' || comp.type === 'busbar-negative') {
+                return { x: comp.x + 10, y: comp.y + 24, width: 180, height: 12 };
+              }
               const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
               return {
                 x: comp.x,

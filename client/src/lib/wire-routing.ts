@@ -76,6 +76,21 @@ function createSmoothPath(points: Array<{ x: number; y: number }>): string {
     return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
   }
 
+  // Clamp each control handle so a curve never bulges more than this fraction of
+  // its own segment length. This keeps curves hugging the (already de-conflicted)
+  // A* route instead of ballooning out and touching neighbouring wires.
+  const TENSION = 1 / 6;
+  const MAX_BULGE = 0.4;
+  const clampHandle = (dx: number, dy: number, segLen: number): [number, number] => {
+    const len = Math.hypot(dx, dy);
+    const max = segLen * MAX_BULGE;
+    if (len > max && len > 0) {
+      const s = max / len;
+      return [dx * s, dy * s];
+    }
+    return [dx, dy];
+  };
+
   let d = `M ${points[0].x} ${points[0].y}`;
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[i - 1] || points[i];
@@ -83,10 +98,14 @@ function createSmoothPath(points: Array<{ x: number; y: number }>): string {
     const p2 = points[i + 1];
     const p3 = points[i + 2] || p2;
 
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    const segLen = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const [h1x, h1y] = clampHandle((p2.x - p0.x) * TENSION, (p2.y - p0.y) * TENSION, segLen);
+    const [h2x, h2y] = clampHandle((p3.x - p1.x) * TENSION, (p3.y - p1.y) * TENSION, segLen);
+
+    const cp1x = p1.x + h1x;
+    const cp1y = p1.y + h1y;
+    const cp2x = p2.x - h2x;
+    const cp2y = p2.y - h2y;
 
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
