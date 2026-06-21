@@ -1163,14 +1163,17 @@ export function SchematicCanvas({
               let extendedFromPos = { ...fromPos };
               let extendedToPos = { ...toPos };
               
-              if (fromOrientation) {
+              // Skip the inward nudge for bus bars: their terminals sit at the
+              // center of the bar and can exit either way, so nudging inward
+              // would create a "down then back up" hook.
+              if (fromOrientation && !isBusbar(fromComp.type)) {
                 if (fromOrientation === 'left') extendedFromPos.x += extendDistance;
                 else if (fromOrientation === 'right') extendedFromPos.x -= extendDistance;
                 else if (fromOrientation === 'top') extendedFromPos.y += extendDistance;
                 else if (fromOrientation === 'bottom') extendedFromPos.y -= extendDistance;
               }
-              
-              if (toOrientation) {
+
+              if (toOrientation && !isBusbar(toComp.type)) {
                 if (toOrientation === 'left') extendedToPos.x += extendDistance;
                 else if (toOrientation === 'right') extendedToPos.x -= extendDistance;
                 else if (toOrientation === 'top') extendedToPos.y += extendDistance;
