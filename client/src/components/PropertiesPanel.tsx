@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2 } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
+import { findBatteryBanks, getBankForBattery } from "@shared/battery-bank";
 import { formatWireGauge } from "@/lib/wire-calculator";
 import { SaveFeedback } from "@/components/SaveFeedback";
 
@@ -1053,6 +1054,31 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
                       Total Energy: {voltage * capacity}Wh ({(voltage * capacity / 1000).toFixed(1)}kWh)
                     </div>
+                    {(() => {
+                      const bank = getBankForBattery(
+                        selectedComponent.id,
+                        findBatteryBanks(components, wires)
+                      );
+                      if (!bank || !bank.isSeries) return null;
+                      return (
+                        <div className="text-xs space-y-1 border border-primary/30 bg-primary/5 p-2 rounded">
+                          <div className="font-medium text-foreground">
+                            Series Bank: {bank.count} × {bank.perBatteryVoltage}V = {bank.bankVoltage}V
+                          </div>
+                          <div className="text-muted-foreground">
+                            Bank capacity: {bank.capacityAh}Ah @ {bank.bankVoltage}V
+                          </div>
+                          <div className="text-muted-foreground">
+                            Bank energy: {bank.energyWh}Wh ({(bank.energyWh / 1000).toFixed(1)}kWh)
+                          </div>
+                          {(bank.mixedVoltage || bank.mixedCapacity || bank.mixedType) && (
+                            <div className="text-destructive">
+                              ⚠ Series batteries should be identical (matched voltage, capacity, and chemistry).
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
