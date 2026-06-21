@@ -637,8 +637,7 @@ export class DesignValidator {
 
       // Skip PV wires (pv-positive/pv-negative) - solar panels use PV voltage (Vmp), not DC system voltage
       // PV voltage is converted by MPPT controller to system voltage
-      if (wire.polarity === "pv-positive" || wire.polarity === "pv-negative" ||
-          wire.fromTerminal?.includes("pv-") || wire.toTerminal?.includes("pv-")) return;
+      if (wire.fromTerminal?.includes("pv-") || wire.toTerminal?.includes("pv-")) return;
       
       // Skip if either component is a solar panel (PV voltage) or MPPT (handles PV-to-DC conversion)
       if (fromComp.type === "solar-panel" || toComp.type === "solar-panel" ||
@@ -853,7 +852,7 @@ export class DesignValidator {
         // (the system divides it automatically). So we use the first wire's current as the total.
         const totalCurrent = wire.current || allParallelWires[0]?.current || 0;
         const currentPerWire = totalCurrent / parallelCount;
-        const gauges = [...new Set(allParallelWires.map(w => w.gauge).filter(Boolean))];
+        const gauges = Array.from(new Set(allParallelWires.map(w => w.gauge).filter(Boolean)));
         
         // Check 1: Parallel wires should only be used for currents >230A (4/0 AWG max)
         // Only flag if we can determine the current and it's <= 230A

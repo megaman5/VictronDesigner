@@ -27,24 +27,7 @@ interface WireCalculation {
 }
 
 interface PropertiesPanelProps {
-  selectedComponent?: {
-    id: string;
-    type: string;
-    name: string;
-    properties?: {
-      voltage?: number;
-      current?: number;
-      power?: number;
-      watts?: number;
-      amps?: number;
-      capacity?: number;
-      batteryType?: string;
-      fuseRating?: number;
-      dailyHours?: number;
-      safeDOD?: number;
-      [key: string]: any;
-    };
-  };
+  selectedComponent?: SchematicComponent;
   selectedWire?: {
     id: string;
     fromComponentId: string;
@@ -751,8 +734,9 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   return true;
                       }
                     }
-                    if (issue.wireIds && issue.wireIds.length > 0) {
-                      const matchingWire = wires.find(w => issue.wireIds.includes(w.id) && 
+                    const issueWireIds = issue.wireIds;
+                    if (issueWireIds && issueWireIds.length > 0) {
+                      const matchingWire = wires.find(w => issueWireIds.includes(w.id) && 
                         (w.fromComponentId === selectedComponent.id || w.toComponentId === selectedComponent.id));
                       if (matchingWire) {
                         return true;

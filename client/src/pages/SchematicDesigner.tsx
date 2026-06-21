@@ -192,9 +192,6 @@ export default function SchematicDesigner() {
     promptTokens?: number;
     completionTokens?: number;
     streamingText?: string;
-    errorCount?: number;
-    warningCount?: number;
-    isBest?: boolean;
   } | null>(null);
 
   // Load schematic
@@ -209,7 +206,8 @@ export default function SchematicDesigner() {
       setComponents(schematic.components as SchematicComponent[]);
       setWires(schematic.wires as Wire[]);
       // System voltage will be inferred from components, but use saved value as initial
-      const inferred = inferSystemVoltage(schematic.components || []);
+      const schematicComponents = (schematic.components || []) as SchematicComponent[];
+      const inferred = inferSystemVoltage(schematicComponents);
       setSystemVoltage(inferred || schematic.systemVoltage || 12);
     }
   }, [schematic]);
@@ -1362,7 +1360,7 @@ export default function SchematicDesigner() {
         length: wireLength,
         voltage: voltage,
         conductorMaterial: (wire as any).conductorMaterial || "copper",
-        currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
+        currentGauge: undefined,
       });
 
       if ((wire as any)._sizingCurrent && (wire as any)._sizingCurrent > current) {
@@ -1387,7 +1385,12 @@ export default function SchematicDesigner() {
     }
   };
 
-  const handleComponentSelect = (comp: SchematicComponent) => {
+  const handleComponentSelect = (comp: SchematicComponent | null) => {
+    if (!comp) {
+      setSelectedComponent(null);
+      return;
+    }
+
     setSelectedComponent(comp);
     setSelectedWire(null); // Clear wire selection
 
@@ -1602,7 +1605,7 @@ export default function SchematicDesigner() {
     }
 
     // Determine polarity based on terminal types
-    let polarity: "positive" | "negative" | "neutral" | "ground" = "positive";
+    let polarity: Wire["polarity"] = "positive";
     const t1 = wireData.fromTerminal.type;
     const t2 = wireData.toTerminal.type;
 
@@ -1662,7 +1665,7 @@ export default function SchematicDesigner() {
         voltage: systemVoltage,
         temperatureC: 30,
         conductorMaterial: "copper",
-        currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
+        currentGauge: undefined,
         insulationType: "75C",
         bundlingFactor: 0.8,
         maxVoltageDrop: 3,
@@ -1914,12 +1917,7 @@ export default function SchematicDesigner() {
         />
 
         <PropertiesPanel
-          selectedComponent={selectedComponent ? {
-            id: selectedComponent.id,
-            type: selectedComponent.type,
-            name: selectedComponent.name,
-            properties: selectedComponent.properties,
-          } : undefined}
+          selectedComponent={selectedComponent || undefined}
           selectedWire={selectedWire ? {
             id: selectedWire.id,
             fromComponentId: selectedWire.fromComponentId,

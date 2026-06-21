@@ -134,6 +134,9 @@ export function ExportDialog({
 
   const exportDiagram = async () => {
     setExporting("diagram");
+    let exportContainer: HTMLDivElement | null = null;
+    let scaledElements: NodeListOf<HTMLElement> | null = null;
+    let originalTransforms: string[] = [];
     try {
       // Calculate content bounds from components
       const padding = 100; // Padding around content
@@ -169,8 +172,7 @@ export function ExportDialog({
       const canvasContainer = document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
       
       // Find all scaled elements and temporarily reset their transform to 100%
-      const scaledElements = canvasContainer.querySelectorAll('[style*="transform"]') as NodeListOf<HTMLElement>;
-      const originalTransforms: string[] = [];
+      scaledElements = canvasContainer.querySelectorAll('[style*="transform"]') as NodeListOf<HTMLElement>;
       
       scaledElements.forEach((el, i) => {
         originalTransforms[i] = el.style.transform;
@@ -178,7 +180,7 @@ export function ExportDialog({
       });
 
       // Create a temporary container for export with content-based dimensions
-      const exportContainer = document.createElement('div');
+      exportContainer = document.createElement('div');
       exportContainer.style.cssText = `
         position: fixed;
         left: -9999px;
@@ -192,21 +194,16 @@ export function ExportDialog({
       // Inject a style tag to force all component wrappers to have transparent backgrounds
       const style = document.createElement('style');
       style.textContent = `
-        [data-testid^="canvas-component-"] {
-          background: transparent !important;
-          background-color: transparent !important;
-        }
-        [data-testid^="canvas-component-"] > * {
-          background: transparent !important;
-          background-color: transparent !important;
-        }
-        [data-testid^="canvas-component-"] > div {
-          background: transparent !important;
-          background-color: transparent !important;
-        }
+        [data-testid^="canvas-component-"],
+        [data-testid^="canvas-component-"] > *,
+        [data-testid^="canvas-component-"] > div,
         [data-testid^="canvas-component-"] > div > div {
           background: transparent !important;
           background-color: transparent !important;
+          box-shadow: none !important;
+          outline: none !important;
+          --tw-ring-offset-shadow: 0 0 #0000 !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
         }
         [data-testid^="canvas-component-"] svg {
           background: transparent !important;
@@ -218,6 +215,24 @@ export function ExportDialog({
         }
       `;
       exportContainer.appendChild(style);
+
+      const cleanComponentExportChrome = (el: Element) => {
+        const htmlEl = el as HTMLElement;
+        htmlEl.style.setProperty('box-shadow', 'none', 'important');
+        htmlEl.style.setProperty('outline', 'none', 'important');
+        htmlEl.style.setProperty('--tw-ring-offset-shadow', '0 0 #0000', 'important');
+        htmlEl.style.setProperty('--tw-ring-shadow', '0 0 #0000', 'important');
+        htmlEl.classList.remove(
+          'ring-2',
+          'ring-4',
+          'ring-primary',
+          'ring-red-500',
+          'ring-yellow-500',
+          'ring-offset-2',
+          'ring-offset-background',
+          'animate-pulse'
+        );
+      };
       
       // Clone the canvas content
       const clone = canvasContainer.cloneNode(true) as HTMLElement;
@@ -237,6 +252,7 @@ export function ExportDialog({
           wrapper.style.setProperty('background', 'transparent', 'important');
           wrapper.style.setProperty('background-color', 'transparent', 'important');
           wrapper.style.setProperty('backgroundColor', 'transparent', 'important');
+          cleanComponentExportChrome(wrapper);
         }
         // Remove hover-elevate effects that create white overlays
         wrapper.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
@@ -249,6 +265,7 @@ export function ExportDialog({
               div.style.setProperty('background', 'transparent', 'important');
               div.style.setProperty('background-color', 'transparent', 'important');
               div.style.setProperty('backgroundColor', 'transparent', 'important');
+              cleanComponentExportChrome(div);
             }
           }
         });
@@ -278,6 +295,9 @@ export function ExportDialog({
       allElements.forEach((el: any) => {
         if (el && el.classList) {
           el.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
+          if (el.closest?.('[data-testid^="canvas-component-"]')) {
+            cleanComponentExportChrome(el);
+          }
         }
         // Force transparent backgrounds on all wrapper elements (divs, but not SVG shapes)
         const tagName = el.tagName?.toLowerCase();
@@ -325,6 +345,7 @@ export function ExportDialog({
               wrapper.style.setProperty('background', 'transparent', 'important');
               wrapper.style.setProperty('background-color', 'transparent', 'important');
               wrapper.style.setProperty('backgroundColor', 'transparent', 'important');
+              cleanComponentExportChrome(wrapper);
               
               // Remove any classes that might add backgrounds
               wrapper.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
@@ -336,6 +357,7 @@ export function ExportDialog({
                   div.style.setProperty('background', 'transparent', 'important');
                   div.style.setProperty('background-color', 'transparent', 'important');
                   div.style.setProperty('backgroundColor', 'transparent', 'important');
+                  cleanComponentExportChrome(div);
                   div.classList.remove('hover-elevate', 'active-elevate-2', 'active-elevate', 'hover-elevate-2');
                 }
               });
@@ -380,12 +402,8 @@ export function ExportDialog({
       });
 
       // Clean up
-      document.body.removeChild(exportContainer);
-      
-      // Restore original transforms
-      scaledElements.forEach((el, i) => {
-        el.style.transform = originalTransforms[i];
-      });
+      exportContainer.remove();
+      exportContainer = null;
 
       // Load the icon first
       const iconImg = await new Promise<HTMLImageElement | null>((resolve) => {
@@ -500,6 +518,12 @@ export function ExportDialog({
         variant: "destructive",
       });
     } finally {
+      if (exportContainer?.parentNode) {
+        exportContainer.remove();
+      }
+      scaledElements?.forEach((el, i) => {
+        el.style.transform = originalTransforms[i] || "";
+      });
       setExporting(null);
     }
   };

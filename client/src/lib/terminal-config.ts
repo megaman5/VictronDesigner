@@ -2,7 +2,7 @@ export type TerminalOrientation = "left" | "right" | "top" | "bottom";
 
 export interface Terminal {
   id: string;
-  type: "positive" | "negative" | "ground" | "ac-in" | "ac-out" | "pv-positive" | "pv-negative";
+  type: "positive" | "negative" | "hot" | "neutral" | "ground" | "ac-in" | "ac-out" | "pv-positive" | "pv-negative";
   label: string;
   x: number; // Relative to component's top-left corner
   y: number; // Relative to component's top-left corner

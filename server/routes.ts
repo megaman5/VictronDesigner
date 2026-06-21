@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { feedbackStorage } from "./feedback-storage";
 import { userDesignsStorage } from "./user-designs-storage";
 import { observabilityStorage } from "./observability-storage";
+import { appSettingsStorage, DEFAULT_AI_MODEL } from "./app-settings-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
@@ -68,6 +69,8 @@ function extractJSON(content: string): string {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const getAIModel = () => appSettingsStorage.getAIModel();
+
   // Authentication routes
   app.get("/auth/google", (req, res, next) => {
     const returnTo = req.query.returnTo as string || "/";
@@ -236,8 +239,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
     const clientIP = getClientIP(req);
+    let aiModel = DEFAULT_AI_MODEL;
     
     try {
+      aiModel = await getAIModel();
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
       if (!process.env.OPENAI_API_KEY) {
@@ -275,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -493,7 +498,7 @@ JSON RESPONSE FORMAT:
         durationMs: Date.now() - startTime,
         componentCount: response.components?.length || 0,
         wireCount: response.wires?.length || 0,
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
         response: {
           components: response.components,
           wires: response.wires,
@@ -518,7 +523,7 @@ JSON RESPONSE FORMAT:
         success: false,
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
       });
       
       res.status(500).json({ error: error.message });
@@ -531,8 +536,10 @@ JSON RESPONSE FORMAT:
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
     const clientIP = getClientIP(req);
+    let aiModel = DEFAULT_AI_MODEL;
     
     try {
+      aiModel = await getAIModel();
       const { 
         components, 
         wires = [],
@@ -926,7 +933,7 @@ QUALITY IMPROVEMENT GUIDELINES:
         }
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -1253,7 +1260,7 @@ CRITICAL: For AC wires, the polarity field MUST match the terminal type:
         qualityScore: Math.round(bestScore), // Round to integer for database
         componentCount: components.length,
         wireCount: bestWires.length,
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
         response: {
           wires: bestWires,
           description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
@@ -1290,7 +1297,7 @@ CRITICAL: For AC wires, the polarity field MUST match the terminal type:
         success: false,
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
       });
       
       res.status(500).json({ error: error.message });
@@ -1299,7 +1306,10 @@ CRITICAL: For AC wires, the polarity field MUST match the terminal type:
 
   // Iterative AI generation with quality validation
   app.post("/api/ai-generate-system-iterative", async (req, res) => {
+    let aiModel = DEFAULT_AI_MODEL;
+
     try {
+      aiModel = await getAIModel();
       const {
         prompt,
         systemVoltage = 12,
@@ -1732,12 +1742,12 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           : `${prompt}\n\nImprove the previous design based on the feedback above.`;
 
         const completion = await openai.chat.completions.create({
-          model: "gpt-5.2-chat-latest",
+          model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
             { role: "user", content: userMessage }
           ],
-          max_completion_tokens: 4000,
+          max_completion_tokens: 128000,
         });
 
         const content = completion.choices[0].message.content;
@@ -1879,8 +1889,10 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
     const clientIP = getClientIP(req);
+    let aiModel = DEFAULT_AI_MODEL;
     
     try {
+      aiModel = await getAIModel();
       const {
         prompt,
         systemVoltage = 12,
@@ -2313,12 +2325,12 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
         // Stream the AI response
         const stream = await openai.chat.completions.create({
-          model: "gpt-5.2-chat-latest",
+          model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
             { role: "user", content: userMessage }
           ],
-          max_completion_tokens: 4000,
+          max_completion_tokens: 128000,
           stream: true, // Enable streaming
         });
 
@@ -2607,7 +2619,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
             qualityScore: Math.round(validation.score), // Round to integer for database
             componentCount: bestDesign.components?.length || 0,
             wireCount: bestDesign.wires?.length || 0,
-            model: "gpt-5.2-chat-latest",
+            model: aiModel,
             systemMessage: fullSystemMessage,
             userMessage: fullUserMessage,
             rawResponse: rawResponse,
@@ -2668,7 +2680,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
           durationMs: Date.now() - startTime,
           iterations: maxIterations,
           errorMessage: "All iterations failed - no valid design generated. Check iteration history for details.",
-          model: "gpt-5.2-chat-latest",
+          model: aiModel,
           systemMessage: fullSystemMessage,
           userMessage: fullUserMessage,
           iterationHistory: iterationHistory,
@@ -2800,7 +2812,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         qualityScore: bestScore,
         componentCount: bestDesign.components?.length || 0,
         wireCount: bestDesign.wires?.length || 0,
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
         systemMessage: fullSystemMessage,
         userMessage: fullUserMessage,
         validationFeedback: finalValidationFeedback,
@@ -2836,7 +2848,7 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         success: false,
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
-        model: "gpt-5.2-chat-latest",
+        model: aiModel,
       });
       
       res.write(`event: error\n`);
@@ -3102,6 +3114,29 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
   // ==========================================
 
   // Get overall stats
+  app.get("/api/admin/settings", isAdmin, async (req, res) => {
+    try {
+      const aiModel = await appSettingsStorage.getAIModel();
+      res.json({ aiModel, defaultAIModel: DEFAULT_AI_MODEL });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/admin/settings/ai-model", isAdmin, async (req, res) => {
+    try {
+      const model = String(req.body.model || "").trim();
+      if (!model) {
+        return res.status(400).json({ error: "Model is required" });
+      }
+
+      await appSettingsStorage.setAIModel(model);
+      res.json({ aiModel: model });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/admin/observability/stats", isAdmin, async (req, res) => {
     try {
       const stats = await observabilityStorage.getStats();

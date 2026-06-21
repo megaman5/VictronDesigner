@@ -52,6 +52,12 @@ export const feedback = pgTable("feedback", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const appSettings = pgTable("app_settings", {
+  key: varchar("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Sessions for observability
 export const sessions = pgTable("sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -222,7 +228,7 @@ export interface Wire {
   toComponentId: string;
   fromTerminal: string;
   toTerminal: string;
-  polarity: "positive" | "negative" | "neutral" | "ground";
+  polarity: "positive" | "negative" | "hot" | "neutral" | "ground";
   length: number; // in feet
   gauge?: string;
   current?: number;
@@ -245,6 +251,8 @@ export interface WireCalculation {
   voltageDropPercent: number;
   status: "valid" | "warning" | "error";
   message?: string;
+  totalCurrent?: number;
+  parallelCount?: number;
 }
 
 export interface LoadCalculation {
@@ -276,6 +284,7 @@ export interface ValidationIssue {
   category: string;
   message: string;
   componentIds?: string[];
+  wireId?: string;
   wireIds?: string[];
   suggestion?: string;
 }
