@@ -43,6 +43,15 @@ class FeedbackStorage {
     return result || null;
   }
 
+  async updateStatus(id: string, status: string) {
+    const [result] = await db.update(feedback)
+      .set({ status })
+      .where(eq(feedback.id, id))
+      .returning();
+
+    return result || null;
+  }
+
   async delete(id: string): Promise<boolean> {
     const result = await db.delete(feedback)
       .where(eq(feedback.id, id))

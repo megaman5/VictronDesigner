@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft } from "lucide-react";
+import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2 } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
 import { formatWireGauge } from "@/lib/wire-calculator";
 import { SaveFeedback } from "@/components/SaveFeedback";
@@ -50,6 +50,8 @@ interface PropertiesPanelProps {
   onWireSelect?: (wire: Wire | null) => void;
   onComponentSelect?: (component: SchematicComponent | null) => void;
   onCreateParallelWires?: (wireId: string, count: number) => void;
+  onDeleteComponent?: (componentId: string) => void;
+  onDeleteWire?: (wireId: string) => void;
 }
 
 // Helper function to get available voltages for a component type
@@ -495,7 +497,7 @@ function calculateInverterDCInput(
   return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], systemVoltage = 12, onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], systemVoltage = 12, onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires, onDeleteComponent, onDeleteWire }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
@@ -806,6 +808,19 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   </div>
                 </div>
 
+                {onDeleteWire && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-full gap-2 mt-3"
+                    onClick={() => onDeleteWire(selectedWire.id)}
+                    data-testid="button-delete-wire"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Wire
+                  </Button>
+                )}
+
                 <Separator />
 
                 {/* Show calculated wire current/power if available */}
@@ -929,6 +944,19 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     }}
                   />
                 </div>
+
+                {onDeleteComponent && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-full gap-2 mt-3"
+                    onClick={() => onDeleteComponent(selectedComponent.id)}
+                    data-testid="button-delete-component"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Component
+                  </Button>
+                )}
 
                 <Separator />
 

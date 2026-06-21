@@ -17,7 +17,9 @@ import {
   LogIn,
   ShieldAlert,
   LogOut,
-  Activity
+  Activity,
+  CheckCircle2,
+  Circle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -41,6 +43,7 @@ interface Feedback {
     systemVoltage: number;
   };
   screenshot?: string;
+  status?: string;
 }
 
 interface User {
@@ -138,6 +141,30 @@ export default function FeedbackAdmin() {
       });
     } catch (error) {
       console.error("Logout failed:", error);
+    }
+  };
+
+  const handleToggleStatus = async (item: Feedback) => {
+    const newStatus = item.status === "completed" ? "new" : "completed";
+    try {
+      const response = await fetch(`/api/feedback/${item.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) throw new Error("Failed to update status");
+      setFeedback((prev) =>
+        prev.map((f) => (f.id === item.id ? { ...f, status: newStatus } : f))
+      );
+      toast({
+        title: newStatus === "completed" ? "Marked complete" : "Reopened",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to update status",
+        variant: "destructive",
+      });
     }
   };
 
@@ -330,6 +357,19 @@ export default function FeedbackAdmin() {
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        {item.status === "completed" ? (
+                          <Badge className="bg-green-600 hover:bg-green-600 gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Completed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="gap-1">
+                            <Circle className="h-3 w-3" />
+                            New
+                          </Badge>
+                        )}
+                      </div>
                       <CardTitle className="text-lg">{item.message.substring(0, 100)}{item.message.length > 100 ? "..." : ""}</CardTitle>
                       <CardDescription className="flex flex-wrap gap-3 mt-2">
                         <span className="flex items-center gap-1">
@@ -349,6 +389,16 @@ export default function FeedbackAdmin() {
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
+                      <Button
+                        variant={item.status === "completed" ? "outline" : "default"}
+                        size="sm"
+                        onClick={() => handleToggleStatus(item)}
+                        className="gap-2"
+                        title={item.status === "completed" ? "Reopen" : "Mark as completed"}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {item.status === "completed" ? "Reopen" : "Complete"}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
