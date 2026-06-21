@@ -28,13 +28,16 @@ VictronDesigner.com`,
 
 Thanks for the detailed note — greetings to a location!
 
-Good news first: the "Add Custom Component" button now works. It opens a dialog where you name the part and drop a generic, fully wireable component on the canvas. So in the meantime you can add a Quattro, Argo FET, or Cyrix-CT as a named custom block and wire it up like anything else.
+Two of your points are now done:
 
-On your other points, I want to be honest about where things stand:
-- Dedicated Quattro / Argo FET / Cyrix-CT symbols — on the to-do list. The custom component is the workaround until then.
-- 2x12V batteries in series for 24V — this is a common boat/RV setup and it's a fair gap. I'm looking at proper series-wiring support; for now you can place two batteries and a custom block, but I agree it should be first-class.
+1. Series batteries (2x12V → 24V) are now first-class. Place two 12V batteries, set each to 12V, then wire battery 1 "positive" to battery 2 "negative" to make the series link. Set the system voltage to 24V and you're set. The battery panel now shows the combined bank — voltage, amp-hours, and total kWh — and the design checks understand the bank, so you won't get false "voltage mismatch" or "unfused cable" warnings on the series link. For 24V banks built from 12V blocks, the tool also suggests adding a Victron Battery Balancer.
 
-I really appreciate the feedback — it's exactly the kind that shapes the tool.
+2. The "Add Custom Component" button now works — it opens a dialog where you name the part and drop a generic, fully wireable component on the canvas.
+
+Still on the to-do list, and I want to be honest about it:
+- Dedicated Quattro / Argo FET / Cyrix-CT symbols. Until those land, you can add each one as a named custom component and wire it up like anything else.
+
+I really appreciate the feedback — it's exactly the kind that shapes the tool. If you give the series wiring a try, I'd love to know how it works for your setup.
 
 Thanks,
 Sean

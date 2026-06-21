@@ -1,6 +1,7 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
 import { TERMINAL_CONFIGS } from "../client/src/lib/terminal-config";
 import { getWireAmpacity, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
+import { findBatteryBanks, isSeriesLink, type BatteryBank } from "@shared/battery-bank";
 
 // Helper function to check if two wires are different (handles null IDs)
 function isDifferentWire(w1: Wire, w2: Wire): boolean {
@@ -122,6 +123,63 @@ export class DesignValidator {
 
     // Rule 10: Battery safety (Main Switch + Immediate Fusing)
     this.validateBatterySafety();
+
+    // Rule 11: Series battery bank best practices
+    this.validateBatteryBanks();
+  }
+
+  /**
+   * Validate series battery banks (e.g. 2x12V wired to make 24V):
+   * - Bank voltage should match the configured system voltage
+   * - Series members should be identical (voltage, capacity, chemistry)
+   * - Recommend a Battery Balancer for 24V+ series strings (Victron practice)
+   */
+  private validateBatteryBanks(): void {
+    const banks = findBatteryBanks(this.components, this.wires);
+    const seriesBanks = banks.filter(b => b.isSeries);
+    if (seriesBanks.length === 0) return;
+
+    const hasBalancer = this.components.some(c => c.type === "battery-balancer");
+
+    for (const bank of seriesBanks) {
+      // Bank voltage vs configured system voltage
+      if (this.systemVoltage && bank.bankVoltage !== this.systemVoltage) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `Series battery bank is ${bank.bankVoltage}V (${bank.count}x ${bank.perBatteryVoltage}V) but the system is set to ${this.systemVoltage}V`,
+          componentIds: bank.batteryIds,
+          suggestion: `Set the system voltage to ${bank.bankVoltage}V, or adjust the batteries so the series total matches ${this.systemVoltage}V`,
+        });
+      }
+
+      // Members should match for safe series operation
+      if (bank.mixedVoltage || bank.mixedCapacity || bank.mixedType) {
+        const mismatches = [
+          bank.mixedVoltage ? "voltage" : null,
+          bank.mixedCapacity ? "capacity" : null,
+          bank.mixedType ? "chemistry" : null,
+        ].filter(Boolean).join(", ");
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `Series batteries have mismatched ${mismatches}. Series strings should use identical batteries.`,
+          componentIds: bank.batteryIds,
+          suggestion: "Use batteries of the same voltage, capacity, age, and chemistry in a series string to avoid imbalance and damage.",
+        });
+      }
+
+      // Battery Balancer recommendation for 24V+ series strings of 12V blocks
+      if (bank.bankVoltage >= 24 && bank.perBatteryVoltage <= 12 && !hasBalancer) {
+        this.issues.push({
+          severity: "info",
+          category: "electrical",
+          message: `Consider a Victron Battery Balancer for this ${bank.bankVoltage}V series bank`,
+          componentIds: bank.batteryIds,
+          suggestion: "A Battery Balancer keeps series-connected 12V batteries at equal voltage, extending their life.",
+        });
+      }
+    }
   }
 
   /**
@@ -136,10 +194,19 @@ export class DesignValidator {
     for (const battery of batteries) {
       // 1. Check Immediate Fusing
       // Find wire from Battery Positive
-      const posWires = this.wires.filter(w => 
+      const allPosWires = this.wires.filter(w =>
         (w.fromComponentId === battery.id && w.fromTerminal === "positive") ||
         (w.toComponentId === battery.id && w.toTerminal === "positive")
       );
+
+      // Series links (battery positive -> another battery's negative) are
+      // internal to the bank and don't need their own main fuse. Only the
+      // bank's output positive must be fused.
+      const posWires = allPosWires.filter(w => !isSeriesLink(w, this.components));
+
+      // If this battery's positive only feeds a series link, it's an internal
+      // bank member - the fuse requirement applies to the bank's output battery.
+      if (posWires.length === 0) continue;
 
       let hasImmediateFuse = false;
       let fusedWireId: string | undefined;
@@ -571,10 +638,17 @@ export class DesignValidator {
   }
 
   private validateVoltageMismatches(): void {
-    // Get system voltage (from battery or systemVoltage parameter)
+    // Get system voltage. For batteries wired in series (e.g. 2x12V = 24V), the
+    // reference is the bank voltage, not a single battery's nominal voltage.
+    const banks = findBatteryBanks(this.components, this.wires);
+    const seriesBank = banks.find(b => b.isSeries);
+    const seriesBatteryIds = new Set(
+      banks.filter(b => b.isSeries).flatMap(b => b.batteryIds)
+    );
     const battery = this.components.find(c => c.type === "battery");
-    const batteryVoltage = battery?.properties?.voltage as number | undefined;
-    const systemVoltage = batteryVoltage || this.systemVoltage;
+    const singleBatteryVoltage = battery?.properties?.voltage as number | undefined;
+    const effectiveBatteryVoltage = seriesBank ? seriesBank.bankVoltage : singleBatteryVoltage;
+    const systemVoltage = effectiveBatteryVoltage || this.systemVoltage;
 
     if (!systemVoltage) return; // Can't validate without a reference voltage
 
@@ -642,6 +716,11 @@ export class DesignValidator {
       // Skip if either component is a solar panel (PV voltage) or MPPT (handles PV-to-DC conversion)
       if (fromComp.type === "solar-panel" || toComp.type === "solar-panel" ||
           fromComp.type === "mppt" || toComp.type === "mppt") return;
+
+      // Skip series-bank batteries: an individual 12V battery in a 24V series
+      // string legitimately has a different nominal voltage than the rest of the
+      // system (and the series link itself connects + to -).
+      if (seriesBatteryIds.has(fromComp.id) || seriesBatteryIds.has(toComp.id)) return;
 
       const fromVoltage = fromComp.properties?.voltage as number | undefined;
       const toVoltage = toComp.properties?.voltage as number | undefined;
