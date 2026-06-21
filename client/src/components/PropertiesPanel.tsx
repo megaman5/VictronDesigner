@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2 } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
@@ -960,6 +961,29 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                 )}
 
                 <Separator />
+
+                {/* Bus bar options */}
+                {(selectedComponent.type === 'busbar-positive' || selectedComponent.type === 'busbar-negative') && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Bus Bar Options</h3>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="lynx-style">Lynx style</Label>
+                        <p className="text-xs text-muted-foreground">Draw this bus bar as a Victron Lynx distributor.</p>
+                      </div>
+                      <Switch
+                        id="lynx-style"
+                        checked={!!selectedComponent.properties?.lynxStyle}
+                        onCheckedChange={(checked) => {
+                          onUpdateComponent?.(selectedComponent.id, {
+                            properties: { ...selectedComponent.properties, lynxStyle: checked },
+                          });
+                          triggerSaveFeedback();
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Battery-specific properties */}
                 {selectedComponent.type === 'battery' && (
