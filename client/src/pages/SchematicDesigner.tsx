@@ -29,9 +29,9 @@ import { useToast } from "@/hooks/use-toast";
 import { trackAction } from "@/lib/tracking";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 import { calculateWireSize, type WireGaugeFormat } from "@/lib/wire-calculator";
-import { type WireRoutingStyle, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+import { type WireRoutingStyle, type WireRoutingOptions, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES, normalizeRoutingOptions } from "@/lib/wire-routing";
 
-const WIRE_ROUTING_STYLE_KEY = "wireRoutingStyle";
+const WIRE_ROUTING_OPTIONS_KEY = "wireRoutingOptions";
 import { AlertTriangle } from "lucide-react";
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
@@ -121,18 +121,21 @@ export default function SchematicDesigner() {
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
   const [wireGaugeFormat, setWireGaugeFormat] = useState<WireGaugeFormat>("awg");
   const validRoutingStyles = WIRE_ROUTING_STYLES.map((s) => s.value);
-  const [wireRoutingStyle, setWireRoutingStyleState] = useState<WireRoutingStyle>(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem(WIRE_ROUTING_STYLE_KEY) : null;
-    return saved && validRoutingStyles.includes(saved as WireRoutingStyle)
-      ? (saved as WireRoutingStyle)
-      : DEFAULT_WIRE_ROUTING_STYLE;
+  const [wireRoutingOptions, setWireRoutingOptionsState] = useState<WireRoutingOptions>(() => {
+    try {
+      const saved = typeof window !== "undefined" ? localStorage.getItem(WIRE_ROUTING_OPTIONS_KEY) : null;
+      if (saved) return normalizeRoutingOptions(JSON.parse(saved));
+    } catch {
+      // ignore parse/storage errors
+    }
+    return DEFAULT_WIRE_ROUTING_OPTIONS;
   });
   const [wireRoutingSelectorEnabled, setWireRoutingSelectorEnabled] = useState(false);
 
-  const setWireRoutingStyle = (style: WireRoutingStyle) => {
-    setWireRoutingStyleState(style);
+  const setWireRoutingOptions = (options: WireRoutingOptions) => {
+    setWireRoutingOptionsState(options);
     try {
-      localStorage.setItem(WIRE_ROUTING_STYLE_KEY, style);
+      localStorage.setItem(WIRE_ROUTING_OPTIONS_KEY, JSON.stringify(options));
     } catch {
       // ignore storage errors (e.g. private mode)
     }
@@ -205,11 +208,12 @@ export default function SchematicDesigner() {
       .then((config) => {
         if (cancelled || !config) return;
         setWireRoutingSelectorEnabled(!!config.wireRoutingSelectorEnabled);
-        // Apply the server default only when the user hasn't chosen one locally.
-        const hasLocal = localStorage.getItem(WIRE_ROUTING_STYLE_KEY);
+        // Apply the server default style only when the user hasn't chosen
+        // routing options locally yet.
+        const hasLocal = localStorage.getItem(WIRE_ROUTING_OPTIONS_KEY);
         if (!hasLocal && config.defaultWireRoutingStyle &&
             validRoutingStyles.includes(config.defaultWireRoutingStyle)) {
-          setWireRoutingStyleState(config.defaultWireRoutingStyle);
+          setWireRoutingOptionsState((prev) => ({ ...prev, style: config.defaultWireRoutingStyle }));
         }
       })
       .catch(() => {
@@ -1976,8 +1980,8 @@ export default function SchematicDesigner() {
           wireCalculations={wireCalculations}
           onCopy={handleCopy}
           onPaste={handlePaste}
-          wireRoutingStyle={wireRoutingStyle}
-          onWireRoutingStyleChange={setWireRoutingStyle}
+          wireRoutingOptions={wireRoutingOptions}
+          onWireRoutingOptionsChange={setWireRoutingOptions}
           showWireRoutingSelector={wireRoutingSelectorEnabled}
         />
 

@@ -17,6 +17,32 @@ export const WIRE_ROUTING_STYLES: { value: WireRoutingStyle; label: string; desc
 
 export const DEFAULT_WIRE_ROUTING_STYLE: WireRoutingStyle = "orthogonal";
 
+// Direction the router prefers to travel when it has a choice.
+export type WireDirectionBias = "auto" | "horizontal" | "vertical";
+
+// Full set of routing controls. "style" is the final shape; the rest tune HOW
+// the path is found (which way it travels, how far parallel wires separate, and
+// how strongly wires avoid/attract each other).
+export interface WireRoutingOptions {
+  style: WireRoutingStyle;
+  directionBias: WireDirectionBias;
+  laneOffset: number;   // px between parallel wire lanes
+  separation: number;   // 0..100 — how strongly wires avoid overlapping others (low = "magnetic"/bundled)
+  directness: number;   // 0..100 — preference for long straight runs over turns
+}
+
+export const DEFAULT_WIRE_ROUTING_OPTIONS: WireRoutingOptions = {
+  style: DEFAULT_WIRE_ROUTING_STYLE,
+  directionBias: "auto",
+  laneOffset: 10,
+  separation: 50,
+  directness: 50,
+};
+
+export function normalizeRoutingOptions(opts?: Partial<WireRoutingOptions> | null): WireRoutingOptions {
+  return { ...DEFAULT_WIRE_ROUTING_OPTIONS, ...(opts || {}) };
+}
+
 /**
  * Build an SVG path string from a set of waypoints according to a routing style.
  */
@@ -113,8 +139,15 @@ export function calculateRoute(
   occupiedNodes: Set<string> = new Set(), // Nodes occupied by other wires
   startOrientation?: TerminalOrientation,
   endOrientation?: TerminalOrientation,
-  routingStyle: WireRoutingStyle = DEFAULT_WIRE_ROUTING_STYLE
+  routingOptions: WireRoutingOptions = DEFAULT_WIRE_ROUTING_OPTIONS
 ): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[]; pathPoints: Array<{ x: number; y: number }> } {
+
+  const { style: routingStyle, directionBias, separation, directness } = routingOptions;
+
+  // Translate the 0..100 tuning sliders into A* cost weights.
+  const crossingPenalty = GRID_SIZE * Math.max(0, separation);          // default 50 -> GRID_SIZE*50
+  const turnPenalty = GRID_SIZE * (Math.max(0, directness) / 25);       // default 50 -> GRID_SIZE*2
+  const biasPenalty = GRID_SIZE * 0.5;                                  // nudge toward preferred axis
 
   const start = snapPointToGrid(startX, startY);
   const end = snapPointToGrid(endX, endY);
@@ -275,9 +308,18 @@ export function calculateRoute(
       const obstacleCost = obstacleMap.get(neighborKey) || 0;
       if (obstacleCost === Infinity) continue; // Blocked
 
-      // Occupied node penalty (wires crossing)
+      // Occupied node penalty (wires crossing). Higher "separation" spreads
+      // wires apart; lower makes them "magnetic" and willing to share lanes.
       if (occupiedNodes.has(neighborKey)) {
-        cost += GRID_SIZE * 50; // High penalty for crossing other wires
+        cost += crossingPenalty;
+      }
+
+      // Direction bias: nudge the router toward travelling along the preferred
+      // axis first (horizontal or vertical) when the user has chosen one.
+      if (directionBias === "horizontal" && neighbor.x === current.x) {
+        cost += biasPenalty; // discourage vertical moves
+      } else if (directionBias === "vertical" && neighbor.y === current.y) {
+        cost += biasPenalty; // discourage horizontal moves
       }
 
       // Turn penalty (encourage straight lines)
@@ -288,7 +330,7 @@ export function calculateRoute(
         const currDy = neighbor.y - current.y;
 
         if (prevDx !== currDx || prevDy !== currDy) {
-          cost += GRID_SIZE * 2; // Penalty for turning
+          cost += turnPenalty; // Penalty for turning
         }
       }
 

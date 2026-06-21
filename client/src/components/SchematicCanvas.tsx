@@ -1,12 +1,15 @@
 import { useState, useRef, useMemo, useEffect } from "react";
-import { Grid3X3, ZoomIn, ZoomOut, Spline } from "lucide-react";
+import { Grid3X3, ZoomIn, ZoomOut, Spline, Sliders } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
-import { snapPointToGrid, calculateRoute, type Obstacle, type WireRoutingStyle, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+import { snapPointToGrid, calculateRoute, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
 import { formatWireGauge, type WireGaugeFormat } from "@/lib/wire-calculator";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 
@@ -42,8 +45,8 @@ interface SchematicCanvasProps {
   wireCalculations?: Record<string, any>;
   onCopy?: (componentIds: string[]) => void;
   onPaste?: () => void;
-  wireRoutingStyle?: WireRoutingStyle;
-  onWireRoutingStyleChange?: (style: WireRoutingStyle) => void;
+  wireRoutingOptions?: WireRoutingOptions;
+  onWireRoutingOptionsChange?: (options: WireRoutingOptions) => void;
   showWireRoutingSelector?: boolean;
 }
 
@@ -71,8 +74,8 @@ export function SchematicCanvas({
   wireCalculations = {},
   onCopy,
   onPaste,
-  wireRoutingStyle = DEFAULT_WIRE_ROUTING_STYLE,
-  onWireRoutingStyleChange,
+  wireRoutingOptions = DEFAULT_WIRE_ROUTING_OPTIONS,
+  onWireRoutingOptionsChange,
   showWireRoutingSelector = false,
 }: SchematicCanvasProps) {
   const { toast } = useToast();
@@ -775,30 +778,123 @@ export function SchematicCanvas({
           </Button>
         </div>
 
-        {showWireRoutingSelector && (
-          <div className="flex items-center gap-1.5 ml-auto">
-            <Spline className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground hidden sm:inline">Routing</span>
-            <Select
-              value={wireRoutingStyle}
-              onValueChange={(v) => onWireRoutingStyleChange?.(v as WireRoutingStyle)}
-            >
-              <SelectTrigger className="h-8 w-[140px]" data-testid="select-wire-routing-style">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WIRE_ROUTING_STYLES.map((style) => (
-                  <SelectItem key={style.value} value={style.value} title={style.description}>
-                    {style.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/70 border border-primary/30 rounded px-1 py-0.5">
-              Beta
-            </span>
-          </div>
-        )}
+        {showWireRoutingSelector && (() => {
+          const update = (patch: Partial<WireRoutingOptions>) =>
+            onWireRoutingOptionsChange?.({ ...wireRoutingOptions, ...patch });
+          return (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <Spline className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground hidden sm:inline">Routing</span>
+              <Select
+                value={wireRoutingOptions.style}
+                onValueChange={(v) => update({ style: v as WireRoutingStyle })}
+              >
+                <SelectTrigger className="h-8 w-[130px]" data-testid="select-wire-routing-style">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WIRE_ROUTING_STYLES.map((style) => (
+                    <SelectItem key={style.value} value={style.value} title={style.description}>
+                      {style.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 px-2" data-testid="button-routing-options" title="Routing behavior">
+                    <Sliders className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 space-y-4">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-medium">Routing behavior</h4>
+                    <p className="text-xs text-muted-foreground">Tune how wires find their path.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs">Direction preference</Label>
+                    <Select
+                      value={wireRoutingOptions.directionBias}
+                      onValueChange={(v) => update({ directionBias: v as WireDirectionBias })}
+                    >
+                      <SelectTrigger className="h-8" data-testid="select-direction-bias">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="horizontal">Horizontal first (left/right)</SelectItem>
+                        <SelectItem value="vertical">Vertical first (up/down)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-xs">Lane offset</Label>
+                      <span className="text-xs text-muted-foreground">{wireRoutingOptions.laneOffset}px</span>
+                    </div>
+                    <Slider
+                      min={0} max={40} step={2}
+                      value={[wireRoutingOptions.laneOffset]}
+                      onValueChange={([v]) => update({ laneOffset: v })}
+                      data-testid="slider-lane-offset"
+                    />
+                    <p className="text-[11px] text-muted-foreground">How far parallel wires fan out from a terminal.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-xs">Wire magnetism</Label>
+                      <span className="text-xs text-muted-foreground">
+                        {wireRoutingOptions.separation <= 15 ? "Bundled" : wireRoutingOptions.separation >= 75 ? "Spread" : "Balanced"}
+                      </span>
+                    </div>
+                    {/* Slider shows "magnetism": left = bundled (low separation), right = spread (high separation) */}
+                    <Slider
+                      min={0} max={100} step={5}
+                      value={[wireRoutingOptions.separation]}
+                      onValueChange={([v]) => update({ separation: v })}
+                      data-testid="slider-separation"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Low = wires bundle together; high = wires avoid each other.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-xs">Directness</Label>
+                      <span className="text-xs text-muted-foreground">
+                        {wireRoutingOptions.directness <= 15 ? "Wandering" : wireRoutingOptions.directness >= 75 ? "Straight" : "Balanced"}
+                      </span>
+                    </div>
+                    <Slider
+                      min={0} max={100} step={5}
+                      value={[wireRoutingOptions.directness]}
+                      onValueChange={([v]) => update({ directness: v })}
+                      data-testid="slider-directness"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Higher prefers long straight runs with fewer turns.</p>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => onWireRoutingOptionsChange?.({ ...DEFAULT_WIRE_ROUTING_OPTIONS, style: wireRoutingOptions.style })}
+                    data-testid="button-reset-routing"
+                  >
+                    Reset to defaults
+                  </Button>
+                </PopoverContent>
+              </Popover>
+
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/70 border border-primary/30 rounded px-1 py-0.5">
+                Beta
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       <div
@@ -1000,7 +1096,7 @@ export function SchematicCanvas({
 
               const getOffset = (index: number, count: number) => {
                 if (count <= 1) return 0;
-                return (index - (count - 1) / 2) * 10;
+                return (index - (count - 1) / 2) * wireRoutingOptions.laneOffset;
               };
 
               if (fromPos && fromOrientation) {
@@ -1048,7 +1144,7 @@ export function SchematicCanvas({
                 occupiedNodes,
                 fromOrientation || undefined,
                 toOrientation || undefined,
-                wireRoutingStyle
+                wireRoutingOptions
               );
 
               result.pathNodes.forEach(node => occupiedNodes.add(node));
@@ -1557,7 +1653,7 @@ export function SchematicCanvas({
               new Set<string>(), // No occupied nodes for preview
               wireStart.terminal.orientation,
               undefined,
-              wireRoutingStyle
+              wireRoutingOptions
             );
 
             return (
