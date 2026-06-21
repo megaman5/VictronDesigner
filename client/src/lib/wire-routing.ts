@@ -1,7 +1,68 @@
-// Grid snapping utilities and orthogonal wire routing
+// Grid snapping utilities and wire routing
 import type { TerminalOrientation } from './terminal-config';
 
 export const GRID_SIZE = 20;
+
+// Available wire routing styles. The A* pathfinder produces the underlying
+// waypoints; the style only controls how those points are turned into an SVG
+// path (except "straight", which ignores intermediate waypoints entirely).
+export type WireRoutingStyle = "orthogonal" | "rounded" | "curved" | "straight";
+
+export const WIRE_ROUTING_STYLES: { value: WireRoutingStyle; label: string; description: string }[] = [
+  { value: "orthogonal", label: "Orthogonal", description: "Right-angle segments that route around components" },
+  { value: "rounded", label: "Rounded", description: "Orthogonal routing with smooth rounded corners" },
+  { value: "curved", label: "Curved", description: "Smooth flowing curves through the route" },
+  { value: "straight", label: "Straight", description: "Direct point-to-point lines (ignores obstacles)" },
+];
+
+export const DEFAULT_WIRE_ROUTING_STYLE: WireRoutingStyle = "orthogonal";
+
+/**
+ * Build an SVG path string from a set of waypoints according to a routing style.
+ */
+export function buildWirePath(points: Array<{ x: number; y: number }>, style: WireRoutingStyle): string {
+  if (points.length < 2) return '';
+
+  switch (style) {
+    case "straight":
+      // Ignore intermediate waypoints — direct line from first to last point.
+      return `M ${points[0].x} ${points[0].y} L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+    case "curved":
+      return createSmoothPath(points);
+    case "rounded":
+      return createPathWithCorners(points, 12);
+    case "orthogonal":
+    default:
+      return createPathWithCorners(points, 0);
+  }
+}
+
+/**
+ * Create a smooth SVG path through a series of points using a Catmull-Rom
+ * spline converted to cubic bezier segments.
+ */
+function createSmoothPath(points: Array<{ x: number; y: number }>): string {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
 
 /**
  * Snap a coordinate to the nearest grid point
@@ -51,11 +112,27 @@ export function calculateRoute(
   gridHeight: number = 1600,
   occupiedNodes: Set<string> = new Set(), // Nodes occupied by other wires
   startOrientation?: TerminalOrientation,
-  endOrientation?: TerminalOrientation
+  endOrientation?: TerminalOrientation,
+  routingStyle: WireRoutingStyle = DEFAULT_WIRE_ROUTING_STYLE
 ): { path: string; labelX: number; labelY: number; labelRotation: number; pathNodes: string[]; pathPoints: Array<{ x: number; y: number }> } {
 
   const start = snapPointToGrid(startX, startY);
   const end = snapPointToGrid(endX, endY);
+
+  // "Straight" style skips pathfinding entirely: a direct line between the
+  // terminals, ignoring obstacles. This keeps both the geometry and the wire
+  // length consistent with the drawn line.
+  if (routingStyle === "straight") {
+    const points = [start, end];
+    return {
+      path: buildWirePath(points, "straight"),
+      labelX: (start.x + end.x) / 2,
+      labelY: (start.y + end.y) / 2,
+      labelRotation: Math.abs(end.x - start.x) >= Math.abs(end.y - start.y) ? 0 : 90,
+      pathNodes: [],
+      pathPoints: points,
+    };
+  }
 
   // Grid dimensions in nodes
   const cols = Math.ceil(gridWidth / GRID_SIZE);
@@ -169,7 +246,7 @@ export function calculateRoute(
 
     const currentKey = getKey(current.x, current.y);
     if (current.x === end.x && current.y === end.y) {
-      return reconstructPath(current);
+      return reconstructPath(current, routingStyle);
     }
 
     closedSet.add(currentKey);
@@ -265,7 +342,7 @@ export function calculateRoute(
     ];
   }
 
-  const path = createPathWithCorners(points, 0);
+  const path = buildWirePath(points, routingStyle);
 
   return {
     path,
@@ -282,7 +359,7 @@ function heuristic(a: { x: number, y: number }, b: { x: number, y: number }): nu
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function reconstructPath(endNode: Node): {
+function reconstructPath(endNode: Node, routingStyle: WireRoutingStyle = DEFAULT_WIRE_ROUTING_STYLE): {
   path: string;
   labelX: number;
   labelY: number;
@@ -322,7 +399,7 @@ function reconstructPath(endNode: Node): {
 
   if (points.length > 1) simplifiedPoints.push(points[points.length - 1]);
 
-  const path = createPathWithCorners(simplifiedPoints, 0);
+  const path = buildWirePath(simplifiedPoints, routingStyle);
 
   // Calculate label position (midpoint of longest segment)
   let labelX = points[0].x;

@@ -1,11 +1,12 @@
 import { useState, useRef, useMemo, useEffect } from "react";
-import { Grid3X3, ZoomIn, ZoomOut } from "lucide-react";
+import { Grid3X3, ZoomIn, ZoomOut, Spline } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
-import { snapPointToGrid, calculateRoute, type Obstacle } from "@/lib/wire-routing";
+import { snapPointToGrid, calculateRoute, type Obstacle, type WireRoutingStyle, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatWireGauge, type WireGaugeFormat } from "@/lib/wire-calculator";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 
@@ -41,6 +42,9 @@ interface SchematicCanvasProps {
   wireCalculations?: Record<string, any>;
   onCopy?: (componentIds: string[]) => void;
   onPaste?: () => void;
+  wireRoutingStyle?: WireRoutingStyle;
+  onWireRoutingStyleChange?: (style: WireRoutingStyle) => void;
+  showWireRoutingSelector?: boolean;
 }
 
 export function SchematicCanvas({
@@ -67,6 +71,9 @@ export function SchematicCanvas({
   wireCalculations = {},
   onCopy,
   onPaste,
+  wireRoutingStyle = DEFAULT_WIRE_ROUTING_STYLE,
+  onWireRoutingStyleChange,
+  showWireRoutingSelector = false,
 }: SchematicCanvasProps) {
   const { toast } = useToast();
   const [showGrid, setShowGrid] = useState(true);
@@ -767,6 +774,31 @@ export function SchematicCanvas({
             <ZoomIn className="h-4 w-4" />
           </Button>
         </div>
+
+        {showWireRoutingSelector && (
+          <div className="flex items-center gap-1.5 ml-auto">
+            <Spline className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground hidden sm:inline">Routing</span>
+            <Select
+              value={wireRoutingStyle}
+              onValueChange={(v) => onWireRoutingStyleChange?.(v as WireRoutingStyle)}
+            >
+              <SelectTrigger className="h-8 w-[140px]" data-testid="select-wire-routing-style">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WIRE_ROUTING_STYLES.map((style) => (
+                  <SelectItem key={style.value} value={style.value} title={style.description}>
+                    {style.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/70 border border-primary/30 rounded px-1 py-0.5">
+              Beta
+            </span>
+          </div>
+        )}
       </div>
 
       <div
@@ -1015,7 +1047,8 @@ export function SchematicCanvas({
                 1600,
                 occupiedNodes,
                 fromOrientation || undefined,
-                toOrientation || undefined
+                toOrientation || undefined,
+                wireRoutingStyle
               );
 
               result.pathNodes.forEach(node => occupiedNodes.add(node));
@@ -1522,7 +1555,9 @@ export function SchematicCanvas({
               2400, // canvas width
               1600, // canvas height
               new Set<string>(), // No occupied nodes for preview
-              wireStart.terminal.orientation
+              wireStart.terminal.orientation,
+              undefined,
+              wireRoutingStyle
             );
 
             return (

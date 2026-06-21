@@ -5,7 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+
+const ROUTING_STYLE_LABELS: Record<string, string> = {
+  orthogonal: "Orthogonal",
+  rounded: "Rounded",
+  curved: "Curved",
+  straight: "Straight",
+};
 
 interface User {
   id: string;
@@ -21,6 +30,10 @@ export default function SettingsAdmin() {
   const [saving, setSaving] = useState(false);
   const [aiModel, setAIModel] = useState("");
   const [defaultAIModel, setDefaultAIModel] = useState("");
+  const [routingEnabled, setRoutingEnabled] = useState(true);
+  const [defaultRoutingStyle, setDefaultRoutingStyle] = useState("orthogonal");
+  const [routingStyleOptions, setRoutingStyleOptions] = useState<string[]>([]);
+  const [savingRouting, setSavingRouting] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -60,6 +73,9 @@ export default function SettingsAdmin() {
         const data = await response.json();
         setAIModel(data.aiModel || "");
         setDefaultAIModel(data.defaultAIModel || "");
+        setRoutingEnabled(data.wireRoutingSelectorEnabled ?? true);
+        setDefaultRoutingStyle(data.defaultWireRoutingStyle || "orthogonal");
+        setRoutingStyleOptions(data.wireRoutingStyleOptions || []);
       } catch (error: any) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } finally {
@@ -102,6 +118,26 @@ export default function SettingsAdmin() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveWireRouting = async (next: { enabled?: boolean; defaultStyle?: string }) => {
+    setSavingRouting(true);
+    try {
+      const response = await fetch("/api/admin/settings/wire-routing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      if (!response.ok) throw new Error("Failed to save wire routing settings");
+      const data = await response.json();
+      setRoutingEnabled(data.wireRoutingSelectorEnabled);
+      setDefaultRoutingStyle(data.defaultWireRoutingStyle);
+      toast({ title: "Saved", description: "Wire routing settings updated" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSavingRouting(false);
     }
   };
 
@@ -183,6 +219,49 @@ export default function SettingsAdmin() {
                 Save Model
               </Button>
               <Button variant="outline" onClick={() => setAIModel(defaultAIModel)} disabled={!defaultAIModel}>Use Default</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Wire Routing (Beta)</CardTitle>
+            <CardDescription>
+              Controls the wire routing style selector in the designer. When enabled, users can switch between routing styles (orthogonal, rounded, curved, straight); their choice is remembered in their browser.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="routing-enabled">Show routing style selector</Label>
+                <p className="text-sm text-muted-foreground">Turn the beta selector on or off for everyone.</p>
+              </div>
+              <Switch
+                id="routing-enabled"
+                checked={routingEnabled}
+                disabled={savingRouting}
+                onCheckedChange={(checked) => saveWireRouting({ enabled: checked })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="routing-default">Default style</Label>
+              <Select
+                value={defaultRoutingStyle}
+                onValueChange={(value) => saveWireRouting({ defaultStyle: value })}
+                disabled={savingRouting}
+              >
+                <SelectTrigger id="routing-default" className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(routingStyleOptions.length ? routingStyleOptions : ["orthogonal", "rounded", "curved", "straight"]).map((style) => (
+                    <SelectItem key={style} value={style}>
+                      {ROUTING_STYLE_LABELS[style] || style}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">Used for users who haven't picked a style yet.</p>
             </div>
           </CardContent>
         </Card>

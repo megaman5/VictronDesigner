@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { feedbackStorage } from "./feedback-storage";
 import { userDesignsStorage } from "./user-designs-storage";
 import { observabilityStorage } from "./observability-storage";
-import { appSettingsStorage, DEFAULT_AI_MODEL } from "./app-settings-storage";
+import { appSettingsStorage, DEFAULT_AI_MODEL, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLE_VALUES } from "./app-settings-storage";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
@@ -3129,11 +3129,34 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
   // Observability / Admin Analytics Endpoints
   // ==========================================
 
+  // Public app config (no auth) - safe, non-sensitive settings the client needs.
+  app.get("/api/config", async (req, res) => {
+    try {
+      const [wireRoutingSelectorEnabled, defaultWireRoutingStyle] = await Promise.all([
+        appSettingsStorage.getWireRoutingSelectorEnabled(),
+        appSettingsStorage.getDefaultWireRoutingStyle(),
+      ]);
+      res.json({ wireRoutingSelectorEnabled, defaultWireRoutingStyle });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get overall stats
   app.get("/api/admin/settings", isAdmin, async (req, res) => {
     try {
-      const aiModel = await appSettingsStorage.getAIModel();
-      res.json({ aiModel, defaultAIModel: DEFAULT_AI_MODEL });
+      const [aiModel, wireRoutingSelectorEnabled, defaultWireRoutingStyle] = await Promise.all([
+        appSettingsStorage.getAIModel(),
+        appSettingsStorage.getWireRoutingSelectorEnabled(),
+        appSettingsStorage.getDefaultWireRoutingStyle(),
+      ]);
+      res.json({
+        aiModel,
+        defaultAIModel: DEFAULT_AI_MODEL,
+        wireRoutingSelectorEnabled,
+        defaultWireRoutingStyle,
+        wireRoutingStyleOptions: WIRE_ROUTING_STYLE_VALUES,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -3148,6 +3171,30 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
 
       await appSettingsStorage.setAIModel(model);
       res.json({ aiModel: model });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/admin/settings/wire-routing", isAdmin, async (req, res) => {
+    try {
+      const { enabled, defaultStyle } = req.body;
+
+      if (typeof enabled === "boolean") {
+        await appSettingsStorage.setWireRoutingSelectorEnabled(enabled);
+      }
+      if (defaultStyle !== undefined) {
+        if (!WIRE_ROUTING_STYLE_VALUES.includes(String(defaultStyle))) {
+          return res.status(400).json({ error: `Invalid style. Must be one of: ${WIRE_ROUTING_STYLE_VALUES.join(", ")}` });
+        }
+        await appSettingsStorage.setDefaultWireRoutingStyle(String(defaultStyle));
+      }
+
+      const [wireRoutingSelectorEnabled, defaultWireRoutingStyle] = await Promise.all([
+        appSettingsStorage.getWireRoutingSelectorEnabled(),
+        appSettingsStorage.getDefaultWireRoutingStyle(),
+      ]);
+      res.json({ wireRoutingSelectorEnabled, defaultWireRoutingStyle });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
