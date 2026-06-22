@@ -36,6 +36,7 @@ import { AlertTriangle } from "lucide-react";
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 import { findBatteryBanks } from "@shared/battery-bank";
+import { solveDcWireCurrents } from "@/lib/dc-current-solver";
 
 // Infer system voltage from components
 // Priority: battery bank > other DC components > default 12V
@@ -430,8 +431,17 @@ export default function SchematicDesigner() {
     
     // Debounce to avoid heavy calculation during drag operations
     const timer = setTimeout(() => {
+      // Solve the whole DC network once, then size each wire against it.
+      const solverMap = solveDcWireCurrents(components, wires, {
+        systemVoltage,
+        loadMode,
+        inverterDcInput: (id) => {
+          const r = calculateInverterDCInput(id, 0.875, components);
+          return { dcInputCurrent: r.dcInputCurrent, maxDCInputCurrent: r.maxDCInputCurrent };
+        },
+      });
       // Pass components explicitly to avoid stale closure
-      wires.forEach(wire => calculateWire(wire, undefined, components));
+      wires.forEach(wire => calculateWire(wire, undefined, components, solverMap));
     }, 100);
     return () => clearTimeout(timer);
   }, [wires, components, systemVoltage, viewMode, loadMode]); // Re-run when anything electrical changes, view mode, or load mode changes
@@ -982,7 +992,7 @@ export default function SchematicDesigner() {
     return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage, maxDCInputCurrent };
   };
 
-  const calculateWire = (wire: Wire, overrideVoltage?: number, componentsOverride?: SchematicComponent[]) => {
+  const calculateWire = (wire: Wire, overrideVoltage?: number, componentsOverride?: SchematicComponent[], solverMapOverride?: Map<string, number>) => {
     const comps = componentsOverride || components;
     try {
       // Find parallel wires (same from/to components, same polarity)
@@ -1010,6 +1020,35 @@ export default function SchematicDesigner() {
       const fromComp = comps.find(c => c.id === wire.fromComponentId);
       const toComp = comps.find(c => c.id === wire.toComponentId);
 
+      // Graph solver: model the DC network rooted at the battery bank and read
+      // this wire's current from it. Handles arbitrary radial topologies
+      // (chained bus bars, sub-panels, fuses/switches in series, sources).
+      const solverMap = solverMapOverride || solveDcWireCurrents(comps, wires, {
+        systemVoltage: voltage,
+        loadMode,
+        inverterDcInput: (id) => {
+          const r = calculateInverterDCInput(id, 0.875, comps);
+          return { dcInputCurrent: r.dcInputCurrent, maxDCInputCurrent: r.maxDCInputCurrent };
+        },
+      });
+      const solved = solverMap.get(wire.id);
+      const hasSolved = solved != null;
+      if (hasSolved) {
+        current = solved as number;
+        // Keep main inverter cables sized for the inverter's capacity even when
+        // the present load is small.
+        const invDcId =
+          (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") &&
+            (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative")) ? fromComp.id
+          : (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") &&
+            (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative")) ? toComp.id
+          : null;
+        if (invDcId) {
+          const m = calculateInverterDCInput(invDcId, 0.875, comps).maxDCInputCurrent;
+          if (m > (current as number)) (wire as any)._sizingCurrent = m;
+        }
+      }
+
       // DC "trunk": the main battery path (battery bank incl. series links,
       // fuses, switches, shunt, and the main +/- bus bars) is a single series
       // loop, so every wire on it carries the same whole-system current. Compute
@@ -1020,7 +1059,7 @@ export default function SchematicDesigner() {
       const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
       const isTrunkWire = (wire.polarity === "positive" || wire.polarity === "negative") &&
         isTrunkComp(fromComp?.type) && isTrunkComp(toComp?.type);
-      if (isTrunkWire) {
+      if (isTrunkWire && !hasSolved) {
         let loadA = 0;
         let sourceA = 0;
         for (const c of comps) {
@@ -1039,7 +1078,7 @@ export default function SchematicDesigner() {
         current = Math.max(0, loadA - sourceA);
       }
 
-      if (current === 0 && !isTrunkWire) {
+      if (current === 0 && !isTrunkWire && !hasSolved) {
 
         // Check if this is an inverter DC connection - use inverter DC input current
         const isInverterDCWire = 
