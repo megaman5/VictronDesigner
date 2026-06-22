@@ -985,7 +985,37 @@ export class DesignValidator {
 
       // Calculate current from connected components if not set
       let current = wire.current || 0;
-      
+
+      // DC "trunk": battery bank (incl. series links), fuses, switches, shunt,
+      // and the main +/- bus bars form one series loop, so every wire on it
+      // carries the same whole-system current. Compute it so pass-through parts
+      // (fuses, switches, series links) get a real current and gauge validation
+      // isn't skipped for them.
+      if (current === 0 && (wire.polarity === "positive" || wire.polarity === "negative")) {
+        const fromCompT = this.components.find(c => c.id === wire.fromComponentId);
+        const toCompT = this.components.find(c => c.id === wire.toComponentId);
+        const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor"]);
+        const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
+        if (isTrunkComp(fromCompT?.type) && isTrunkComp(toCompT?.type)) {
+          let loadA = 0;
+          let sourceA = 0;
+          for (const c of this.components) {
+            if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter") {
+              loadA += calculateInverterDCInput(c.id, this.components, this.wires, this.systemVoltage).dcInputCurrent;
+            } else if (c.type === "dc-load") {
+              const w = (c.properties?.watts || c.properties?.power || 0) as number;
+              const v = (c.properties?.voltage as number) || this.systemVoltage;
+              if (w > 0 && v > 0) loadA += w / v;
+            } else if (c.type === "mppt" || c.type === "blue-smart-charger" || c.type === "orion-dc-dc" || c.type === "alternator") {
+              sourceA += (c.type === "mppt"
+                ? (c.properties?.maxCurrent || c.properties?.amps || c.properties?.current || 0)
+                : (c.properties?.amps || c.properties?.current || 0)) as number;
+            }
+          }
+          current = Math.max(0, loadA - sourceA);
+        }
+      }
+
       // If current not set, calculate from connected load
       if (current === 0) {
         const fromComp = this.components.find(c => c.id === wire.fromComponentId);

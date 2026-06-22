@@ -663,6 +663,21 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
     }, 10);
   };
 
+  // Current flowing through a pass-through device (fuse, switch) = the largest
+  // current on any wire connected to it. Uses the already-computed wire currents
+  // so it stays correct as the routing/topology changes.
+  const getThroughCurrent = (componentId: string): number => {
+    let maxCurrent = 0;
+    for (const w of wires) {
+      if (w.fromComponentId === componentId || w.toComponentId === componentId) {
+        const calc = wireCalculations[w.id];
+        const amps = (calc?.current ?? calc?.totalCurrent ?? 0) as number;
+        if (amps > maxCurrent) maxCurrent = amps;
+      }
+    }
+    return maxCurrent;
+  };
+
   // Handle wire property updates
   const handleWireGaugeChange = (value: string) => {
     if (!selectedWire || !onUpdateWire) return;
@@ -1723,7 +1738,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
                 {/* Fuse - show calculated current and compare to rating */}
                 {selectedComponent.type === 'fuse' && (() => {
-                  const fuseCurrent = calculateFuseCurrent(selectedComponent.id, wires, components, systemVoltage);
+                  const fuseCurrent = getThroughCurrent(selectedComponent.id);
                   const fuseRating = selectedComponent.properties?.fuseRating || selectedComponent.properties?.amps || 400;
                   const utilizationPercent = fuseRating > 0 ? (fuseCurrent / fuseRating) * 100 : 0;
                   const isOverrated = fuseCurrent > fuseRating;
@@ -2008,7 +2023,29 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   </div>
                 )}
 
-                {!['battery', 'inverter', 'fuse', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel', 'alternator'].includes(selectedComponent.type) && (
+                {/* Switch / disconnect: current is calculated from the circuit, not entered */}
+                {selectedComponent.type === 'switch' && (() => {
+                  const switchCurrent = getThroughCurrent(selectedComponent.id);
+                  return (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium">Switch Specifications</h3>
+                      <div className="space-y-2">
+                        <Label>Current Through Switch (A)</Label>
+                        <div className="text-sm font-mono p-2 rounded bg-muted">
+                          {switchCurrent.toFixed(1)}A
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Calculated from connected loads
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                        Make sure the switch's rated current is at least this value.
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {!['battery', 'inverter', 'fuse', 'switch', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel', 'alternator'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">
