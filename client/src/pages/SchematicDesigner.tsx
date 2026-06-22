@@ -144,6 +144,14 @@ export default function SchematicDesigner() {
     }
   };
   const [viewMode, setViewMode] = useState<'standard' | 'load'>('standard');
+  const [loadMode, setLoadModeState] = useState<'nominal' | 'expected' | 'max'>(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("loadMode") : null;
+    return saved === "expected" || saved === "max" ? saved : "nominal";
+  });
+  const setLoadMode = (mode: 'nominal' | 'expected' | 'max') => {
+    setLoadModeState(mode);
+    try { localStorage.setItem("loadMode", mode); } catch { /* ignore */ }
+  };
   const [copiedComponents, setCopiedComponents] = useState<SchematicComponent[]>([]);
   const [copiedWires, setCopiedWires] = useState<Wire[]>([]);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
@@ -426,7 +434,7 @@ export default function SchematicDesigner() {
       wires.forEach(wire => calculateWire(wire, undefined, components));
     }, 100);
     return () => clearTimeout(timer);
-  }, [wires, components, systemVoltage, viewMode]); // Re-run when anything electrical changes or view mode changes
+  }, [wires, components, systemVoltage, viewMode, loadMode]); // Re-run when anything electrical changes, view mode, or load mode changes
 
   // Login/logout handlers
   const handleLogin = () => {
@@ -990,6 +998,14 @@ export default function SchematicDesigner() {
       let current = wire.current || 0;
       let voltage = overrideVoltage || systemVoltage;
 
+      // Load mode: nominal = rated as entered; expected = diversity-discounted
+      // (not everything runs at once); max = worst case (full loads + inverter at
+      // its rated capacity, for fusing/wire sizing).
+      const loadFactor = loadMode === 'expected' ? 0.75 : 1;
+      const useMaxInverter = loadMode === 'max';
+      const inverterCurrentFor = (dc: { dcInputCurrent: number; maxDCInputCurrent: number }) =>
+        useMaxInverter ? dc.maxDCInputCurrent : dc.dcInputCurrent * loadFactor;
+
       // Find connected components to calculate current (define at top level for scope)
       const fromComp = comps.find(c => c.id === wire.fromComponentId);
       const toComp = comps.find(c => c.id === wire.toComponentId);
@@ -1009,11 +1025,11 @@ export default function SchematicDesigner() {
         let sourceA = 0;
         for (const c of comps) {
           if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter") {
-            loadA += calculateInverterDCInput(c.id, 0.875, comps).dcInputCurrent;
+            loadA += inverterCurrentFor(calculateInverterDCInput(c.id, 0.875, comps));
           } else if (c.type === "dc-load") {
             const w = (c.properties?.watts || c.properties?.power || 0) as number;
             const v = (c.properties?.voltage as number) || voltage;
-            if (w > 0 && v > 0) loadA += w / v;
+            if (w > 0 && v > 0) loadA += (w / v) * loadFactor;
           } else if (c.type === "mppt" || c.type === "blue-smart-charger" || c.type === "orion-dc-dc" || c.type === "alternator") {
             sourceA += (c.type === "mppt"
               ? (c.properties?.maxCurrent || c.properties?.amps || c.properties?.current || 0)
@@ -1038,7 +1054,7 @@ export default function SchematicDesigner() {
             : toComp?.id;
           if (inverterId) {
             const inverterDC = calculateInverterDCInput(inverterId, 0.875, comps);
-            current = inverterDC.dcInputCurrent;
+            current = inverterCurrentFor(inverterDC);
             // Use sizingCurrent (based on capacity) for safety recommendations
             // This ensures main cables are sized for potential load, even if current load is small
             if (inverterDC.maxDCInputCurrent > 0) {
@@ -1969,6 +1985,8 @@ export default function SchematicDesigner() {
         onWireGaugeFormatChange={setWireGaugeFormat}
         viewMode={viewMode}
         onToggleViewMode={() => setViewMode(viewMode === 'standard' ? 'load' : 'standard')}
+        loadMode={loadMode}
+        onLoadModeChange={setLoadMode}
         systemVoltage={systemVoltage}
         hasWireIssues={hasWireIssues}
       />

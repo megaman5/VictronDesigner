@@ -51,6 +51,8 @@ interface TopBarProps {
   onWireGaugeFormatChange?: (format: WireGaugeFormat) => void;
   viewMode?: 'standard' | 'load';
   onToggleViewMode?: () => void;
+  loadMode?: 'nominal' | 'expected' | 'max';
+  onLoadModeChange?: (mode: 'nominal' | 'expected' | 'max') => void;
   systemVoltage?: number;
   hasWireIssues?: boolean;
 }
@@ -80,6 +82,8 @@ export function TopBar({
   onWireGaugeFormatChange,
   viewMode = 'standard',
   onToggleViewMode,
+  loadMode = 'nominal',
+  onLoadModeChange,
   systemVoltage = 12,
   hasWireIssues = false
 }: TopBarProps) {
@@ -300,6 +304,19 @@ export function TopBar({
             <Activity className="h-4 w-4" />
             Loads
           </Button>
+
+          {viewMode === 'load' && (
+            <Select value={loadMode} onValueChange={(v) => onLoadModeChange?.(v as 'nominal' | 'expected' | 'max')}>
+              <SelectTrigger className="h-9 w-[150px]" data-testid="select-load-mode" title="How load currents are calculated">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nominal">Nominal load</SelectItem>
+                <SelectItem value="expected">Expected load</SelectItem>
+                <SelectItem value="max">Max load</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
 
           <Button
             variant="outline"
