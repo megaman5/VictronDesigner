@@ -32,6 +32,15 @@ class AppSettingsStorage {
     await this.set("ai_model", model);
   }
 
+  // Per-user disclaimer acceptance (stores the accepted version string).
+  async getUserDisclaimer(userId: string): Promise<string | null> {
+    return await this.get(`disclaimer:${userId}`);
+  }
+
+  async setUserDisclaimer(userId: string, version: string): Promise<void> {
+    await this.set(`disclaimer:${userId}`, version);
+  }
+
   // Whether the (beta) wire routing style selector is shown in the designer.
   async getWireRoutingSelectorEnabled(): Promise<boolean> {
     const value = await this.get("wire_routing_selector_enabled");
