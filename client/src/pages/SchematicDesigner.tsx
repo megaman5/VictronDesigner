@@ -35,23 +35,26 @@ const WIRE_ROUTING_OPTIONS_KEY = "wireRoutingOptions";
 import { AlertTriangle } from "lucide-react";
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
+import { findBatteryBanks } from "@shared/battery-bank";
 
 // Infer system voltage from components
-// Priority: battery > other DC components > default 12V
-function inferSystemVoltage(components: SchematicComponent[]): number {
+// Priority: battery bank > other DC components > default 12V
+function inferSystemVoltage(components: SchematicComponent[], wires: Wire[] = []): number {
   if (components.length === 0) return 12; // Default
-  
-  // First, check batteries (most reliable indicator)
-  const batteries = components.filter(c => c.type === 'battery');
-  if (batteries.length > 0) {
-    const batteryVoltages = batteries
-      .map(b => b.properties?.voltage as number | undefined)
-      .filter((v): v is number => v !== undefined && (v === 12 || v === 24 || v === 48));
-    
-    if (batteryVoltages.length > 0) {
-      // Use most common battery voltage, or first if all same
+
+  // First, check battery banks (most reliable indicator). Use the BANK voltage
+  // so series strings (e.g. 2x12V wired in series = 24V) are read correctly
+  // instead of the individual battery's nominal voltage.
+  const banks = findBatteryBanks(components, wires);
+  if (banks.length > 0) {
+    const bankVoltages = banks
+      .map(b => b.bankVoltage)
+      .filter((v): v is number => v === 12 || v === 24 || v === 48);
+
+    if (bankVoltages.length > 0) {
+      // Use most common bank voltage, or first if all same
       const voltageCounts = new Map<number, number>();
-      batteryVoltages.forEach(v => {
+      bankVoltages.forEach(v => {
         voltageCounts.set(v, (voltageCounts.get(v) || 0) + 1);
       });
       const mostCommon = Array.from(voltageCounts.entries())
@@ -194,11 +197,12 @@ export default function SchematicDesigner() {
   // Infer system voltage from components (will be recalculated when components change)
   const [systemVoltage, setSystemVoltage] = useState(initialState.systemVoltage);
   
-  // Update system voltage when components change
+  // Update system voltage when components or wiring change (wiring matters for
+  // detecting series battery banks).
   useEffect(() => {
-    const newVoltage = inferSystemVoltage(components);
+    const newVoltage = inferSystemVoltage(components, wires);
     setSystemVoltage(newVoltage);
-  }, [components]);
+  }, [components, wires]);
 
   // Load public app config (wire routing beta flag + default style)
   useEffect(() => {
@@ -254,7 +258,7 @@ export default function SchematicDesigner() {
       setWires(schematic.wires as Wire[]);
       // System voltage will be inferred from components, but use saved value as initial
       const schematicComponents = (schematic.components || []) as SchematicComponent[];
-      const inferred = inferSystemVoltage(schematicComponents);
+      const inferred = inferSystemVoltage(schematicComponents, (schematic.wires || []) as Wire[]);
       setSystemVoltage(inferred || schematic.systemVoltage || 12);
     }
   }, [schematic]);
@@ -284,9 +288,9 @@ export default function SchematicDesigner() {
         setComponents(state.components || []);
         setWires(state.wires || []);
         // System voltage will be inferred from components
-        const inferred = inferSystemVoltage(state.components || []);
+        const inferred = inferSystemVoltage(state.components || [], state.wires || []);
         setSystemVoltage(inferred || state.systemVoltage || 12);
-        
+
         // Clear the loaded state
         localStorage.removeItem("loadedFeedbackState");
         
@@ -315,7 +319,7 @@ export default function SchematicDesigner() {
           setComponents(state.components || []);
           setWires(state.wires || []);
           // System voltage will be inferred from components
-        const inferred = inferSystemVoltage(state.components || []);
+        const inferred = inferSystemVoltage(state.components || [], state.wires || []);
         setSystemVoltage(inferred || state.systemVoltage || 12);
           
           toast({
