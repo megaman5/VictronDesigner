@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator, Settings } from "lucide-react";
+import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator, Settings, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -53,6 +53,7 @@ interface TopBarProps {
   onToggleViewMode?: () => void;
   loadMode?: 'nominal' | 'expected' | 'max';
   onLoadModeChange?: (mode: 'nominal' | 'expected' | 'max') => void;
+  onShowDisclaimer?: () => void;
   systemVoltage?: number;
   hasWireIssues?: boolean;
 }
@@ -84,6 +85,7 @@ export function TopBar({
   onToggleViewMode,
   loadMode = 'nominal',
   onLoadModeChange,
+  onShowDisclaimer,
   systemVoltage = 12,
   hasWireIssues = false
 }: TopBarProps) {
@@ -365,6 +367,11 @@ export function TopBar({
                     </DropdownMenuItem>
                   </>
                 )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onShowDisclaimer}>
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  Disclaimer
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout}>
                   <LogOut className="h-4 w-4 mr-2" />

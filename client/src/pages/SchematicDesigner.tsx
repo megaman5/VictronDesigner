@@ -12,8 +12,8 @@ import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { SaveDesignDialog } from "@/components/SaveDesignDialog";
 import { OpenDesignDialog } from "@/components/OpenDesignDialog";
 import { CustomComponentDialog } from "@/components/CustomComponentDialog";
+import { DisclaimerDialog } from "@/components/DisclaimerDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +32,22 @@ import { calculateWireSize, type WireGaugeFormat } from "@/lib/wire-calculator";
 import { type WireRoutingStyle, type WireRoutingOptions, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES, normalizeRoutingOptions } from "@/lib/wire-routing";
 
 const WIRE_ROUTING_OPTIONS_KEY = "wireRoutingOptions";
-import { AlertTriangle } from "lucide-react";
+
+// Bump this when the disclaimer text materially changes to re-prompt everyone.
+const DISCLAIMER_VERSION = "1";
+const DISCLAIMER_COOKIE = "disclaimerAccepted";
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setCookie(name: string, value: string, days = 365): void {
+  if (typeof document === "undefined") return;
+  const maxAge = days * 24 * 60 * 60;
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax`;
+}
 import { IterationProgress } from "@/components/IterationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 import { findBatteryBanks } from "@shared/battery-bank";
@@ -114,6 +129,25 @@ export default function SchematicDesigner() {
 
   // User auth state
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [disclaimerOpen, setDisclaimerOpen] = useState(() => getCookie(DISCLAIMER_COOKIE) !== DISCLAIMER_VERSION);
+  const [disclaimerReviewOnly, setDisclaimerReviewOnly] = useState(false);
+
+  const acceptDisclaimer = () => {
+    setCookie(DISCLAIMER_COOKIE, DISCLAIMER_VERSION);
+    setDisclaimerOpen(false);
+    setDisclaimerReviewOnly(false);
+    // Persist to the account too when logged in, so it carries across devices.
+    fetch("/api/user/disclaimer", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: DISCLAIMER_VERSION }),
+    }).catch(() => { /* not logged in / offline: cookie still covers this browser */ });
+  };
+
+  const showDisclaimer = () => {
+    setDisclaimerReviewOnly(true);
+    setDisclaimerOpen(true);
+  };
   const [currentDesignId, setCurrentDesignId] = useState<string | null>(null);
   const [currentDesignName, setCurrentDesignName] = useState<string | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
@@ -280,6 +314,25 @@ export default function SchematicDesigner() {
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);
+
+          // Reconcile disclaimer acceptance with the account (cross-device).
+          try {
+            const dRes = await fetch("/api/user/disclaimer");
+            if (dRes.ok) {
+              const { acceptedVersion } = await dRes.json();
+              if (acceptedVersion === DISCLAIMER_VERSION) {
+                setCookie(DISCLAIMER_COOKIE, DISCLAIMER_VERSION);
+                setDisclaimerOpen(false);
+              } else if (getCookie(DISCLAIMER_COOKIE) === DISCLAIMER_VERSION) {
+                // Accepted in this browser but not yet on the account: push it up.
+                fetch("/api/user/disclaimer", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ version: DISCLAIMER_VERSION }),
+                }).catch(() => {});
+              }
+            }
+          } catch { /* ignore disclaimer sync errors */ }
         }
       } catch (error) {
         console.error("Auth check failed:", error);
@@ -2012,6 +2065,7 @@ export default function SchematicDesigner() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         onClear={() => setClearDialogOpen(true)}
+        onShowDisclaimer={showDisclaimer}
         wireMode={wireConnectionMode}
         hasComponents={components.length > 0}
         designQualityScore={validationResult?.score}
@@ -2030,16 +2084,12 @@ export default function SchematicDesigner() {
         hasWireIssues={hasWireIssues}
       />
 
-      {/* Alpha Warning Banner */}
-      <div className="px-4 pt-3 pb-0">
-        <Alert variant="default" className="border-yellow-500/50 bg-yellow-500/10">
-          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
-          <AlertTitle className="text-yellow-800 dark:text-yellow-400">⚠️ Important Disclaimer</AlertTitle>
-          <AlertDescription className="text-yellow-700 dark:text-yellow-500">
-            <strong>Do not trust calculations without verification.</strong> This tool is in active development and calculations may contain errors. Always double-check wire sizing, current ratings, and voltage drop calculations against ABYC/NEC standards and manufacturer specifications. Verify all component ratings and connections before installation. This tool is for planning purposes only and does not replace professional electrical engineering review.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <DisclaimerDialog
+        open={disclaimerOpen}
+        onOpenChange={setDisclaimerOpen}
+        onAccept={acceptDisclaimer}
+        reviewOnly={disclaimerReviewOnly}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         <ComponentLibrary

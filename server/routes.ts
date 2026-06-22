@@ -13,7 +13,7 @@ import { generateShoppingList, generateWireLabels, generateCSV, generateSystemRe
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
-import { passport, isAdmin, type AuthUser } from "./auth";
+import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
 
 // Helper to extract visitor ID from request
 function getVisitorId(req: Request): string {
@@ -3128,6 +3128,31 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
   // ==========================================
   // Observability / Admin Analytics Endpoints
   // ==========================================
+
+  // Per-user disclaimer acceptance (account state, survives across devices).
+  app.get("/api/user/disclaimer", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const acceptedVersion = await appSettingsStorage.getUserDisclaimer(user.id);
+      res.json({ acceptedVersion });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/user/disclaimer", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const version = String(req.body?.version || "").trim();
+      if (!version) {
+        return res.status(400).json({ error: "version is required" });
+      }
+      await appSettingsStorage.setUserDisclaimer(user.id, version);
+      res.json({ acceptedVersion: version });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Public app config (no auth) - safe, non-sensitive settings the client needs.
   app.get("/api/config", async (req, res) => {
