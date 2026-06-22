@@ -121,6 +121,15 @@ export function SchematicCanvas({
   const [draggedWaypoint, setDraggedWaypoint] = useState<{ wireId: string; index: number } | null>(null);
   const [draggedWaypointPos, setDraggedWaypointPos] = useState<{ x: number; y: number } | null>(null);
 
+  // A new bend being created by grabbing and dragging a wire. Committed on mouse
+  // up only if actually moved, so a plain click on a wire still just selects it.
+  const [pendingWaypoint, setPendingWaypoint] = useState<{
+    wireId: string;
+    insertIndex: number;
+    pos: { x: number; y: number };
+    start: { x: number; y: number };
+  } | null>(null);
+
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Convert a mouse event into canvas coordinates (accounting for scroll + zoom).
@@ -414,6 +423,13 @@ export function SchematicCanvas({
       return;
     }
 
+    // Handle a new bend being dragged out of a wire
+    if (pendingWaypoint) {
+      const snapped = snapPointToGrid(x, y);
+      setPendingWaypoint(p => (p ? { ...p, pos: snapped } : p));
+      return;
+    }
+
     // Handle wire connection preview
     if (wireStart && wireConnectionMode) {
       const snapped = snapPointToGrid(x, y);
@@ -455,6 +471,24 @@ export function SchematicCanvas({
 
   // Complete selection box on mouse up
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
+    // Commit a newly grabbed bend, but only if the user actually dragged it
+    // (a plain click leaves the wire unchanged, just selected).
+    if (pendingWaypoint) {
+      const { wireId, insertIndex, pos, start } = pendingWaypoint;
+      const moved = pos.x !== start.x || pos.y !== start.y;
+      if (moved) {
+        const wire = wires.find(w => w.id === wireId);
+        const fromComp = wire && components.find(c => c.id === wire.fromComponentId);
+        if (wire && fromComp) {
+          const wps = [...(wire.waypoints || [])];
+          wps.splice(insertIndex, 0, { x: pos.x - fromComp.x, y: pos.y - fromComp.y });
+          onWireUpdate?.(wireId, { waypoints: wps });
+        }
+      }
+      setPendingWaypoint(null);
+      return;
+    }
+
     // Commit a dragged waypoint (stored relative to the from-component origin)
     if (draggedWaypoint && draggedWaypointPos) {
       const wire = wires.find(w => w.id === draggedWaypoint.wireId);
@@ -690,6 +724,42 @@ export function SchematicCanvas({
     const waypoints = [...(wire.waypoints || []), rel].sort((a, b) => projT(a) - projT(b));
     onWireUpdate?.(wireId, { waypoints });
     setSelectedWireId(wireId);
+  };
+
+  // Grab anywhere on a wire and drag to create a bend that follows the cursor.
+  const handleWireGrabStart = (wireId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const wire = wires.find(w => w.id === wireId);
+    if (!wire) return;
+    const fromComp = components.find(c => c.id === wire.fromComponentId);
+    const toComp = components.find(c => c.id === wire.toComponentId);
+    if (!fromComp || !toComp) return;
+
+    const raw = getCanvasPoint(e);
+    const pt = snapPointToGrid(raw.x, raw.y);
+
+    // Decide where the new bend fits among existing ones (by position along wire).
+    const fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal) || { x: fromComp.x, y: fromComp.y };
+    const toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal) || { x: toComp.x, y: toComp.y };
+    const dx = toPos.x - fromPos.x;
+    const dy = toPos.y - fromPos.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const proj = (ax: number, ay: number) => ((ax - fromPos.x) * dx + (ay - fromPos.y) * dy) / len2;
+    const grabT = proj(pt.x, pt.y);
+    const wps = wire.waypoints || [];
+    let insertIndex = wps.length;
+    for (let i = 0; i < wps.length; i++) {
+      if (proj(fromComp.x + wps[i].x, fromComp.y + wps[i].y) > grabT) { insertIndex = i; break; }
+    }
+
+    // Select the wire so its handles show during/after the drag.
+    setSelectedWireId(wireId);
+    setSelectedId(null);
+    setSelectedIds([]);
+    onWireSelect?.(wire);
+    canvasRef.current?.focus();
+
+    setPendingWaypoint({ wireId, insertIndex, pos: pt, start: pt });
   };
 
   const handleWaypointMouseDown = (wireId: string, index: number, e: React.MouseEvent) => {
@@ -1346,6 +1416,10 @@ export function SchematicCanvas({
                 }
                 return { x: fromCompX + wp.x, y: fromCompY + wp.y };
               });
+              // A bend being freshly dragged out of this wire (not yet committed).
+              if (pendingWaypoint?.wireId === wire.id) {
+                manualWaypoints.splice(pendingWaypoint.insertIndex, 0, { ...pendingWaypoint.pos });
+              }
 
               let result: { path: string; labelX: number; labelY: number; labelRotation: number; pathPoints: Array<{ x: number; y: number }> };
               if (manualWaypoints.length > 0) {
@@ -1730,6 +1804,7 @@ export function SchematicCanvas({
                 <g
                   key={wire.id}
                   className="cursor-pointer hover:opacity-80"
+                  onMouseDown={(e) => handleWireGrabStart(wire.id, e)}
                   onClick={(e) => handleWireClick(wire.id, e)}
                   onDoubleClick={(e) => handleWireAddWaypoint(wire.id, e)}
                   data-testid={`wire-${wire.id}`}
@@ -2034,6 +2109,18 @@ export function SchematicCanvas({
                     </circle>
                   );
                 })}
+                {/* Live handle for a bend being dragged out of the wire */}
+                {pendingWaypoint?.wireId === wire.id && (
+                  <circle
+                    cx={pendingWaypoint.pos.x}
+                    cy={pendingWaypoint.pos.y}
+                    r={7}
+                    fill="white"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={3}
+                    className="pointer-events-none"
+                  />
+                )}
               </g>
             );
           })}
