@@ -544,6 +544,37 @@ export function SchematicCanvas({
       if (closestTerminal && closestComponent) {
         const targetComponent = closestComponent as SchematicComponentType;
         const targetTerminal = closestTerminal as Terminal;
+
+        // Reject dropping a positive terminal onto a negative one (or vice
+        // versa), unless it's a legitimate series link between two batteries or
+        // two solar panels. This is the path that previously let bad polarity
+        // connections slip through.
+        const otherComp = endpoint === 'from'
+          ? components.find(c => c.id === wire.toComponentId)
+          : components.find(c => c.id === wire.fromComponentId);
+        const otherTermId = endpoint === 'from' ? wire.toTerminal : wire.fromTerminal;
+        const otherTermType = otherComp
+          ? TERMINAL_CONFIGS[otherComp.type]?.terminals.find(t => t.id === otherTermId)?.type
+          : undefined;
+        const isPos = (t?: string) => t === 'positive' || t === 'pv-positive';
+        const isNeg = (t?: string) => t === 'negative' || t === 'pv-negative';
+        const crossed =
+          (isPos(targetTerminal.type) && isNeg(otherTermType)) ||
+          (isNeg(targetTerminal.type) && isPos(otherTermType));
+        const seriesAllowed =
+          (targetComponent.type === 'battery' && otherComp?.type === 'battery') ||
+          (targetComponent.type === 'solar-panel' && otherComp?.type === 'solar-panel');
+        if (crossed && !seriesAllowed) {
+          toast({
+            title: "Reversed polarity",
+            description: "A positive terminal can't connect to a negative one. Wire not moved.",
+            variant: "destructive",
+          });
+          setDraggedWireEndpoint(null);
+          setDraggedEndpointPos(null);
+          return;
+        }
+
         const updates: Partial<Wire> = {};
 
         if (endpoint === 'from') {

@@ -2403,6 +2403,39 @@ export class DesignValidator {
           });
         }
       }
+
+      // Cross-polarity check: a positive terminal wired to a negative terminal
+      // (e.g. a device's DC+ dropped onto the negative bus bar) is a wiring
+      // error - unless it's a legitimate series link between two batteries or
+      // two solar panels (where + connects to - to add voltage).
+      const fromTerm = fromConfig?.terminals.find(t => t.id === wire.fromTerminal);
+      const toTerm = toConfig?.terminals.find(t => t.id === wire.toTerminal);
+      if (fromTerm && toTerm) {
+        const isPos = (t: string) => t === "positive" || t === "pv-positive";
+        const isNeg = (t: string) => t === "negative" || t === "pv-negative";
+        const crossed =
+          (isPos(fromTerm.type) && isNeg(toTerm.type)) ||
+          (isNeg(fromTerm.type) && isPos(toTerm.type));
+        const seriesAllowed =
+          (fromComp.type === "battery" && toComp.type === "battery") ||
+          (fromComp.type === "solar-panel" && toComp.type === "solar-panel");
+        if (crossed && !seriesAllowed) {
+          const posSide = isPos(fromTerm.type)
+            ? `${this.getComponentName(fromComp.id)} "${wire.fromTerminal}"`
+            : `${this.getComponentName(toComp.id)} "${wire.toTerminal}"`;
+          const negSide = isNeg(fromTerm.type)
+            ? `${this.getComponentName(fromComp.id)} "${wire.fromTerminal}"`
+            : `${this.getComponentName(toComp.id)} "${wire.toTerminal}"`;
+          this.issues.push({
+            severity: "error",
+            category: "terminal",
+            message: `Reversed polarity: positive terminal (${posSide}) wired to negative terminal (${negSide})`,
+            wireId: wire.id,
+            componentIds: [fromComp.id, toComp.id],
+            suggestion: "Connect positive to positive and negative to negative. Reconnect this wire to the correct terminal.",
+          });
+        }
+      }
     });
 
     // Check for missing required connections
