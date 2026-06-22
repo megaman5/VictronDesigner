@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from "react";
-import { Grid3X3, ZoomIn, ZoomOut, Spline, Sliders } from "lucide-react";
+import { Grid3X3, ZoomIn, ZoomOut, Spline, Sliders, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
@@ -117,7 +117,23 @@ export function SchematicCanvas({
   } | null>(null);
   const [draggedEndpointPos, setDraggedEndpointPos] = useState<{ x: number; y: number } | null>(null);
 
+  // Manual wire bend (waypoint) dragging
+  const [draggedWaypoint, setDraggedWaypoint] = useState<{ wireId: string; index: number } | null>(null);
+  const [draggedWaypointPos, setDraggedWaypointPos] = useState<{ x: number; y: number } | null>(null);
+
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Convert a mouse event into canvas coordinates (accounting for scroll + zoom).
+  const getCanvasPoint = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scrollLeft = canvasRef.current.scrollLeft;
+    const scrollTop = canvasRef.current.scrollTop;
+    return {
+      x: (e.clientX - rect.left + scrollLeft) / (zoom / 100),
+      y: (e.clientY - rect.top + scrollTop) / (zoom / 100),
+    };
+  };
 
   useEffect(() => {
     if (!wireConnectionMode) {
@@ -392,6 +408,12 @@ export function SchematicCanvas({
       return;
     }
 
+    // Handle manual waypoint dragging
+    if (draggedWaypoint) {
+      setDraggedWaypointPos(snapPointToGrid(x, y));
+      return;
+    }
+
     // Handle wire connection preview
     if (wireStart && wireConnectionMode) {
       const snapped = snapPointToGrid(x, y);
@@ -433,6 +455,23 @@ export function SchematicCanvas({
 
   // Complete selection box on mouse up
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
+    // Commit a dragged waypoint (stored relative to the from-component origin)
+    if (draggedWaypoint && draggedWaypointPos) {
+      const wire = wires.find(w => w.id === draggedWaypoint.wireId);
+      const fromComp = wire && components.find(c => c.id === wire.fromComponentId);
+      if (wire && fromComp) {
+        const waypoints = [...(wire.waypoints || [])];
+        waypoints[draggedWaypoint.index] = {
+          x: draggedWaypointPos.x - fromComp.x,
+          y: draggedWaypointPos.y - fromComp.y,
+        };
+        onWireUpdate?.(wire.id, { waypoints });
+      }
+      setDraggedWaypoint(null);
+      setDraggedWaypointPos(null);
+      return;
+    }
+
     // Handle wire endpoint drop
     if (draggedWireEndpoint && draggedEndpointPos && canvasRef.current) {
       const { wireId, endpoint, wire } = draggedWireEndpoint;
@@ -623,6 +662,58 @@ export function SchematicCanvas({
     }
   };
 
+  // Double-click a wire to add a manual bend (waypoint) at the cursor. Stored
+  // relative to the from-component and inserted in route order.
+  const handleWireAddWaypoint = (wireId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const wire = wires.find(w => w.id === wireId);
+    if (!wire) return;
+    const fromComp = components.find(c => c.id === wire.fromComponentId);
+    const toComp = components.find(c => c.id === wire.toComponentId);
+    if (!fromComp || !toComp) return;
+
+    const raw = getCanvasPoint(e);
+    const pt = snapPointToGrid(raw.x, raw.y);
+    const rel = { x: pt.x - fromComp.x, y: pt.y - fromComp.y };
+
+    const fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal) || { x: fromComp.x, y: fromComp.y };
+    const toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal) || { x: toComp.x, y: toComp.y };
+    const dx = toPos.x - fromPos.x;
+    const dy = toPos.y - fromPos.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const projT = (w: { x: number; y: number }) => {
+      const ax = fromComp.x + w.x;
+      const ay = fromComp.y + w.y;
+      return ((ax - fromPos.x) * dx + (ay - fromPos.y) * dy) / len2;
+    };
+
+    const waypoints = [...(wire.waypoints || []), rel].sort((a, b) => projT(a) - projT(b));
+    onWireUpdate?.(wireId, { waypoints });
+    setSelectedWireId(wireId);
+  };
+
+  const handleWaypointMouseDown = (wireId: string, index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDraggedWaypoint({ wireId, index });
+    const pt = getCanvasPoint(e);
+    setDraggedWaypointPos(snapPointToGrid(pt.x, pt.y));
+  };
+
+  const handleWaypointRemove = (wireId: string, index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const wire = wires.find(w => w.id === wireId);
+    if (!wire || !wire.waypoints) return;
+    const waypoints = wire.waypoints.filter((_, i) => i !== index);
+    onWireUpdate?.(wireId, { waypoints: waypoints.length ? waypoints : undefined });
+  };
+
+  const handleClearAllWaypoints = () => {
+    if (!wires.some(w => w.waypoints && w.waypoints.length)) return;
+    if (!confirm("Clear all manual wire bends?")) return;
+    onWiresChange?.(wires.map(w => (w.waypoints ? { ...w, waypoints: undefined } : w)));
+  };
+
   const handleWireEndpointMouseDown = (wireId: string, endpoint: 'from' | 'to', e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault(); // Prevent component drag from being triggered
@@ -797,6 +888,20 @@ export function SchematicCanvas({
             <ZoomIn className="h-4 w-4" />
           </Button>
         </div>
+
+        {wires.some(w => w.waypoints && w.waypoints.length > 0) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearAllWaypoints}
+            className="gap-1.5"
+            title="Remove all manual wire bends"
+            data-testid="button-clear-bends"
+          >
+            <Eraser className="h-4 w-4" />
+            <span className="text-xs hidden sm:inline">Clear bends</span>
+          </Button>
+        )}
 
         {showWireRoutingSelector && (() => {
           const update = (patch: Partial<WireRoutingOptions>) =>
@@ -1025,6 +1130,54 @@ export function SchematicCanvas({
             // Track occupied nodes for wire separation
             const occupiedNodes = new Set<string>();
 
+            // Route a wire through an ordered list of absolute points (start,
+            // manual waypoints..., end), running the A* router per segment so
+            // each leg respects obstacles and the chosen style.
+            const routeThroughPoints = (
+              pts: Array<{ x: number; y: number }>,
+              fromOri: ReturnType<typeof getTerminalOrientation> | undefined,
+              toOri: ReturnType<typeof getTerminalOrientation> | undefined
+            ) => {
+              let combinedPath = "";
+              const allPoints: Array<{ x: number; y: number }> = [];
+              for (let s = 0; s < pts.length - 1; s++) {
+                const a = pts[s];
+                const b = pts[s + 1];
+                const seg = calculateRoute(
+                  a.x, a.y, b.x, b.y,
+                  obstacles, 2400, 1600, occupiedNodes,
+                  s === 0 ? (fromOri || undefined) : undefined,
+                  s === pts.length - 2 ? (toOri || undefined) : undefined,
+                  wireRoutingOptions
+                );
+                seg.pathNodes.forEach(n => occupiedNodes.add(n));
+                if (s === 0) {
+                  combinedPath = seg.path;
+                  allPoints.push(...seg.pathPoints);
+                } else {
+                  combinedPath += " " + seg.path.replace(/^M/, "L");
+                  allPoints.push(...seg.pathPoints.slice(1));
+                }
+              }
+              // Label on the longest segment of the combined route.
+              let labelX = allPoints[0]?.x || 0;
+              let labelY = allPoints[0]?.y || 0;
+              let labelRotation = 0;
+              let maxLen = -1;
+              for (let i = 1; i < allPoints.length; i++) {
+                const p1 = allPoints[i - 1];
+                const p2 = allPoints[i];
+                const l = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                if (l > maxLen) {
+                  maxLen = l;
+                  labelX = (p1.x + p2.x) / 2;
+                  labelY = (p1.y + p2.y) / 2;
+                  labelRotation = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y) ? 0 : 90;
+                }
+              }
+              return { path: combinedPath, labelX, labelY, labelRotation, pathPoints: allPoints };
+            };
+
             // First pass: calculate all wire routes and store label positions
             interface WireRouteData {
               wire: Wire;
@@ -1185,19 +1338,37 @@ export function SchematicCanvas({
                 else if (toOrientation === 'bottom') extendedToPos.y -= extendDistance;
               }
 
-              const result = calculateRoute(
-                extendedFromPos.x, extendedFromPos.y,
-                extendedToPos.x, extendedToPos.y,
-                obstacles,
-                2400,
-                1600,
-                occupiedNodes,
-                fromOrientation || undefined,
-                toOrientation || undefined,
-                wireRoutingOptions
-              );
+              // Manual bends: absolute positions (relative to from-component),
+              // with a live override for the waypoint currently being dragged.
+              const manualWaypoints = (wire.waypoints || []).map((wp, idx) => {
+                if (draggedWaypoint?.wireId === wire.id && draggedWaypoint.index === idx && draggedWaypointPos) {
+                  return { x: draggedWaypointPos.x, y: draggedWaypointPos.y };
+                }
+                return { x: fromCompX + wp.x, y: fromCompY + wp.y };
+              });
 
-              result.pathNodes.forEach(node => occupiedNodes.add(node));
+              let result: { path: string; labelX: number; labelY: number; labelRotation: number; pathPoints: Array<{ x: number; y: number }> };
+              if (manualWaypoints.length > 0) {
+                result = routeThroughPoints(
+                  [{ x: extendedFromPos.x, y: extendedFromPos.y }, ...manualWaypoints, { x: extendedToPos.x, y: extendedToPos.y }],
+                  fromOrientation,
+                  toOrientation
+                );
+              } else {
+                const r = calculateRoute(
+                  extendedFromPos.x, extendedFromPos.y,
+                  extendedToPos.x, extendedToPos.y,
+                  obstacles,
+                  2400,
+                  1600,
+                  occupiedNodes,
+                  fromOrientation || undefined,
+                  toOrientation || undefined,
+                  wireRoutingOptions
+                );
+                r.pathNodes.forEach(node => occupiedNodes.add(node));
+                result = r;
+              }
 
               wireRoutes.push({
                 wire,
@@ -1560,6 +1731,7 @@ export function SchematicCanvas({
                   key={wire.id}
                   className="cursor-pointer hover:opacity-80"
                   onClick={(e) => handleWireClick(wire.id, e)}
+                  onDoubleClick={(e) => handleWireAddWaypoint(wire.id, e)}
                   data-testid={`wire-${wire.id}`}
                 >
                   <path
@@ -1839,6 +2011,29 @@ export function SchematicCanvas({
                   onMouseDown={(e) => handleWireEndpointMouseDown(wire.id, 'to', e)}
                   style={{ pointerEvents: 'all' }}
                 />
+                {/* Manual bend (waypoint) handles: drag to move, double-click to remove */}
+                {(wire.waypoints || []).map((wp, idx) => {
+                  const isDragging = draggedWaypoint?.wireId === wire.id && draggedWaypoint.index === idx && draggedWaypointPos;
+                  const cx = isDragging ? draggedWaypointPos!.x : fromComp.x + wp.x;
+                  const cy = isDragging ? draggedWaypointPos!.y : fromComp.y + wp.y;
+                  return (
+                    <circle
+                      key={`wp-${wire.id}-${idx}`}
+                      cx={cx}
+                      cy={cy}
+                      r={7}
+                      fill="white"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={3}
+                      className="cursor-move"
+                      onMouseDown={(e) => handleWaypointMouseDown(wire.id, idx, e)}
+                      onDoubleClick={(e) => handleWaypointRemove(wire.id, idx, e)}
+                      style={{ pointerEvents: 'all' }}
+                    >
+                      <title>Drag to move bend · double-click to remove</title>
+                    </circle>
+                  );
+                })}
               </g>
             );
           })}

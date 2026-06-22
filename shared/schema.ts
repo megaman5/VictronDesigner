@@ -236,6 +236,9 @@ export interface Wire {
   voltageDrop?: number;
   color?: string;
   conductorMaterial?: "copper" | "aluminum";
+  // Manual routing bends, stored RELATIVE to the from-component's origin so they
+  // move with the diagram. The wire is routed through these points in order.
+  waypoints?: Array<{ x: number; y: number }>;
 }
 
 export interface WireCalculation {
