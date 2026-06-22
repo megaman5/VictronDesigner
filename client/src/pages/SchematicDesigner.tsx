@@ -994,7 +994,36 @@ export default function SchematicDesigner() {
       const fromComp = comps.find(c => c.id === wire.fromComponentId);
       const toComp = comps.find(c => c.id === wire.toComponentId);
 
-      if (current === 0) {
+      // DC "trunk": the main battery path (battery bank incl. series links,
+      // fuses, switches, shunt, and the main +/- bus bars) is a single series
+      // loop, so every wire on it carries the same whole-system current. Compute
+      // that once so the positive and negative sides agree and pass-through parts
+      // (fuses, switches, series battery links) aren't left at a stale default or
+      // shown as their device rating.
+      const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor"]);
+      const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
+      const isTrunkWire = (wire.polarity === "positive" || wire.polarity === "negative") &&
+        isTrunkComp(fromComp?.type) && isTrunkComp(toComp?.type);
+      if (isTrunkWire) {
+        let loadA = 0;
+        let sourceA = 0;
+        for (const c of comps) {
+          if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter") {
+            loadA += calculateInverterDCInput(c.id, 0.875, comps).dcInputCurrent;
+          } else if (c.type === "dc-load") {
+            const w = (c.properties?.watts || c.properties?.power || 0) as number;
+            const v = (c.properties?.voltage as number) || voltage;
+            if (w > 0 && v > 0) loadA += w / v;
+          } else if (c.type === "mppt" || c.type === "blue-smart-charger" || c.type === "orion-dc-dc" || c.type === "alternator") {
+            sourceA += (c.type === "mppt"
+              ? (c.properties?.maxCurrent || c.properties?.amps || c.properties?.current || 0)
+              : (c.properties?.amps || c.properties?.current || 0)) as number;
+          }
+        }
+        current = Math.max(0, loadA - sourceA);
+      }
+
+      if (current === 0 && !isTrunkWire) {
 
         // Check if this is an inverter DC connection - use inverter DC input current
         const isInverterDCWire = 
