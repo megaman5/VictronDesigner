@@ -389,14 +389,18 @@ ${d.name.toUpperCase()} (${d.type}):
 ${d.wiringRules.map(r => `  * ${r}`).join("\n")}
 `).join("\n")}
 
-WIRE GAUGE SELECTION (BASED ON CURRENT, ABYC 105°C free air):
-- 0-40A: 12 AWG or 10 AWG
-- 40-65A: 8 AWG
+WIRE GAUGE SELECTION (BASED ON CURRENT, ABYC 105°C free air with 20% margin):
+- 0-50A: 10 AWG
+- 50-65A: 8 AWG
 - 65-100A: 6 AWG
 - 100-130A: 4 AWG
 - 130-175A: 2 AWG
-- 175-235A: 1 AWG or 1/0 AWG
-- 235A+: 2/0 to 4/0 AWG
+- 175-200A: 1 AWG
+- 200-235A: 1/0 AWG
+- 235-275A: 2/0 AWG
+- 275-320A: 3/0 AWG
+- 320-370A: 4/0 AWG
+- 370A+: parallel runs of 4/0 AWG
 - Battery to Inverter: ALWAYS 4/0 AWG or 2/0 AWG
 
 COMPONENT PROPERTIES (MUST BE REALISTIC):
