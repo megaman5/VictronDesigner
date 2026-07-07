@@ -97,6 +97,9 @@ function setupStaleChunkRecovery() {
     reloadOnce();
   });
 
+  // Registered before the error-logging listener (initTracking calls this
+  // first), so stopImmediatePropagation keeps auto-recovered failures out
+  // of the error log.
   window.addEventListener("unhandledrejection", (event) => {
     const msg = String(event.reason?.message || event.reason || "");
     if (
@@ -104,6 +107,7 @@ function setupStaleChunkRecovery() {
       /not a valid JavaScript MIME type/i.test(msg)
     ) {
       event.preventDefault();
+      event.stopImmediatePropagation();
       reloadOnce();
     }
   });

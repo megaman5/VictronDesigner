@@ -71,16 +71,6 @@ function extractJSON(content: string): string {
 export async function registerRoutes(app: Express): Promise<Server> {
   const getAIModel = () => appSettingsStorage.getAIModel();
 
-  // Public client config (safe values only - the PostHog project key is a
-  // public client-side key). Served at runtime so rotating it doesn't
-  // require a rebuild.
-  app.get("/api/config", (_req, res) => {
-    res.json({
-      posthogKey: process.env.POSTHOG_PROJ || null,
-      posthogHost: process.env.POSTHOG_HOST || "https://us.i.posthog.com",
-    });
-  });
-
   // Authentication routes
   app.get("/auth/google", (req, res, next) => {
     const returnTo = req.query.returnTo as string || "/";
@@ -3194,7 +3184,16 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         appSettingsStorage.getWireRoutingSelectorEnabled(),
         appSettingsStorage.getDefaultWireRoutingStyle(),
       ]);
-      res.json({ wireRoutingSelectorEnabled, defaultWireRoutingStyle });
+      // Allow key rotation to take effect without stale cached copies
+      res.set("Cache-Control", "no-store");
+      res.json({
+        wireRoutingSelectorEnabled,
+        defaultWireRoutingStyle,
+        // PostHog project key is a public client-side key; served at
+        // runtime so rotating it doesn't require a rebuild.
+        posthogKey: process.env.POSTHOG_PROJ || null,
+        posthogHost: process.env.POSTHOG_HOST || "https://us.i.posthog.com",
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
