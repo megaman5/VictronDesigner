@@ -71,6 +71,16 @@ function extractJSON(content: string): string {
 export async function registerRoutes(app: Express): Promise<Server> {
   const getAIModel = () => appSettingsStorage.getAIModel();
 
+  // Public client config (safe values only - the PostHog project key is a
+  // public client-side key). Served at runtime so rotating it doesn't
+  // require a rebuild.
+  app.get("/api/config", (_req, res) => {
+    res.json({
+      posthogKey: process.env.POSTHOG_PROJ || null,
+      posthogHost: process.env.POSTHOG_HOST || "https://us.i.posthog.com",
+    });
+  });
+
   // Authentication routes
   app.get("/auth/google", (req, res, next) => {
     const returnTo = req.query.returnTo as string || "/";
@@ -3256,9 +3266,42 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
   // Get daily analytics
   app.get("/api/admin/observability/analytics", isAdmin, async (req, res) => {
     try {
-      const days = parseInt(req.query.days as string) || 30;
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
       const analytics = await observabilityStorage.getAnalytics(days);
       res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Error breakdown by type + most frequent messages
+  app.get("/api/admin/observability/error-breakdown", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      const breakdown = await observabilityStorage.getErrorBreakdown(days);
+      res.json(breakdown);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Top events by name
+  app.get("/api/admin/observability/top-events", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      const topEvents = await observabilityStorage.getTopEvents(days);
+      res.json(topEvents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Session engagement metrics
+  app.get("/api/admin/observability/session-metrics", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      const metrics = await observabilityStorage.getSessionMetrics(days);
+      res.json(metrics);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

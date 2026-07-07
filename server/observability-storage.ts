@@ -346,46 +346,58 @@ class ObservabilityStorage {
       .groupBy(sql`date(${events.createdAt})`)
       .orderBy(sql`date(${events.createdAt})`);
 
+    // Get daily error counts
+    const dailyErrors = await db.select({
+      date: sql<string>`date(${errorLogs.createdAt})`,
+      errors: count(),
+    })
+      .from(errorLogs)
+      .where(gte(errorLogs.createdAt, startDate))
+      .groupBy(sql`date(${errorLogs.createdAt})`)
+      .orderBy(sql`date(${errorLogs.createdAt})`);
+
     // Merge data by date
-    const dateMap = new Map<string, {
-      sessions: number;
-      uniqueVisitors: number;
-      aiRequests: number;
-      successfulAI: number;
-      events: number;
-    }>();
+    const emptyDay = () => ({
+      sessions: 0,
+      uniqueVisitors: 0,
+      aiRequests: 0,
+      successfulAI: 0,
+      events: 0,
+      errors: 0,
+    });
+    const dateMap = new Map<string, ReturnType<typeof emptyDay>>();
 
     // Initialize all dates
     for (let d = 0; d < days; d++) {
       const date = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
       const key = date.toISOString().split("T")[0];
-      dateMap.set(key, {
-        sessions: 0,
-        uniqueVisitors: 0,
-        aiRequests: 0,
-        successfulAI: 0,
-        events: 0,
-      });
+      dateMap.set(key, emptyDay());
     }
 
     // Populate from queries
     for (const row of dailySessions) {
-      const existing = dateMap.get(row.date) || { sessions: 0, uniqueVisitors: 0, aiRequests: 0, successfulAI: 0, events: 0 };
+      const existing = dateMap.get(row.date) || emptyDay();
       existing.sessions = row.sessions;
-      existing.uniqueVisitors = row.uniqueVisitors;
+      existing.uniqueVisitors = Number(row.uniqueVisitors) || 0;
       dateMap.set(row.date, existing);
     }
 
     for (const row of dailyAI) {
-      const existing = dateMap.get(row.date) || { sessions: 0, uniqueVisitors: 0, aiRequests: 0, successfulAI: 0, events: 0 };
+      const existing = dateMap.get(row.date) || emptyDay();
       existing.aiRequests = row.aiRequests;
       existing.successfulAI = Number(row.successfulAI) || 0;
       dateMap.set(row.date, existing);
     }
 
     for (const row of dailyEvents) {
-      const existing = dateMap.get(row.date) || { sessions: 0, uniqueVisitors: 0, aiRequests: 0, successfulAI: 0, events: 0 };
+      const existing = dateMap.get(row.date) || emptyDay();
       existing.events = row.events;
+      dateMap.set(row.date, existing);
+    }
+
+    for (const row of dailyErrors) {
+      const existing = dateMap.get(row.date) || emptyDay();
+      existing.errors = row.errors;
       dateMap.set(row.date, existing);
     }
 
@@ -396,12 +408,120 @@ class ObservabilityStorage {
         uniqueVisitors: stats.uniqueVisitors,
         aiRequests: stats.aiRequests,
         successfulAI: stats.successfulAI,
-        aiSuccessRate: stats.aiRequests > 0 
-          ? Math.round((stats.successfulAI / stats.aiRequests) * 100) 
+        aiSuccessRate: stats.aiRequests > 0
+          ? Math.round((stats.successfulAI / stats.aiRequests) * 100)
           : 0,
         events: stats.events,
+        errors: stats.errors,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // Error breakdown: counts by type plus the most frequent messages
+  async getErrorBreakdown(days: number = 30) {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const byType = await db.select({
+      type: errorLogs.type,
+      count: count(),
+      latest: sql<string>`max(${errorLogs.createdAt})`,
+    })
+      .from(errorLogs)
+      .where(gte(errorLogs.createdAt, startDate))
+      .groupBy(errorLogs.type)
+      .orderBy(desc(count()));
+
+    const topMessages = await db.select({
+      type: errorLogs.type,
+      endpoint: errorLogs.endpoint,
+      message: sql<string>`left(${errorLogs.message}, 200)`,
+      count: count(),
+      latest: sql<string>`max(${errorLogs.createdAt})`,
+    })
+      .from(errorLogs)
+      .where(gte(errorLogs.createdAt, startDate))
+      .groupBy(errorLogs.type, errorLogs.endpoint, sql`left(${errorLogs.message}, 200)`)
+      .orderBy(desc(count()))
+      .limit(15);
+
+    return { byType, topMessages };
+  }
+
+  // Top events by name within the window
+  async getTopEvents(days: number = 30) {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const rows = await db.select({
+      type: events.type,
+      name: events.name,
+      count: count(),
+      uniqueVisitors: sql<number>`count(distinct ${events.visitorId})`,
+    })
+      .from(events)
+      .where(gte(events.createdAt, startDate))
+      .groupBy(events.type, events.name)
+      .orderBy(desc(count()))
+      .limit(20);
+
+    return rows.map(r => ({ ...r, uniqueVisitors: Number(r.uniqueVisitors) || 0 }));
+  }
+
+  // Session engagement metrics for the window
+  async getSessionMetrics(days: number = 30) {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const [metrics] = await db.select({
+      totalSessions: count(),
+      uniqueVisitors: sql<number>`count(distinct ${sessions.visitorId})`,
+      signedInSessions: sql<number>`sum(case when ${sessions.userId} is not null then 1 else 0 end)`,
+      avgDurationMinutes: sql<number>`coalesce(avg(extract(epoch from (${sessions.lastActivity} - ${sessions.startTime})) / 60), 0)`,
+      avgPageViews: sql<number>`coalesce(avg(${sessions.pageViews}), 0)`,
+      avgActions: sql<number>`coalesce(avg(${sessions.actions}), 0)`,
+      bouncedSessions: sql<number>`sum(case when ${sessions.actions} = 0 then 1 else 0 end)`,
+    })
+      .from(sessions)
+      .where(gte(sessions.startTime, startDate));
+
+    // Rough browser split from user agents
+    const browsers = await db.select({
+      browser: sql<string>`case
+        when ${sessions.userAgent} ilike '%edg/%' then 'Edge'
+        when ${sessions.userAgent} ilike '%opr/%' or ${sessions.userAgent} ilike '%opera%' then 'Opera'
+        when ${sessions.userAgent} ilike '%chrome%' then 'Chrome'
+        when ${sessions.userAgent} ilike '%safari%' and ${sessions.userAgent} not ilike '%chrome%' then 'Safari'
+        when ${sessions.userAgent} ilike '%firefox%' then 'Firefox'
+        else 'Other'
+      end`,
+      count: count(),
+    })
+      .from(sessions)
+      .where(gte(sessions.startTime, startDate))
+      .groupBy(sql`1`)
+      .orderBy(desc(count()));
+
+    const isMobile = await db.select({
+      device: sql<string>`case when ${sessions.userAgent} ilike '%mobile%' or ${sessions.userAgent} ilike '%android%' or ${sessions.userAgent} ilike '%iphone%' then 'Mobile' else 'Desktop' end`,
+      count: count(),
+    })
+      .from(sessions)
+      .where(gte(sessions.startTime, startDate))
+      .groupBy(sql`1`)
+      .orderBy(desc(count()));
+
+    const totalSessions = metrics?.totalSessions || 0;
+    return {
+      totalSessions,
+      uniqueVisitors: Number(metrics?.uniqueVisitors) || 0,
+      signedInSessions: Number(metrics?.signedInSessions) || 0,
+      avgDurationMinutes: Math.round((Number(metrics?.avgDurationMinutes) || 0) * 10) / 10,
+      avgPageViews: Math.round((Number(metrics?.avgPageViews) || 0) * 10) / 10,
+      avgActions: Math.round((Number(metrics?.avgActions) || 0) * 10) / 10,
+      bounceRate: totalSessions > 0
+        ? Math.round(((Number(metrics?.bouncedSessions) || 0) / totalSessions) * 100)
+        : 0,
+      browsers,
+      devices: isMobile,
+    };
   }
 
   // Get AI action breakdown

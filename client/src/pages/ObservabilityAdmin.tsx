@@ -20,8 +20,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { 
-  ArrowLeft, 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ArrowLeft,
   Activity,
   Users,
   Cpu,
@@ -38,8 +45,24 @@ import {
   RefreshCw,
   Trash2,
   MessageSquare,
+  MousePointerClick,
+  Timer,
+  Monitor,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
+  Legend,
+} from "recharts";
 
 interface User {
   id: string;
@@ -72,7 +95,40 @@ interface DailyAnalytics {
   successfulAI: number;
   aiSuccessRate: number;
   events: number;
+  errors: number;
 }
+
+interface ErrorBreakdown {
+  byType: Array<{ type: string; count: number; latest: string }>;
+  topMessages: Array<{ type: string; endpoint?: string; message: string; count: number; latest: string }>;
+}
+
+interface TopEvent {
+  type: string;
+  name: string;
+  count: number;
+  uniqueVisitors: number;
+}
+
+interface SessionMetrics {
+  totalSessions: number;
+  uniqueVisitors: number;
+  signedInSessions: number;
+  avgDurationMinutes: number;
+  avgPageViews: number;
+  avgActions: number;
+  bounceRate: number;
+  browsers: Array<{ browser: string; count: number }>;
+  devices: Array<{ device: string; count: number }>;
+}
+
+const TIME_RANGES = [
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+  { value: "180", label: "Last 6 months" },
+  { value: "365", label: "Last year" },
+];
 
 interface AILog {
   id: string;
@@ -160,6 +216,10 @@ export default function ObservabilityAdmin() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [errors, setErrors] = useState<ErrorLog[]>([]);
   const [aiBreakdown, setAIBreakdown] = useState<AIBreakdown>({});
+  const [rangeDays, setRangeDays] = useState("30");
+  const [errorBreakdown, setErrorBreakdown] = useState<ErrorBreakdown | null>(null);
+  const [topEvents, setTopEvents] = useState<TopEvent[]>([]);
+  const [sessionMetrics, setSessionMetrics] = useState<SessionMetrics | null>(null);
   const [selectedAILog, setSelectedAILog] = useState<AILog | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [selectedError, setSelectedError] = useState<ErrorLog | null>(null);
@@ -188,16 +248,19 @@ export default function ObservabilityAdmin() {
     checkAuth();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (days: string = rangeDays) => {
     setLoading(true);
     try {
-      const [statsRes, analyticsRes, aiLogsRes, sessionsRes, errorsRes, breakdownRes] = await Promise.all([
+      const [statsRes, analyticsRes, aiLogsRes, sessionsRes, errorsRes, breakdownRes, errBreakdownRes, topEventsRes, sessionMetricsRes] = await Promise.all([
         fetch("/api/admin/observability/stats"),
-        fetch("/api/admin/observability/analytics?days=30"),
+        fetch(`/api/admin/observability/analytics?days=${days}`),
         fetch("/api/admin/observability/ai-logs?limit=50"),
         fetch("/api/admin/observability/sessions?limit=50"),
         fetch("/api/admin/observability/errors?limit=50"),
         fetch("/api/admin/observability/ai-breakdown"),
+        fetch(`/api/admin/observability/error-breakdown?days=${days}`),
+        fetch(`/api/admin/observability/top-events?days=${days}`),
+        fetch(`/api/admin/observability/session-metrics?days=${days}`),
       ]);
 
       if (statsRes.status === 401 || statsRes.status === 403) {
@@ -205,13 +268,16 @@ export default function ObservabilityAdmin() {
         return;
       }
 
-      const [statsData, analyticsData, aiLogsData, sessionsData, errorsData, breakdownData] = await Promise.all([
+      const [statsData, analyticsData, aiLogsData, sessionsData, errorsData, breakdownData, errBreakdownData, topEventsData, sessionMetricsData] = await Promise.all([
         statsRes.json(),
         analyticsRes.json(),
         aiLogsRes.json(),
         sessionsRes.json(),
         errorsRes.json(),
         breakdownRes.json(),
+        errBreakdownRes.json(),
+        topEventsRes.json(),
+        sessionMetricsRes.json(),
       ]);
 
       setStats(statsData);
@@ -220,6 +286,9 @@ export default function ObservabilityAdmin() {
       setSessions(sessionsData);
       setErrors(errorsData);
       setAIBreakdown(breakdownData);
+      setErrorBreakdown(errBreakdownData);
+      setTopEvents(topEventsData);
+      setSessionMetrics(sessionMetricsData);
     } catch (error: any) {
       console.error("Error loading data:", error);
       toast({ title: "Error", description: "Failed to load observability data", variant: "destructive" });
@@ -235,6 +304,11 @@ export default function ObservabilityAdmin() {
       setLoading(false);
     }
   }, [authChecked, user]);
+
+  const handleRangeChange = (days: string) => {
+    setRangeDays(days);
+    loadData(days);
+  };
 
   const handleLogin = () => {
     window.location.href = `/auth/google?returnTo=${encodeURIComponent("/observability-admin")}`;
@@ -380,7 +454,17 @@ export default function ObservabilityAdmin() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={loadData} className="gap-2">
+            <Select value={rangeDays} onValueChange={handleRangeChange}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_RANGES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => loadData()} className="gap-2">
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
@@ -496,6 +580,157 @@ export default function ObservabilityAdmin() {
           </div>
         )}
 
+        {/* Trend Charts */}
+        {analytics.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Sessions & Unique Visitors
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={analytics} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <ChartTooltip
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Area type="monotone" dataKey="sessions" name="Sessions" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.25} strokeWidth={2} dot={false} />
+                    <Area type="monotone" dataKey="uniqueVisitors" name="Unique Visitors" stroke="#22c55e" fill="#22c55e" fillOpacity={0.2} strokeWidth={2} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Cpu className="h-4 w-4" />
+                  AI Requests & Success Rate
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={220}>
+                  <ComposedChart data={analytics} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
+                    <ChartTooltip
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar yAxisId="left" dataKey="aiRequests" name="AI Requests" fill="#a855f7" radius={[2, 2, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="aiSuccessRate" name="Success Rate %" stroke="#10b981" strokeWidth={2} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MousePointerClick className="h-4 w-4" />
+                  Events
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={analytics} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <ChartTooltip
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                    />
+                    <Area type="monotone" dataKey="events" name="Events" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.25} strokeWidth={2} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Errors
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={analytics} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <ChartTooltip
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                    />
+                    <Area type="monotone" dataKey="errors" name="Errors" stroke="#ef4444" fill="#ef4444" fillOpacity={0.25} strokeWidth={2} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Session Engagement */}
+        {sessionMetrics && (
+          <Card className="mb-8">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Timer className="h-4 w-4" />
+                Session Engagement ({TIME_RANGES.find(r => r.value === rangeDays)?.label.toLowerCase()})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Avg Session</div>
+                  <div className="text-xl font-bold">{sessionMetrics.avgDurationMinutes} min</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Pages / Session</div>
+                  <div className="text-xl font-bold">{sessionMetrics.avgPageViews}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Actions / Session</div>
+                  <div className="text-xl font-bold">{sessionMetrics.avgActions}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Bounce Rate</div>
+                  <div className="text-xl font-bold">{sessionMetrics.bounceRate}%</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Signed-in Sessions</div>
+                  <div className="text-xl font-bold">
+                    {sessionMetrics.totalSessions > 0
+                      ? Math.round((sessionMetrics.signedInSessions / sessionMetrics.totalSessions) * 100)
+                      : 0}%
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Monitor className="h-3 w-3" /> Browsers / Devices
+                  </div>
+                  <div className="text-xs mt-1 space-y-0.5">
+                    {sessionMetrics.browsers.slice(0, 3).map((b) => (
+                      <div key={b.browser}>{b.browser}: <span className="font-medium">{b.count}</span></div>
+                    ))}
+                    {sessionMetrics.devices.map((d) => (
+                      <div key={d.device}>{d.device}: <span className="font-medium">{d.count}</span></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* AI Breakdown */}
         {Object.keys(aiBreakdown).length > 0 && (
           <Card className="mb-8">
@@ -551,7 +786,49 @@ export default function ObservabilityAdmin() {
               <AlertTriangle className="h-4 w-4" />
               Errors ({errors.length})
             </TabsTrigger>
+            <TabsTrigger value="top-events" className="gap-2">
+              <MousePointerClick className="h-4 w-4" />
+              Top Events
+            </TabsTrigger>
           </TabsList>
+
+          {/* Top Events Tab */}
+          <TabsContent value="top-events">
+            <Card>
+              <CardHeader>
+                <CardTitle>Top Events</CardTitle>
+                <CardDescription>
+                  Most frequent events in the selected time range
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {topEvents.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">No events in this range</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Event</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead className="text-right">Count</TableHead>
+                        <TableHead className="text-right">Unique Visitors</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {topEvents.map((event) => (
+                        <TableRow key={`${event.type}-${event.name}`}>
+                          <TableCell className="font-medium">{event.name}</TableCell>
+                          <TableCell><Badge variant="outline">{event.type}</Badge></TableCell>
+                          <TableCell className="text-right font-mono">{event.count}</TableCell>
+                          <TableCell className="text-right font-mono">{event.uniqueVisitors}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* AI Logs Tab */}
           <TabsContent value="ai-logs">
@@ -727,6 +1004,50 @@ export default function ObservabilityAdmin() {
 
           {/* Errors Tab */}
           <TabsContent value="errors">
+            {errorBreakdown && errorBreakdown.topMessages.length > 0 && (
+              <Card className="mb-4">
+                <CardHeader>
+                  <CardTitle className="text-base">Error Breakdown</CardTitle>
+                  <CardDescription>
+                    Grouped by message for the selected time range
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {errorBreakdown.byType.map((t) => (
+                      <Badge key={t.type} variant="destructive" className="text-xs">
+                        {t.type}: {t.count}
+                      </Badge>
+                    ))}
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16 text-right">Count</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Message</TableHead>
+                        <TableHead className="whitespace-nowrap">Last Seen</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {errorBreakdown.topMessages.map((m, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-right font-mono font-bold">{m.count}</TableCell>
+                          <TableCell><Badge variant="outline">{m.type}</Badge></TableCell>
+                          <TableCell className="max-w-[400px]">
+                            <span className="text-sm" title={m.message}>
+                              {m.message.substring(0, 120)}{m.message.length > 120 && "..."}
+                            </span>
+                            {m.endpoint && <div className="text-xs text-muted-foreground font-mono">{m.endpoint}</div>}
+                          </TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">{formatDate(m.latest)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardHeader>
                 <CardTitle>Recent Errors</CardTitle>
