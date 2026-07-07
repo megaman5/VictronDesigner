@@ -71,7 +71,9 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
         break;
       case "quattro":
         category = "Inverter/Charger";
-        description = `Victron Quattro ${comp.properties.power || ""}W Inverter/Charger (2x AC in)`;
+        description = comp.properties.power
+          ? `Victron Quattro ${comp.properties.power}W Inverter/Charger (2x AC in)`
+          : "Victron Quattro Inverter/Charger (2x AC in)";
         break;
       case "argofet":
         category = "Battery Isolators";

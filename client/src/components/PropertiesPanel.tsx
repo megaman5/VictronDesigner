@@ -173,7 +173,7 @@ function calculateBusBarTotals(
         totalCurrent += loadCurrent;
         totalWatts += loadCurrent * (props.voltage || voltage);
       }
-    } else if (otherComponent.type === 'inverter' || otherComponent.type === 'phoenix-inverter' || otherComponent.type === 'quattro') {
+    } else if (otherComponent.type === 'inverter' || otherComponent.type === 'phoenix-inverter' || otherComponent.type === 'multiplus' || otherComponent.type === 'quattro') {
       // Inverters draw current from DC side
       const inverterWatts = props.watts || props.powerRating || 0;
       if (inverterWatts > 0) {
