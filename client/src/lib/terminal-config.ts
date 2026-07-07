@@ -48,6 +48,48 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     ],
   },
 
+  quattro: {
+    width: 240,
+    height: 150,
+    terminals: [
+      { id: "ac-in-1-hot", type: "ac-in", label: "AC1 L", x: 20, y: 158, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "ac-in-1-neutral", type: "ac-in", label: "AC1 N", x: 40, y: 158, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "ac-in-1-ground", type: "ground", label: "AC1 G", x: 60, y: 158, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+
+      { id: "ac-in-2-hot", type: "ac-in", label: "AC2 L", x: 85, y: 158, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "ac-in-2-neutral", type: "ac-in", label: "AC2 N", x: 105, y: 158, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "ac-in-2-ground", type: "ground", label: "AC2 G", x: 125, y: 158, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+
+      { id: "ac-out-hot", type: "ac-out", label: "AC OUT L", x: 150, y: 158, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "ac-out-neutral", type: "ac-out", label: "AC OUT N", x: 170, y: 158, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "ac-out-ground", type: "ground", label: "AC OUT G", x: 190, y: 158, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+
+      { id: "dc-positive", type: "positive", label: "DC+", x: 212, y: 158, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "dc-negative", type: "negative", label: "DC-", x: 232, y: 158, color: "hsl(var(--wire-negative))", orientation: "bottom" },
+    ],
+  },
+
+  argofet: {
+    width: 150,
+    height: 110,
+    terminals: [
+      { id: "input-positive", type: "positive", label: "ALT+", x: 8, y: 55, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "out-1-positive", type: "positive", label: "BAT1+", x: 142, y: 30, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "out-2-positive", type: "positive", label: "BAT2+", x: 142, y: 55, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "out-3-positive", type: "positive", label: "BAT3+", x: 142, y: 80, color: "hsl(var(--wire-positive))", orientation: "right" },
+    ],
+  },
+
+  "cyrix-ct": {
+    width: 130,
+    height: 90,
+    terminals: [
+      { id: "batt-1-positive", type: "positive", label: "BAT1+", x: 8, y: 45, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "batt-2-positive", type: "positive", label: "BAT2+", x: 122, y: 45, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "ground", type: "negative", label: "GND", x: 65, y: 98, color: "hsl(var(--wire-negative))", orientation: "bottom" },
+    ],
+  },
+
   mppt: {
     width: 160,
     height: 130,

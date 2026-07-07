@@ -30,14 +30,13 @@ VictronDesigner.com`,
 
 Thanks for the detailed note!
 
-Two of your points are now done:
+Everything you asked for is now in:
 
-1. Series batteries (2x12V → 24V) are now first-class. Place two 12V batteries, set each to 12V, then wire battery 1 "positive" to battery 2 "negative" to make the series link. Set the system voltage to 24V and you're set. The battery panel now shows the combined bank — voltage, amp-hours, and total kWh — and the design checks understand the bank, so you won't get false "voltage mismatch" or "unfused cable" warnings on the series link. For 24V banks built from 12V blocks, the tool also suggests adding a Victron Battery Balancer.
+1. Dedicated Quattro, Argo FET, and Cyrix-CT components — all three are in the Victron section of the component library, with proper terminals (the Quattro has both AC inputs).
 
-2. The "Add Custom Component" button now works — it opens a dialog where you name the part and drop a generic, fully wireable component on the canvas.
+2. Series batteries (2x12V → 24V) are now first-class. Place two 12V batteries, set each to 12V, then wire battery 1 "positive" to battery 2 "negative" to make the series link — the polarity check now recognizes battery series links instead of blocking them. Set the system voltage to 24V and you're set. The battery panel shows the combined bank, and for 24V banks built from 12V blocks the tool also suggests adding a Victron Battery Balancer.
 
-Still on the to-do list, and I want to be honest about it:
-- Dedicated Quattro / Argo FET / Cyrix-CT symbols. Until those land, you can add each one as a named custom component and wire it up like anything else.
+3. The "Add Custom Component" button now works — it opens a dialog where you name the part and drop a generic, fully wireable component on the canvas, for anything that still doesn't have its own symbol.
 
 I really appreciate the feedback — it's exactly the kind that shapes the tool. If you give the series wiring a try, I'd love to know how it works for your setup.
 
@@ -77,6 +76,23 @@ Thanks for the kind words and the clear wishlist — most of it is now in:
 On the Lynx items: as you suggested, those can be represented today with a busbar plus a fuse, so they're lower priority — but noted for a proper symbol later.
 
 Thanks again for helping make the tool better.
+
+Sean
+VictronDesigner.com`,
+  },
+
+  // NEC vs ABYC/SAE wire ampacity standards
+  "b39637c9-04d5-45cc-9cd1-25e1acbda649": {
+    subject: "Re: your VictronDesigner feedback — now using ABYC marine ampacity tables",
+    body: `Hi,
+
+Thanks — you were absolutely right, and this is fixed.
+
+The ampacity tables were NEC Table 310.16 values (conductors in conduit, building wiring, capped at 90°C insulation). The calculator now uses the ABYC E-11 ratings for single conductors in free air, with a 105°C insulation column as the default — which matches typical UL 1426 marine cable. Temperature correction follows the ABYC approach too, so at a 50°C engine-space ambient you get the familiar ~0.85 factor for 105°C wire.
+
+Voltage drop (3% per ABYC) still governs most low-voltage runs, so many recommendations won't change — but the ampacity limits are no longer overly conservative, and the numbers now come from the right standard.
+
+Thanks for keeping us honest on this one.
 
 Sean
 VictronDesigner.com`,

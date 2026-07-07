@@ -345,8 +345,16 @@ export function SchematicCanvas({
           const isPos1 = ['positive', 'pv-positive'].includes(t1.type);
           const isPos2 = ['positive', 'pv-positive'].includes(t2.type);
           if (isPos1 !== isPos2) {
-            valid = false;
-            errorMsg = `Cannot connect ${t1.type} to ${t2.type}. Polarity mismatch!`;
+            // Series links are legitimate: battery + to battery - (e.g. 2x12V
+            // in series for a 24V bank) or panel + to panel - to add voltage.
+            const startComp = components.find(c => c.id === wireStart.componentId);
+            const seriesAllowed =
+              (startComp?.type === 'battery' && component.type === 'battery') ||
+              (startComp?.type === 'solar-panel' && component.type === 'solar-panel');
+            if (!seriesAllowed) {
+              valid = false;
+              errorMsg = `Cannot connect ${t1.type} to ${t2.type}. Polarity mismatch!`;
+            }
           }
         }
         // 4. AC Polarity (L/N)
@@ -955,8 +963,8 @@ export function SchematicCanvas({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
-      <div className="border-b p-2 flex items-center gap-2 bg-background">
+    <div className="flex-1 min-w-0 flex flex-col bg-background">
+      <div className="border-b p-2 flex items-center gap-2 flex-wrap bg-background">
         <Button
           variant={showGrid ? "default" : "outline"}
           size="sm"

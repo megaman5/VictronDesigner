@@ -331,7 +331,7 @@ export class DesignValidator {
     }
 
     // Check that all loads connect to system-minus (not directly to battery negative)
-    const loads = this.components.filter(c => c.type === "dc-load" || c.type === "multiplus");
+    const loads = this.components.filter(c => c.type === "dc-load" || c.type === "multiplus" || c.type === "quattro");
     const loadsConnectedDirectly = loads.filter(load => {
       return this.wires.some(
         w => w.fromComponentId === battery.id &&
@@ -618,7 +618,7 @@ export class DesignValidator {
   private validateDCACMingling(): void {
     // Check that DC and AC loads aren't mixed on same bus bar or circuit
     // (already covered in validateBusBarPolarity, but this is more general)
-    const acComponents = this.components.filter(c => c.type === "ac-load" || c.type === "multiplus");
+    const acComponents = this.components.filter(c => c.type === "ac-load" || c.type === "multiplus" || c.type === "quattro");
     const dcComponents = this.components.filter(c => c.type === "dc-load" || c.type === "battery");
 
     // This is more of an informational check
@@ -1000,7 +1000,7 @@ export class DesignValidator {
           let loadA = 0;
           let sourceA = 0;
           for (const c of this.components) {
-            if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter") {
+            if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter" || c.type === "quattro") {
               loadA += calculateInverterDCInput(c.id, this.components, this.wires, this.systemVoltage).dcInputCurrent;
             } else if (c.type === "dc-load") {
               const w = (c.properties?.watts || c.properties?.power || 0) as number;
@@ -1040,7 +1040,7 @@ export class DesignValidator {
           }
           
           // If this is an inverter, calculate DC input from connected AC loads
-          if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "inverter") {
+          if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "quattro" || comp.type === "inverter") {
             const inverterDC = calculateInverterDCInput(comp.id, this.components, this.wires, this.systemVoltage);
             if (inverterDC.dcCurrent > 0) {
               return inverterDC.dcCurrent;
@@ -1083,7 +1083,7 @@ export class DesignValidator {
               if (otherComp.type === "ac-load" || otherComp.type === "ac-panel") continue;
               
               // For inverters, get DC input current directly
-              if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
+              if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter" || otherComp.type === "quattro") {
                 const inverterDC = calculateInverterDCInput(otherComp.id, this.components, this.wires, this.systemVoltage);
                 totalCurrent += inverterDC.dcInputCurrent;
               } 
@@ -1217,14 +1217,14 @@ export class DesignValidator {
         };
         
         // Check if this is an inverter DC connection
-        const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+        const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter") &&
                             (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
-                            (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+                            (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro" || toComp?.type === "inverter") &&
                             (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
         
         if (isInverterDC) {
           // Calculate DC input from connected AC loads
-          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
+          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter"
             ? fromComp.id
             : toComp?.id;
           if (inverterId) {
@@ -1282,7 +1282,7 @@ export class DesignValidator {
               if (totalWatts > 0) {
                 current = totalWatts / acVoltage;
               }
-            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // For inverter AC output wires (hot, neutral, or ground), use AC load current
               // Note: Only hot and neutral carry current, but we detect all for completeness
               const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
@@ -1292,7 +1292,7 @@ export class DesignValidator {
                   ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
                   : 0;
               }
-            } else if (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            } else if (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // For inverter AC output wires (from panel to inverter) - this shouldn't happen, but handle it
               const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
               if (inverterDC.acLoadWatts > 0) {
@@ -1301,7 +1301,7 @@ export class DesignValidator {
                   ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
                   : 0;
               }
-            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // For inverter → AC panel wires, calculate from connected AC loads through the panel
               const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
               if (inverterDC.acLoadWatts > 0) {
@@ -1334,7 +1334,7 @@ export class DesignValidator {
               }
             }
             // For inverter → transfer switch wires
-            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && 
+            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && 
                      toComp && toComp.type === "transfer-switch" && 
                      (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // Find what's connected to transfer switch output
@@ -1372,7 +1372,7 @@ export class DesignValidator {
               }
             }
             // For direct inverter → AC load wires (no panel in between)
-            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
               const acVoltage = getACVoltage(toComp) || 120;
               if (loadWatts > 0) {
@@ -1383,7 +1383,7 @@ export class DesignValidator {
               }
             }
             // For AC load → inverter wires (reverse direction)
-            else if (fromComp && fromComp.type === "ac-load" && toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            else if (fromComp && fromComp.type === "ac-load" && toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
               const acVoltage = getACVoltage(fromComp) || 120;
               if (loadWatts > 0) {
@@ -1462,7 +1462,7 @@ export class DesignValidator {
                 if (otherComp.type === "ac-load" || otherComp.type === "ac-panel") continue;
                 
                 // For inverters, get DC input current (this is a load)
-                if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
+                if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter" || otherComp.type === "quattro") {
                   const inverterDC = calculateInverterDCInput(otherComp.id, this.components, this.wires, this.systemVoltage);
                   totalLoadCurrent += inverterDC.dcInputCurrent;
                 }
@@ -1570,7 +1570,7 @@ export class DesignValidator {
                 }
               }
               // For inverters, get DC input current
-              else if (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") {
+              else if (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") {
                 const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
                 current = inverterDC.dcInputCurrent;
               }
@@ -1690,7 +1690,7 @@ export class DesignValidator {
                       if (connComp.type === "ac-load" || connComp.type === "ac-panel") continue;
                       
                       // For inverters, get DC input current (load)
-                      if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter") {
+                      if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter" || connComp.type === "quattro") {
                         const inverterDC = calculateInverterDCInput(connComp.id, this.components, this.wires, this.systemVoltage);
                         totalLoadCurrent += inverterDC.dcInputCurrent;
                       }
@@ -1746,7 +1746,7 @@ export class DesignValidator {
                   if (connComp.type === "ac-load" || connComp.type === "ac-panel") continue;
                   
                   // For inverters, get DC input current (load)
-                  if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter") {
+                  if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter" || connComp.type === "quattro") {
                     const inverterDC = calculateInverterDCInput(connComp.id, this.components, this.wires, this.systemVoltage);
                     totalLoadCurrent += inverterDC.dcInputCurrent;
                   }
@@ -1822,7 +1822,7 @@ export class DesignValidator {
                         if (connectedComp.type === "ac-load" || connectedComp.type === "ac-panel") continue;
                         
                         // For inverters, get DC input current (load)
-                        if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter") {
+                        if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter" || connectedComp.type === "quattro") {
                           const inverterDC = calculateInverterDCInput(connectedComp.id, this.components, this.wires, this.systemVoltage);
                           totalLoadCurrent += inverterDC.dcInputCurrent;
                         }
@@ -1905,7 +1905,7 @@ export class DesignValidator {
       if (currentPerWire > 0) {
         // Normalize gauge format (remove " AWG" suffix if present)
         const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
-        const maxAmpacity = getWireAmpacity(normalizedGauge, "75C", 30, 1.0);
+        const maxAmpacity = getWireAmpacity(normalizedGauge, "105C", 30, 1.0);
 
         if (maxAmpacity === 0) {
           this.issues.push({
@@ -2041,10 +2041,10 @@ export class DesignValidator {
               }
             }
             // For inverters (DC negative), use DC input current
-            else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") {
+            else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro") {
               const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
               current = inverterDC.dcInputCurrent;
-            } else if (toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") {
+            } else if (toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro") {
               const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
               current = inverterDC.dcInputCurrent;
             }
@@ -2121,11 +2121,11 @@ export class DesignValidator {
         // For AC wires, use AC voltage (110V/120V/220V/230V)
         else if (isACWire) {
           // For inverter AC output wires, get AC voltage from connected loads
-          if ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") && 
+          if ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro") && 
               (wire.polarity === "hot" || wire.polarity === "neutral")) {
             const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
             voltage = inverterDC.acVoltage;
-          } else if ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") && 
+          } else if ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro") && 
                      (wire.polarity === "hot" || wire.polarity === "neutral")) {
             const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
             voltage = inverterDC.acVoltage;
@@ -2744,7 +2744,7 @@ export class DesignValidator {
     }
 
     // Check AC loads vs inverter capacity
-    const inverters = this.components.filter(c => c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter");
+    const inverters = this.components.filter(c => c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter" || c.type === "quattro");
     
     if (inverters.length > 0 && totalACLoads > 0) {
       const totalInverterCapacity = inverters.reduce((sum, inv) => {

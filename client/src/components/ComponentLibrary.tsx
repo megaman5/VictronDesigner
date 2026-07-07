@@ -18,6 +18,9 @@ interface Component {
 
 const victronComponents: Component[] = [
   { id: "multiplus", name: "MultiPlus Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "quattro", name: "Quattro Inverter/Charger", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "argofet", name: "Argo FET Isolator", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "cyrix-ct", name: "Cyrix-CT Combiner", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "phoenix-inverter", name: "Phoenix Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
   { id: "mppt", name: "MPPT Controller", icon: <Sun className="h-5 w-5" />, category: "victron" },
   { id: "orion-dc-dc", name: "Orion DC-DC Charger", icon: <Battery className="h-5 w-5" />, category: "victron" },
@@ -60,7 +63,7 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
   };
 
   return (
-    <div className="w-80 border-r bg-card flex flex-col h-full">
+    <div className="w-80 shrink-0 border-r bg-card flex flex-col h-full">
       <div className="p-4 border-b">
         <h2 className="font-semibold text-lg">Components</h2>
         <p className="text-sm text-muted-foreground mt-1">

@@ -1,22 +1,27 @@
 import type { WireCalculation } from "@shared/schema";
 
-// Wire gauge data based on ABYC/NEC standards
+export type InsulationType = "60C" | "75C" | "90C" | "105C";
+
+// Wire gauge data based on ABYC E-11 (marine) standards
 // Resistance in ohms per 1000 feet at 75°C for copper
+// Ampacity from ABYC E-11 Table VI: single conductor in free air,
+// 30°C ambient, outside engine spaces. Marine cable (UL 1426, e.g.
+// Victron battery cable) is typically 105°C rated.
 const WIRE_DATA = {
-  "4/0": { resistance: 0.0490, ampacity60C: 195, ampacity75C: 230, ampacity90C: 260 },
-  "3/0": { resistance: 0.0618, ampacity60C: 165, ampacity75C: 200, ampacity90C: 225 },
-  "2/0": { resistance: 0.0779, ampacity60C: 145, ampacity75C: 175, ampacity90C: 195 },
-  "1/0": { resistance: 0.0983, ampacity60C: 125, ampacity75C: 150, ampacity90C: 170 },
-  "1": { resistance: 0.1240, ampacity60C: 110, ampacity75C: 130, ampacity90C: 145 },
-  "2": { resistance: 0.1563, ampacity60C: 95, ampacity75C: 115, ampacity90C: 130 },
-  "4": { resistance: 0.2485, ampacity60C: 70, ampacity75C: 85, ampacity90C: 95 },
-  "6": { resistance: 0.3951, ampacity60C: 55, ampacity75C: 65, ampacity90C: 75 },
-  "8": { resistance: 0.6282, ampacity60C: 40, ampacity75C: 50, ampacity90C: 55 },
-  "10": { resistance: 0.9989, ampacity60C: 30, ampacity75C: 35, ampacity90C: 40 },
-  "12": { resistance: 1.588, ampacity60C: 25, ampacity75C: 25, ampacity90C: 30 },
-  "14": { resistance: 2.525, ampacity60C: 20, ampacity75C: 20, ampacity90C: 25 },
-  "16": { resistance: 4.016, ampacity60C: 18, ampacity75C: 18, ampacity90C: 18 },
-  "18": { resistance: 6.385, ampacity60C: 14, ampacity75C: 14, ampacity90C: 14 },
+  "4/0": { resistance: 0.0490, ampacity60C: 300, ampacity75C: 360, ampacity90C: 385, ampacity105C: 445 },
+  "3/0": { resistance: 0.0618, ampacity60C: 260, ampacity75C: 310, ampacity90C: 330, ampacity105C: 385 },
+  "2/0": { resistance: 0.0779, ampacity60C: 225, ampacity75C: 265, ampacity90C: 285, ampacity105C: 330 },
+  "1/0": { resistance: 0.0983, ampacity60C: 195, ampacity75C: 230, ampacity90C: 245, ampacity105C: 285 },
+  "1": { resistance: 0.1240, ampacity60C: 165, ampacity75C: 195, ampacity90C: 210, ampacity105C: 245 },
+  "2": { resistance: 0.1563, ampacity60C: 140, ampacity75C: 170, ampacity90C: 180, ampacity105C: 210 },
+  "4": { resistance: 0.2485, ampacity60C: 105, ampacity75C: 125, ampacity90C: 135, ampacity105C: 160 },
+  "6": { resistance: 0.3951, ampacity60C: 80, ampacity75C: 95, ampacity90C: 100, ampacity105C: 120 },
+  "8": { resistance: 0.6282, ampacity60C: 55, ampacity75C: 65, ampacity90C: 70, ampacity105C: 80 },
+  "10": { resistance: 0.9989, ampacity60C: 40, ampacity75C: 40, ampacity90C: 55, ampacity105C: 60 },
+  "12": { resistance: 1.588, ampacity60C: 25, ampacity75C: 25, ampacity90C: 40, ampacity105C: 45 },
+  "14": { resistance: 2.525, ampacity60C: 20, ampacity75C: 20, ampacity90C: 30, ampacity105C: 35 },
+  "16": { resistance: 4.016, ampacity60C: 15, ampacity75C: 15, ampacity90C: 25, ampacity105C: 25 },
+  "18": { resistance: 6.385, ampacity60C: 10, ampacity75C: 10, ampacity90C: 20, ampacity105C: 20 },
 };
 
 export type WireGaugeFormat = "awg" | "metric";
@@ -60,17 +65,19 @@ export function formatWireGauge(gauge: string | undefined, format: WireGaugeForm
   return `${normalizedGauge} AWG`;
 }
 
-function getTemperatureDerating(tempC: number): number {
-  if (tempC <= 25) return 1.08;
-  if (tempC <= 30) return 1.00;
-  if (tempC <= 35) return 0.91;
-  if (tempC <= 40) return 0.82;
-  if (tempC <= 45) return 0.71;
-  if (tempC <= 50) return 0.58;
-  return 0.41;
+// ABYC ampacity ratings assume 30°C ambient. For hotter locations apply
+// the standard correction sqrt((Trated - Tambient) / (Trated - 30)).
+// This reproduces the published ABYC/NEC correction tables — e.g. for
+// 105°C wire at 50°C (ABYC engine-space ambient) it gives 0.86, matching
+// ABYC's 0.85 engine-space factor.
+function getTemperatureDerating(tempC: number, insulationType: InsulationType = "105C"): number {
+  const ratedTemp = parseInt(insulationType, 10);
+  if (tempC >= ratedTemp) return 0;
+  if (tempC <= 30) return 1.0;
+  return Math.sqrt((ratedTemp - tempC) / (ratedTemp - 30));
 }
 
-function getAmpacity(gauge: string, insulationType: "60C" | "75C" | "90C"): number {
+function getAmpacity(gauge: string, insulationType: InsulationType): number {
   const data = WIRE_DATA[gauge as keyof typeof WIRE_DATA];
   if (!data) return 0;
 
@@ -78,7 +85,8 @@ function getAmpacity(gauge: string, insulationType: "60C" | "75C" | "90C"): numb
     case "60C": return data.ampacity60C;
     case "75C": return data.ampacity75C;
     case "90C": return data.ampacity90C;
-    default: return data.ampacity75C;
+    case "105C": return data.ampacity105C;
+    default: return data.ampacity105C;
   }
 }
 
@@ -106,7 +114,7 @@ export function calculateWireSize(params: {
   voltage: number;
   temperatureC?: number;
   conductorMaterial?: "copper" | "aluminum";
-  insulationType?: "60C" | "75C" | "90C";
+  insulationType?: InsulationType;
   bundlingFactor?: number;
   maxVoltageDrop?: number;
   currentGauge?: string; // Optional: current wire gauge - will never recommend smaller
@@ -117,7 +125,7 @@ export function calculateWireSize(params: {
     voltage,
     temperatureC = 30,
     conductorMaterial = "copper",
-    insulationType = "75C",
+    insulationType = "105C",
     bundlingFactor = 1.0,
     maxVoltageDrop = 3.0, // 3% per ABYC standard
     currentGauge,
@@ -130,7 +138,7 @@ export function calculateWireSize(params: {
   const maxVDropVolts = (voltage * maxVoltageDrop) / 100;
 
   // Temperature derating factor
-  const tempDeratingFactor = getTemperatureDerating(temperatureC);
+  const tempDeratingFactor = getTemperatureDerating(temperatureC, insulationType);
 
   // Find the smallest gauge that meets both voltage drop and ampacity requirements
   // Sort gauges from smallest to largest (by ampacity/resistance)
@@ -168,7 +176,7 @@ export function calculateWireSize(params: {
         actualVoltageDrop = vDrop;
         voltageDropPercent = vDropPercent;
         status = "valid";
-        message = "Wire size meets ABYC/NEC standards.";
+        message = "Wire size meets ABYC E-11 marine standards.";
       } else if (currentGaugeMeetsRequirements && isNearLimit) {
         // Current gauge meets requirements but is close to limit - recommend larger
         // Don't set recommendedGauge here, let the loop below find a larger one
@@ -220,7 +228,7 @@ export function calculateWireSize(params: {
           message = "Wire size is near maximum capacity. Consider larger gauge.";
         } else {
           status = "valid";
-          message = "Wire size meets ABYC/NEC standards.";
+          message = "Wire size meets ABYC E-11 marine standards.";
         }
         break; // Found the smallest gauge that works (and is > current gauge)
       }

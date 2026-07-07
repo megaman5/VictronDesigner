@@ -290,7 +290,10 @@ CANVAS: 2000px wide × 1500px tall
 
 COMPONENT DIMENSIONS & SPACING:
 - multiplus: 160×180px
-- mppt: 140×150px  
+- quattro: 240×150px (inverter/charger with 2 AC inputs, e.g. shore + generator)
+- argofet: 150×110px (Argo FET battery isolator - one alternator charges 2-3 batteries)
+- cyrix-ct: 130×90px (battery combiner relay - parallels two batteries while charging)
+- mppt: 140×150px
 - cerbo: 160×140px
 - bmv: 140×140px
 - smartshunt: 140×130px
@@ -948,6 +951,9 @@ DO NOT regenerate wires that are already correct and have no errors. Preserve th
 
 COMPONENT TERMINALS (EXACT NAMES):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- quattro: "ac-in-1-hot", "ac-in-1-neutral", "ac-in-1-ground", "ac-in-2-hot", "ac-in-2-neutral", "ac-in-2-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- argofet: "input-positive" (from alternator), "out-1-positive", "out-2-positive", "out-3-positive" (to battery positives)
+- cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - bmv: "data"
@@ -1500,6 +1506,9 @@ CANVAS DIMENSIONS: 2000px width × 1500px height (0,0 is top-left corner)
 
 COMPONENT DIMENSIONS (width × height):
 - multiplus: 180×140px
+- quattro: 240×150px (inverter/charger with 2 AC inputs, e.g. shore + generator)
+- argofet: 150×110px (Argo FET battery isolator - one alternator charges 2-3 batteries)
+- cyrix-ct: 130×90px (battery combiner relay - parallels two batteries while charging)
 - mppt: 160×130px
 - cerbo: 180×120px
 - bmv: 140×140px
@@ -1536,6 +1545,9 @@ LAYOUT RULES:
 
 TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- quattro: "ac-in-1-hot", "ac-in-1-neutral", "ac-in-1-ground", "ac-in-2-hot", "ac-in-2-neutral", "ac-in-2-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- argofet: "input-positive" (from alternator), "out-1-positive", "out-2-positive", "out-3-positive" (to battery positives)
+- cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - smartshunt: "negative", "system-minus", "data"
@@ -2071,6 +2083,9 @@ CANVAS DIMENSIONS: 2000px width × 1500px height (0,0 is top-left corner)
 
 COMPONENT DIMENSIONS (width × height):
 - multiplus: 180×140px
+- quattro: 240×150px (inverter/charger with 2 AC inputs, e.g. shore + generator)
+- argofet: 150×110px (Argo FET battery isolator - one alternator charges 2-3 batteries)
+- cyrix-ct: 130×90px (battery combiner relay - parallels two batteries while charging)
 - mppt: 160×130px
 - cerbo: 180×120px
 - bmv: 140×140px
@@ -2107,6 +2122,9 @@ LAYOUT RULES:
 
 TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- quattro: "ac-in-1-hot", "ac-in-1-neutral", "ac-in-1-ground", "ac-in-2-hot", "ac-in-2-neutral", "ac-in-2-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- argofet: "input-positive" (from alternator), "out-1-positive", "out-2-positive", "out-3-positive" (to battery positives)
+- cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
 - mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - smartshunt: "negative", "system-minus", "data"

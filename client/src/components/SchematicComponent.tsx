@@ -97,6 +97,85 @@ export function SchematicComponent({
           </svg>
         );
 
+      case "quattro":
+        return (
+          <svg width="240" height="150" viewBox="0 0 240 150">
+            {/* Main blue housing */}
+            <rect x="10" y="10" width="220" height="130" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Top label area */}
+            <rect x="20" y="20" width="200" height="30" fill="hsl(var(--victron-blue-light))" rx="4" />
+            <text x="120" y="32" textAnchor="middle" className="fill-white text-xs font-bold">Quattro</text>
+            <text x="120" y="44" textAnchor="middle" className="fill-white text-[10px] opacity-90">Inverter/Charger · 2x AC In</text>
+
+            {/* LED indicators */}
+            <circle cx="30" cy="65" r="4" fill="#00ff00" className="opacity-80" />
+            <circle cx="45" cy="65" r="4" fill="#ffaa00" className="opacity-80" />
+            <circle cx="60" cy="65" r="4" fill="#ff0000" className="opacity-80" />
+
+            {/* Connection terminals */}
+            <rect x="20" y="85" width="200" height="45" fill="black" fillOpacity="0.2" rx="3" />
+            <text x="45" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">AC IN 1</text>
+            <text x="110" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">AC IN 2</text>
+            <text x="175" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">AC OUT</text>
+            <text x="217" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">DC</text>
+            <circle cx="45" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="110" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="175" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="217" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+
+            {/* Victron branding */}
+            <text x="120" y="137" textAnchor="middle" className="fill-white text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "argofet":
+        return (
+          <svg width="150" height="110" viewBox="0 0 150 110">
+            {/* Main blue housing */}
+            <rect x="10" y="10" width="130" height="90" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Label */}
+            <text x="75" y="30" textAnchor="middle" className="fill-white text-xs font-bold">Argo FET</text>
+            <text x="75" y="43" textAnchor="middle" className="fill-white text-[10px] opacity-90">Battery Isolator</text>
+
+            {/* Isolator diagram: one input feeding three outputs */}
+            <line x1="25" y1="60" x2="60" y2="60" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="35" x2="60" y2="85" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="35" x2="125" y2="35" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="60" x2="125" y2="60" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="85" x2="125" y2="85" stroke="white" strokeWidth="2" />
+            {/* FET symbols (no voltage drop diodes) */}
+            <polygon points="95,30 105,35 95,40" fill="white" />
+            <polygon points="95,55 105,60 95,65" fill="white" />
+            <polygon points="95,80 105,85 95,90" fill="white" />
+
+            <text x="30" y="53" textAnchor="middle" className="fill-white text-[8px]">ALT</text>
+
+            {/* Victron branding */}
+            <text x="75" y="97" textAnchor="middle" className="fill-white text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "cyrix-ct":
+        return (
+          <svg width="130" height="90" viewBox="0 0 130 90">
+            {/* Round relay housing on a plate */}
+            <rect x="10" y="15" width="110" height="65" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+            <circle cx="65" cy="47" r="26" fill="hsl(var(--victron-blue-light))" />
+
+            {/* Label */}
+            <text x="65" y="44" textAnchor="middle" className="fill-white text-[10px] font-bold">Cyrix-CT</text>
+            <text x="65" y="56" textAnchor="middle" className="fill-white text-[8px] opacity-90">Combiner</text>
+
+            {/* Battery posts */}
+            <circle cx="22" cy="47" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="108" cy="47" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <text x="22" y="30" textAnchor="middle" className="fill-white text-[8px]">BAT1</text>
+            <text x="108" y="30" textAnchor="middle" className="fill-white text-[8px]">BAT2</text>
+          </svg>
+        );
+
       case "mppt": {
         const mpptAmps = properties.maxCurrent || properties.amps || properties.current || 30;
         const maxPVVoltage = properties.maxPVVoltage || 100;

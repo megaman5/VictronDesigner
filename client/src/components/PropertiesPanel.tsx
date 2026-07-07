@@ -67,9 +67,12 @@ function getAvailableVoltages(componentType: string): number[] {
       // Typical Vmp values: 18V, 20V, 36V, 40V, 72V, etc.
       return [18, 20, 36, 40, 72, 100];
     case 'multiplus':
+    case 'quattro':
     case 'phoenix-inverter':
     case 'mppt':
     case 'battery-protect':
+    case 'argofet':
+    case 'cyrix-ct':
     case 'inverter':
     case 'cerbo':
     case 'smartshunt':
@@ -384,7 +387,7 @@ function calculateInverterDCInput(
   inverterEfficiency: number = 0.875
 ): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number } {
   const inverter = components.find(c => c.id === inverterId);
-  if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "inverter")) {
+  if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "quattro" && inverter.type !== "inverter")) {
     return { acLoadWatts: 0, dcInputWatts: 0, dcInputCurrent: 0, acVoltage: 120 };
   }
 
@@ -710,7 +713,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
   };
 
   return (
-    <div className="w-80 border-l bg-card flex flex-col h-full relative">
+    <div className="w-80 shrink-0 border-l bg-card flex flex-col h-full relative">
       <SaveFeedback show={showSaveFeedback} />
       <div className="p-4 border-b">
         <h2 className="font-semibold text-lg">Properties</h2>
@@ -2333,13 +2336,13 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                 const fromComp = components.find(c => c.id === selectedWire.fromComponentId);
                 const toComp = components.find(c => c.id === selectedWire.toComponentId);
                 const isInverterDCWire = 
-                  ((fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+                  ((fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter") &&
                    (selectedWire.fromTerminal === "dc-positive" || selectedWire.fromTerminal === "dc-negative")) ||
-                  ((toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+                  ((toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro" || toComp?.type === "inverter") &&
                    (selectedWire.toTerminal === "dc-positive" || selectedWire.toTerminal === "dc-negative"));
                 
                 const inverterId = isInverterDCWire 
-                  ? (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter" ? fromComp.id : toComp?.id)
+                  ? (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter" ? fromComp.id : toComp?.id)
                   : null;
                 
                 const inverterDC = inverterId 

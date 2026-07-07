@@ -11,7 +11,7 @@ export interface SolveOptions {
 }
 
 const SOURCE_TYPES = new Set(["mppt", "blue-smart-charger", "orion-dc-dc", "alternator"]);
-const INVERTER_TYPES = new Set(["inverter", "multiplus", "phoenix-inverter"]);
+const INVERTER_TYPES = new Set(["inverter", "multiplus", "phoenix-inverter", "quattro"]);
 
 /**
  * Compute the current through every DC wire by modelling the DC system as a
