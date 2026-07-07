@@ -232,14 +232,16 @@ busbar-negative: "neg-1" through "neg-6"
    - If both voltage drop and ampacity requirements met, use this gauge
 4. Return smallest gauge that meets both requirements
 
-**Wire Gauge Selection Guide** (used by AI):
+**Wire Gauge Selection Guide** (used by AI; ABYC 105°C free-air ampacity with 20% margin):
 ```
-0-25A: 10 AWG
-25-40A: 8 AWG
-40-60A: 6 AWG
-60-100A: 4 AWG
-100-150A: 2 AWG
-150-200A: 1 AWG
+0-50A: 10 AWG
+50-65A: 8 AWG
+65-100A: 6 AWG
+100-130A: 4 AWG
+130-175A: 2 AWG
+175-200A: 1 AWG
+200-235A: 1/0 AWG
+370A+: parallel 4/0 AWG runs
 ```
 
 ## AI System Generation

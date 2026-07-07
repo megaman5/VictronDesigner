@@ -40,7 +40,7 @@ export function SchematicComponent({
      if (type === 'ac-load' || type === 'dc-load') {
         return `${properties.watts || properties.power || 0}W`;
      }
-     if (type === 'inverter' || type === 'phoenix-inverter' || type === 'multiplus') {
+     if (type === 'inverter' || type === 'phoenix-inverter' || type === 'multiplus' || type === 'quattro') {
         return `${properties.watts || 3000}W`;
      }
      if (type === 'mppt') {

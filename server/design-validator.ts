@@ -865,21 +865,22 @@ export class DesignValidator {
 
   private validateWireSizing(): void {
     // Import wire data for validation
+    // maxCurrent per ABYC E-11 Table VI: 105°C insulation, free air, 30°C ambient
     const WIRE_DATA: Record<string, { maxCurrent: number; resistance: number }> = {
-      "18 AWG": { maxCurrent: 14, resistance: 6.385 },
-      "16 AWG": { maxCurrent: 18, resistance: 4.016 },
-      "14 AWG": { maxCurrent: 20, resistance: 2.525 },
-      "12 AWG": { maxCurrent: 25, resistance: 1.588 },
-      "10 AWG": { maxCurrent: 35, resistance: 0.9989 },
-      "8 AWG": { maxCurrent: 50, resistance: 0.6282 },
-      "6 AWG": { maxCurrent: 65, resistance: 0.3951 },
-      "4 AWG": { maxCurrent: 85, resistance: 0.2485 },
-      "2 AWG": { maxCurrent: 115, resistance: 0.1563 },
-      "1 AWG": { maxCurrent: 130, resistance: 0.1240 },
-      "1/0 AWG": { maxCurrent: 150, resistance: 0.0983 },
-      "2/0 AWG": { maxCurrent: 175, resistance: 0.0779 },
-      "3/0 AWG": { maxCurrent: 200, resistance: 0.0618 },
-      "4/0 AWG": { maxCurrent: 230, resistance: 0.0490 },
+      "18 AWG": { maxCurrent: 20, resistance: 6.385 },
+      "16 AWG": { maxCurrent: 25, resistance: 4.016 },
+      "14 AWG": { maxCurrent: 35, resistance: 2.525 },
+      "12 AWG": { maxCurrent: 45, resistance: 1.588 },
+      "10 AWG": { maxCurrent: 60, resistance: 0.9989 },
+      "8 AWG": { maxCurrent: 80, resistance: 0.6282 },
+      "6 AWG": { maxCurrent: 120, resistance: 0.3951 },
+      "4 AWG": { maxCurrent: 160, resistance: 0.2485 },
+      "2 AWG": { maxCurrent: 210, resistance: 0.1563 },
+      "1 AWG": { maxCurrent: 245, resistance: 0.1240 },
+      "1/0 AWG": { maxCurrent: 285, resistance: 0.0983 },
+      "2/0 AWG": { maxCurrent: 330, resistance: 0.0779 },
+      "3/0 AWG": { maxCurrent: 385, resistance: 0.0618 },
+      "4/0 AWG": { maxCurrent: 445, resistance: 0.0490 },
     };
 
     this.wires.forEach(wire => {
@@ -933,9 +934,11 @@ export class DesignValidator {
         const currentPerWire = totalCurrent / parallelCount;
         const gauges = Array.from(new Set(allParallelWires.map(w => w.gauge).filter(Boolean)));
         
-        // Check 1: Parallel wires should only be used for currents >230A (4/0 AWG max)
-        // Only flag if we can determine the current and it's <= 230A
-        if (totalCurrent > 0 && totalCurrent <= 230) {
+        // Check 1: Parallel wires should only be used when a single 4/0 AWG can't
+        // carry the current. 4/0 is 445A per ABYC 105°C free air; with the same
+        // 20% margin suggestWireGauge uses, a single run covers up to ~370A.
+        const singleRunLimit = getWireAmpacity("4/0", "105C") / 1.2;
+        if (totalCurrent > 0 && totalCurrent <= singleRunLimit) {
           this.issues.push({
             severity: "error",
             category: "wire-sizing",
@@ -2174,22 +2177,22 @@ export class DesignValidator {
 
   private suggestWireGauge(current: number): string {
     // Return a gauge that can actually handle the current (with safety margin)
-    // Using 75°C ampacity values with 30°C ambient (no derating)
+    // Using ABYC E-11 105°C free-air ampacities with 30°C ambient (no derating)
     // Add 20% safety margin
     const requiredAmpacity = current * 1.2;
-    
-    if (requiredAmpacity <= 25) return "10 AWG";  // 35A capacity
-    if (requiredAmpacity <= 40) return "8 AWG";   // 50A capacity
-    if (requiredAmpacity <= 60) return "6 AWG";   // 65A capacity
-    if (requiredAmpacity <= 85) return "4 AWG";   // 85A capacity
-    if (requiredAmpacity <= 115) return "2 AWG"; // 115A capacity
-    if (requiredAmpacity <= 130) return "1 AWG";  // 130A capacity
-    if (requiredAmpacity <= 150) return "1/0 AWG"; // 150A capacity
-    if (requiredAmpacity <= 175) return "2/0 AWG"; // 175A capacity
-    if (requiredAmpacity <= 200) return "3/0 AWG"; // 200A capacity
-    if (requiredAmpacity <= 230) return "4/0 AWG"; // 230A capacity
+
+    if (requiredAmpacity <= 60) return "10 AWG";   // 60A capacity
+    if (requiredAmpacity <= 80) return "8 AWG";    // 80A capacity
+    if (requiredAmpacity <= 120) return "6 AWG";   // 120A capacity
+    if (requiredAmpacity <= 160) return "4 AWG";   // 160A capacity
+    if (requiredAmpacity <= 210) return "2 AWG";   // 210A capacity
+    if (requiredAmpacity <= 245) return "1 AWG";   // 245A capacity
+    if (requiredAmpacity <= 285) return "1/0 AWG"; // 285A capacity
+    if (requiredAmpacity <= 330) return "2/0 AWG"; // 330A capacity
+    if (requiredAmpacity <= 385) return "3/0 AWG"; // 385A capacity
+    if (requiredAmpacity <= 445) return "4/0 AWG"; // 445A capacity
     // For currents exceeding 4/0 AWG capacity, suggest parallel runs
-    const maxAmpacity = 230; // 4/0 AWG at 75°C
+    const maxAmpacity = getWireAmpacity("4/0", "105C"); // 445A at 105°C free air
     const parallelRunsNeeded = Math.ceil(requiredAmpacity / maxAmpacity);
     return `${parallelRunsNeeded} parallel run(s) of 4/0 AWG`;
   }

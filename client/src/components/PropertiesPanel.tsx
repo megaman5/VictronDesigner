@@ -173,7 +173,7 @@ function calculateBusBarTotals(
         totalCurrent += loadCurrent;
         totalWatts += loadCurrent * (props.voltage || voltage);
       }
-    } else if (otherComponent.type === 'inverter' || otherComponent.type === 'phoenix-inverter') {
+    } else if (otherComponent.type === 'inverter' || otherComponent.type === 'phoenix-inverter' || otherComponent.type === 'quattro') {
       // Inverters draw current from DC side
       const inverterWatts = props.watts || props.powerRating || 0;
       if (inverterWatts > 0) {
@@ -244,7 +244,7 @@ function calculateSmartShuntCurrent(
       if (loadWatts > 0 && loadVoltage > 0) {
         totalCurrent += loadWatts / loadVoltage;
       }
-    } else if (wireOtherComp.type === 'inverter' || wireOtherComp.type === 'phoenix-inverter' || wireOtherComp.type === 'multiplus') {
+    } else if (wireOtherComp.type === 'inverter' || wireOtherComp.type === 'phoenix-inverter' || wireOtherComp.type === 'multiplus' || wireOtherComp.type === 'quattro') {
       // Inverters draw current from DC side
       const inverterWatts = (wireOtherComp.properties?.watts || wireOtherComp.properties?.powerRating || 0) as number;
       const inverterVoltage = wireOtherComp.properties?.voltage as number || 12;
@@ -320,7 +320,7 @@ function calculateFuseCurrent(
         }
       }
       // Loads (inverters, DC loads) - these INCREASE current through fuse
-      else if (otherComp.type === 'inverter' || otherComp.type === 'phoenix-inverter' || otherComp.type === 'multiplus') {
+      else if (otherComp.type === 'inverter' || otherComp.type === 'phoenix-inverter' || otherComp.type === 'multiplus' || otherComp.type === 'quattro') {
         // Calculate inverter DC input from AC loads
         const inverterDC = calculateInverterDCInput(otherComp.id, wires, components, systemVoltage);
         if (inverterDC.dcInputCurrent > 0) {
@@ -363,7 +363,7 @@ function calculateFuseCurrent(
       if (loadWatts > 0 && loadVoltage > 0) {
         totalLoadCurrent = loadWatts / loadVoltage;
       }
-    } else if (downstreamComp.type === 'inverter' || downstreamComp.type === 'phoenix-inverter' || downstreamComp.type === 'multiplus') {
+    } else if (downstreamComp.type === 'inverter' || downstreamComp.type === 'phoenix-inverter' || downstreamComp.type === 'multiplus' || downstreamComp.type === 'quattro') {
       const inverterDC = calculateInverterDCInput(downstreamComp.id, wires, components, systemVoltage);
       if (inverterDC.dcInputCurrent > 0) {
         totalLoadCurrent = inverterDC.dcInputCurrent;
@@ -1523,11 +1523,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
                 {/* Generic component properties (for other component types) */}
                 {/* MultiPlus Inverter/Charger properties */}
-                {selectedComponent.type === 'multiplus' && (() => {
+                {(selectedComponent.type === 'multiplus' || selectedComponent.type === 'quattro') && (() => {
                   const inverterDC = calculateInverterDCInput(selectedComponent.id, wires, components, voltage);
                   return (
                     <div className="space-y-4">
-                      <h3 className="text-sm font-medium">MultiPlus Specifications</h3>
+                      <h3 className="text-sm font-medium">{selectedComponent.type === 'quattro' ? 'Quattro' : 'MultiPlus'} Specifications</h3>
                       <div className="space-y-2">
                         <Label>AC Output Rating (W)</Label>
                         <Input

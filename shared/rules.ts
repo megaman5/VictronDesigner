@@ -55,6 +55,8 @@ export const RULES: WiringRule[] = [
             // PV to PV
             if (fromTerm.type.startsWith("pv-") && toTerm.type.startsWith("pv-")) {
                 if (fromTerm.type !== toTerm.type) {
+                    // Series link between two panels (+ to -) adds voltage and is legitimate
+                    if (fromComp.type === "solar-panel" && toComp.type === "solar-panel") return { valid: true };
                     return { valid: false, message: "PV Polarity Mismatch (+ to -)", severity: "error" };
                 }
                 return { valid: true };

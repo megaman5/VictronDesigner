@@ -389,14 +389,14 @@ ${d.name.toUpperCase()} (${d.type}):
 ${d.wiringRules.map(r => `  * ${r}`).join("\n")}
 `).join("\n")}
 
-WIRE GAUGE SELECTION (BASED ON CURRENT):
-- 0-20A: 12 AWG or 10 AWG
-- 20-40A: 8 AWG
-- 40-60A: 6 AWG
-- 60-100A: 4 AWG
-- 100-150A: 2 AWG
-- 150-200A: 1/0 AWG
-- 200A+: 4/0 AWG
+WIRE GAUGE SELECTION (BASED ON CURRENT, ABYC 105°C free air):
+- 0-40A: 12 AWG or 10 AWG
+- 40-65A: 8 AWG
+- 65-100A: 6 AWG
+- 100-130A: 4 AWG
+- 130-175A: 2 AWG
+- 175-235A: 1 AWG or 1/0 AWG
+- 235A+: 2/0 to 4/0 AWG
 - Battery to Inverter: ALWAYS 4/0 AWG or 2/0 AWG
 
 COMPONENT PROPERTIES (MUST BE REALISTIC):
@@ -855,10 +855,10 @@ ${allValidationErrors.filter((e: any) => e.message?.includes("Parallel wire") ||
 ${allValidationErrors.filter((e: any) => e.message?.includes("Parallel wire") || e.message?.includes("parallel") || e.message?.includes("Parallel conductors")).map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - ${e.suggestion}` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
 
 CRITICAL PARALLEL WIRE RULES:
-- If current ≤230A: REMOVE parallel runs, use single larger gauge wire
-- If current >230A: Use parallel runs, but ALL wires must be 4/0 AWG (identical gauges)
+- If current ≤370A: REMOVE parallel runs, use single larger gauge wire (4/0 AWG carries 445A per ABYC 105°C free air)
+- If current >370A: Use parallel runs, but ALL wires must be 4/0 AWG (identical gauges)
 - NEVER mix different gauges in parallel runs
-- NEVER use parallel runs for currents ≤230A
+- NEVER use parallel runs for currents ≤370A
 ` : ""}
 
 ${allValidationErrors.filter((e: any) => e.category !== "wire-sizing" && !e.wireId && !e.wireIds).length > 0 ? `OTHER ERRORS:
@@ -888,21 +888,21 @@ WIRE CAPACITY WARNINGS (REDUCE QUALITY SCORE):
 - These warnings prevent achieving high quality scores (>90)
 - Fix capacity warnings in early iterations to improve quality faster
 
-PARALLEL WIRE RUNS - STRICT RULES (NEC/ABYC - CRITICAL):
-- ONLY create parallel wire runs when current exceeds 230A (4/0 AWG max capacity)
-- NEVER create parallel runs for currents ≤230A - use single larger gauge instead
+PARALLEL WIRE RUNS - STRICT RULES (ABYC - CRITICAL):
+- ONLY create parallel wire runs when current exceeds 370A (4/0 AWG carries 445A per ABYC 105°C free air; 370A keeps a 20% margin)
+- NEVER create parallel runs for currents ≤370A - use single larger gauge instead
 - ALL parallel conductors MUST be 4/0 AWG (per NEC/ABYC standard practice)
 - NEVER mix different gauges in parallel runs (e.g., don't use 2 AWG + 1 AWG in parallel)
 - When creating parallel runs, each wire must have the SAME gauge (all 4/0 AWG)
 - Each parallel wire's "current" field should be the TOTAL current (system divides automatically)
-- Example CORRECT: 300A load → 2 parallel 4/0 AWG wires, each wire has current: 300 (system calculates 150A per wire automatically)
-- Example CORRECT: 238A load → 2 parallel 4/0 AWG wires, each wire has current: 238 (system calculates 119A per wire automatically)
+- Example CORRECT: 500A load → 2 parallel 4/0 AWG wires, each wire has current: 500 (system calculates 250A per wire automatically)
+- Example CORRECT: 800A load → 3 parallel 4/0 AWG wires, each wire has current: 800 (system calculates 267A per wire automatically)
 - CRITICAL: When creating parallel wires, set current field to TOTAL current on EACH wire (don't divide it yourself)
-- Example WRONG: 200A load → 2 parallel 2/0 AWG wires (should use single 4/0 AWG instead)
-- Example WRONG: 100A load → 2 parallel 1/0 AWG wires (should use single 2 AWG or 1 AWG instead)
+- Example WRONG: 300A load → 2 parallel 2/0 AWG wires (should use single 4/0 AWG instead)
+- Example WRONG: 100A load → 2 parallel 1/0 AWG wires (should use single 6 AWG instead)
 - Example WRONG: 16.7A load → 3 parallel 6 AWG wires (should use single 10 AWG instead)
-- If you see errors about "insufficient for XA" where X > 230A, use parallel 4/0 AWG runs
-- If you see errors about "Parallel wire runs used for XA" where X ≤ 230A, REMOVE parallel runs and use single gauge
+- If you see errors about "insufficient for XA" where X > 370A, use parallel 4/0 AWG runs
+- If you see errors about "Parallel wire runs used for XA" where X ≤ 370A, REMOVE parallel runs and use single gauge
 
 QUALITY IMPROVEMENT GUIDELINES:
 - For complex systems with multiple components, prioritize clean organization:
@@ -912,22 +912,22 @@ QUALITY IMPROVEMENT GUIDELINES:
 - WIRE CAPACITY MANAGEMENT (CRITICAL FOR QUALITY):
   * NEVER size wires at >90% of their ampacity - always leave 10-20% safety margin
   * If a wire would run at >90% capacity, use the next larger gauge
-  * Example: 190A load → use 2/0 AWG (175A max) OR 3/0 AWG (200A max)
-  * Example: 200A load → use 3/0 AWG (200A max) OR 4/0 AWG (230A max)
-  * ONLY use parallel wire runs when you've reached 4/0 AWG (230A) and still need more capacity
+  * Example: 190A load → use 2 AWG (210A max) OR 1 AWG (245A max)
+  * Example: 300A load → use 3/0 AWG (385A max) OR 4/0 AWG (445A max)
+  * ONLY use parallel wire runs when you've reached 4/0 AWG (445A) and still need more capacity
   * Parallel runs require each conductor to be at least 1/0 AWG per NEC/ABYC
-  * Example: 300A load → use 2 parallel 4/0 AWG wires (150A each) since single 4/0 AWG maxes at 230A
+  * Example: 500A load → use 2 parallel 4/0 AWG wires (250A each) since single 4/0 AWG maxes at 445A
   * Wires at 95-100% capacity will generate warnings and reduce quality score
 - When multiple parallel wires exist between the same components:
   * Each wire carries total current ÷ number of parallel wires
   * Calculate current per wire correctly (e.g., 154.3A total ÷ 2 wires = 77.1A per wire)
   * Size each wire based on its per-wire current, not total current
-- For high current applications exceeding 4/0 AWG capacity (230A), use parallel wire runs:
-  * ONLY suggest parallel runs when single 4/0 AWG (230A max) is insufficient
+- For high current applications exceeding 4/0 AWG capacity (445A per ABYC 105°C free air), use parallel wire runs:
+  * ONLY suggest parallel runs when single 4/0 AWG (445A max) is insufficient (current >370A with 20% margin)
   * Each parallel conductor must be at least 1/0 AWG per NEC/ABYC requirements
-  * Use multiple 4/0 AWG wires in parallel for currents >230A
-  * Example: 300A load → use 2 parallel 4/0 AWG wires (150A each, 230A max per wire = 65% capacity)
-  * Example: 400A load → use 2 parallel 4/0 AWG wires (200A each, 230A max = 87% capacity)
+  * Use multiple 4/0 AWG wires in parallel for currents >370A
+  * Example: 500A load → use 2 parallel 4/0 AWG wires (250A each, 445A max per wire = 56% capacity)
+  * Example: 700A load → use 2 parallel 4/0 AWG wires (350A each, 445A max = 79% capacity)
 - Ground wire gauge matching is CRITICAL:
   * Always match ground gauge to hot/neutral in the same circuit
   * This is a safety requirement and will cause validation errors if violated
@@ -1039,24 +1039,25 @@ ${d.name.toUpperCase()} (${d.type}):
 ${d.wiringRules.map(r => `  * ${r}`).join("\n")}
 `).join("\n")}
 
-WIRE GAUGE SELECTION (with safety margins):
-- 0-20A: 10 AWG (20% margin)
-- 20-35A: 8 AWG (20% margin)
-- 35-50A: 6 AWG (20% margin)
-- 50-80A: 4 AWG (20% margin)
-- 80-115A: 2 AWG (20% margin)
-- 115-150A: 1 AWG (20% margin)
-- 150-180A: 1/0 AWG (20% margin)
-- 180-200A: 2/0 AWG (20% margin)
-- 200-230A: Use 4/0 AWG (230A max)
-- 230A+: Use parallel runs of 4/0 AWG (each parallel conductor must be at least 1/0 AWG per NEC/ABYC)
+WIRE GAUGE SELECTION (ABYC 105°C free-air ampacity, with 20% safety margin):
+- 0-50A: 10 AWG (60A max)
+- 50-65A: 8 AWG (80A max)
+- 65-100A: 6 AWG (120A max)
+- 100-130A: 4 AWG (160A max)
+- 130-175A: 2 AWG (210A max)
+- 175-200A: 1 AWG (245A max)
+- 200-235A: 1/0 AWG (285A max)
+- 235-275A: 2/0 AWG (330A max)
+- 275-320A: 3/0 AWG (385A max)
+- 320-370A: 4/0 AWG (445A max)
+- 370A+: Use parallel runs of 4/0 AWG (each parallel conductor must be at least 1/0 AWG per NEC/ABYC)
 
 CRITICAL: Avoid wires running at >90% capacity. If current approaches wire limit:
 - Use next larger gauge (e.g., if 2 AWG at 95%, use 1 AWG → 1/0 AWG → 2/0 AWG → 3/0 AWG → 4/0 AWG)
-- ONLY use parallel wire runs when 4/0 AWG (230A max) is insufficient
+- ONLY use parallel wire runs when 4/0 AWG (445A max) is insufficient
 - Per NEC/ABYC: Parallel conductors must be at least 1/0 AWG
-- Example: 200A load → use 4/0 AWG (230A max = 87% capacity)
-- Example: 300A load → use 2 parallel 4/0 AWG wires (150A each, 230A max per wire = 65% capacity)
+- Example: 300A load → use 4/0 AWG (445A max = 67% capacity)
+- Example: 500A load → use 2 parallel 4/0 AWG wires (250A each, 445A max per wire = 56% capacity)
 
 CRITICAL: For AC circuits with hot, neutral, and ground wires:
 - Calculate gauge based on current for hot/neutral wires
@@ -1594,18 +1595,18 @@ CRITICAL WIRING RULES:
    - Calculate current from load: I = P / V (watts / voltage)
    - For each wire, calculate required gauge using: current, length, and 3% max voltage drop
    - Example calculations:
-     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 35A, <3% drop)
-     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 115A, <3% drop)
-     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "1/0 AWG" (handles 150A, <3% drop)
-   - Quick reference (for SHORT runs <5ft only):
-     * 0-25A: "10 AWG"
-     * 25-40A: "8 AWG"
-     * 40-60A: "6 AWG"
-     * 60-100A: "4 AWG"
-     * 100-150A: "2 AWG"
-     * 150-200A: "1 AWG"
-     * 200-250A: "1/0 AWG"
-     * 250-300A: "2/0 AWG"
+     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 60A, <3% drop)
+     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 210A, <3% drop governs)
+     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "2 AWG" (handles 210A, <3% drop); use 1/0 AWG for extra margin
+   - Quick reference (ABYC 105°C free air, for SHORT runs <5ft only):
+     * 0-50A: "10 AWG"
+     * 50-65A: "8 AWG"
+     * 65-100A: "6 AWG"
+     * 100-130A: "4 AWG"
+     * 130-175A: "2 AWG"
+     * 175-200A: "1 AWG"
+     * 200-235A: "1/0 AWG"
+     * 235-275A: "2/0 AWG"
    - For LONGER runs, use LARGER gauge to keep voltage drop <3%
    - ALWAYS err on the side of larger gauge for safety
    - Wire gauge format: "10 AWG" (with space between number and AWG)
@@ -2171,18 +2172,18 @@ CRITICAL WIRING RULES:
    - Calculate current from load: I = P / V (watts / voltage)
    - For each wire, calculate required gauge using: current, length, and 3% max voltage drop
    - Example calculations:
-     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 35A, <3% drop)
-     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 115A, <3% drop)
-     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "1/0 AWG" (handles 150A, <3% drop)
-   - Quick reference (for SHORT runs <5ft only):
-     * 0-25A: "10 AWG"
-     * 25-40A: "8 AWG"
-     * 40-60A: "6 AWG"
-     * 60-100A: "4 AWG"
-     * 100-150A: "2 AWG"
-     * 150-200A: "1 AWG"
-     * 200-250A: "1/0 AWG"
-     * 250-300A: "2/0 AWG"
+     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 60A, <3% drop)
+     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 210A, <3% drop governs)
+     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "2 AWG" (handles 210A, <3% drop); use 1/0 AWG for extra margin
+   - Quick reference (ABYC 105°C free air, for SHORT runs <5ft only):
+     * 0-50A: "10 AWG"
+     * 50-65A: "8 AWG"
+     * 65-100A: "6 AWG"
+     * 100-130A: "4 AWG"
+     * 130-175A: "2 AWG"
+     * 175-200A: "1 AWG"
+     * 200-235A: "1/0 AWG"
+     * 235-275A: "2/0 AWG"
    - For LONGER runs, use LARGER gauge to keep voltage drop <3%
    - ALWAYS err on the side of larger gauge for safety
    - Wire gauge format: "10 AWG" (with space between number and AWG)

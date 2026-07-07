@@ -1623,6 +1623,9 @@ export default function SchematicDesigner() {
         'solar-panel': { watts: 300, voltage: systemVoltage * 1.5 }, // Default to typical Vmp (1.5x system voltage)
         mppt: { amps: 30, voltage: systemVoltage },
         multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage },
+        quattro: { watts: 5000, powerRating: 5000, voltage: systemVoltage },
+        argofet: { amps: 100, voltage: systemVoltage },
+        'cyrix-ct': { amps: 120, voltage: systemVoltage },
         inverter: { watts: 2000, voltage: systemVoltage },
         'phoenix-inverter': { watts: 1200, voltage: systemVoltage },
         'blue-smart-charger': { amps: 15, voltage: systemVoltage },
