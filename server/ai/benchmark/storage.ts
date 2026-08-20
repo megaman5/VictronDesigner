@@ -58,6 +58,8 @@ export const benchmarkStorage = {
       componentCount: result.componentCount,
       wireCount: result.wireCount,
       repairCount: result.repairCount,
+      iterationsUsed: result.iterationsUsed,
+      scorePath: result.scorePath.length ? result.scorePath : null,
       expectationsMet: result.expectationsMet,
       failedExpectations: result.failedExpectations.length ? result.failedExpectations : null,
       inputTokens: result.inputTokens,

@@ -183,3 +183,76 @@ describe('Benchmark runner', () => {
     ).rejects.toThrow(/aborted/);
   });
 });
+
+describe('Iterative refinement', () => {
+  const design = (extra: Record<string, any> = {}) =>
+    JSON.stringify({
+      components: [
+        { id: 'b1', type: 'battery', name: 'Bank', x: 100, y: 300, properties: { voltage: 12, capacity: 200, batteryType: 'LiFePO4' } },
+        { id: 'f1', type: 'fuse', name: 'Main', x: 400, y: 300, properties: { fuseType: 'class-t', fuseRating: 400 } },
+      ],
+      wires: [
+        { fromComponentId: 'b1', toComponentId: 'f1', fromTerminal: 'positive', toTerminal: 'in', polarity: 'positive', gauge: '4/0 AWG', length: 2 },
+      ],
+      ...extra,
+    });
+
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'test-key'; });
+  afterEach(() => { vi.restoreAllMocks(); delete process.env.OPENAI_API_KEY; });
+
+  it('stops early once the target score is reached', async () => {
+    const chat = vi.spyOn(PROVIDERS.openai, 'chat').mockResolvedValue({
+      text: design(), usage: { inputTokens: 10, outputTokens: 10 }, samplingApplied: false,
+    });
+    const summary = await runBenchmark({
+      suiteId: 'core-designs', model: 'gpt-5.4', iterations: 5, targetScore: 0,
+    });
+    // targetScore 0 is met on the first pass, so only one call per case
+    expect(summary.results.every(r => r.iterationsUsed === 1)).toBe(true);
+    expect(chat).toHaveBeenCalledTimes(CORE_SUITE.cases.length);
+  });
+
+  it('keeps iterating while below target and records the score path', async () => {
+    vi.spyOn(PROVIDERS.openai, 'chat').mockResolvedValue({
+      text: design(), usage: { inputTokens: 10, outputTokens: 10 }, samplingApplied: false,
+    });
+    const summary = await runBenchmark({
+      suiteId: 'core-designs', model: 'gpt-5.4', iterations: 3, targetScore: 101,
+    });
+    expect(summary.results.every(r => r.iterationsUsed === 3)).toBe(true);
+    expect(summary.results[0].scorePath).toHaveLength(3);
+    expect(summary.stats.meanIterations).toBe(3);
+  });
+
+  it('sums tokens across every pass', async () => {
+    vi.spyOn(PROVIDERS.openai, 'chat').mockResolvedValue({
+      text: design(), usage: { inputTokens: 100, outputTokens: 50 }, samplingApplied: false,
+    });
+    const summary = await runBenchmark({
+      suiteId: 'core-designs', model: 'gpt-5.4', iterations: 2, targetScore: 101,
+    });
+    expect(summary.results[0].inputTokens).toBe(200);
+    expect(summary.results[0].outputTokens).toBe(100);
+  });
+
+  it('keeps the best design when a later pass is worse', async () => {
+    const good = design();
+    // second pass returns a design with an unfused battery - a worse score
+    const bad = JSON.stringify({
+      components: [{ id: 'b1', type: 'battery', name: 'Bank', x: 100, y: 300, properties: { voltage: 12, capacity: 200 } },
+                   { id: 'l1', type: 'dc-load', name: 'Load', x: 500, y: 300, properties: { watts: 1200, voltage: 12 } }],
+      wires: [{ fromComponentId: 'b1', toComponentId: 'l1', fromTerminal: 'positive', toTerminal: 'positive', polarity: 'positive', gauge: '18 AWG', length: 30 }],
+    });
+    let call = 0;
+    vi.spyOn(PROVIDERS.openai, 'chat').mockImplementation(async () => ({
+      text: ++call % 2 === 1 ? good : bad,
+      usage: { inputTokens: 10, outputTokens: 10 },
+      samplingApplied: false,
+    }));
+    const summary = await runBenchmark({
+      suiteId: 'core-designs', model: 'gpt-5.4', iterations: 2, targetScore: 101,
+    });
+    const first = summary.results[0];
+    expect(first.score).toBe(Math.max(...first.scorePath));
+  });
+});

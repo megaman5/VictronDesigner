@@ -166,6 +166,10 @@ export const benchmarkResults = pgTable("benchmark_results", {
   // Repairs the deterministic normalizer had to make - a direct measure of
   // how well the prompt is landing, independent of the design score
   repairCount: integer("repair_count"),
+  // Model calls this case needed, and the score after each - so convergence
+  // (or divergence, which is what a bad prompt looks like) is visible
+  iterationsUsed: integer("iterations_used"),
+  scorePath: jsonb("score_path"),
   expectationsMet: boolean("expectations_met"),
   failedExpectations: jsonb("failed_expectations"),
   inputTokens: integer("input_tokens"),

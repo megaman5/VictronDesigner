@@ -17,6 +17,14 @@ export interface RunOptions {
   model: string;
   providerId?: ProviderId;
   repeats?: number;
+  /**
+   * Refinement passes per case, matching what the production streaming
+   * endpoint does. 1 means single-shot. Later passes receive the previous
+   * validation errors as feedback, and the best-scoring design wins.
+   */
+  iterations?: number;
+  /** Stop iterating once a design reaches this score. */
+  targetScore?: number;
   temperature?: number;
   seed?: number;
   credentials?: ProviderCredentials | null;
@@ -36,6 +44,10 @@ export interface CaseResult {
   componentCount: number | null;
   wireCount: number | null;
   repairCount: number | null;
+  /** How many model calls this case actually needed. */
+  iterationsUsed: number;
+  /** Score after each pass, so convergence (or divergence) is visible. */
+  scorePath: number[];
   expectationsMet: boolean | null;
   failedExpectations: string[];
   inputTokens: number;
@@ -73,6 +85,7 @@ export interface RunStats {
   totalCostUsd: number | null;
   meanDurationMs: number | null;
   totalRepairs: number;
+  meanIterations: number | null;
 }
 
 /** Pull the first JSON object out of a model response. */
@@ -112,6 +125,8 @@ export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
         target,
         model: opts.model,
         repeat,
+        iterations: Math.max(1, opts.iterations ?? 1),
+        targetScore: opts.targetScore ?? 70,
         temperature: opts.temperature,
         seed: opts.seed,
         maxOutputTokens: opts.maxOutputTokens,
@@ -144,6 +159,8 @@ async function runCase(args: {
   target: ReturnType<typeof resolveTarget>;
   model: string;
   repeat: number;
+  iterations: number;
+  targetScore: number;
   temperature?: number;
   seed?: number;
   maxOutputTokens?: number;
@@ -163,6 +180,8 @@ async function runCase(args: {
     componentCount: null,
     wireCount: null,
     repairCount: null,
+    iterationsUsed: 0,
+    scorePath: [],
     expectationsMet: null,
     failedExpectations: [],
     inputTokens: 0,
@@ -172,51 +191,91 @@ async function runCase(args: {
   };
 
   try {
-    const ctx = { systemVoltage: testCase.systemVoltage };
-    const response = await target.provider.chat(
-      {
-        model: args.model,
-        json: skill.json,
-        temperature: args.temperature,
-        seed: args.seed,
-        maxOutputTokens: args.maxOutputTokens ?? 32000,
-        signal: args.signal,
-        messages: [
-          { role: "system", content: skill.buildSystemPrompt(ctx) },
-          { role: "user", content: skill.buildUserPrompt(testCase.prompt, ctx) },
-        ],
-      },
-      target.credentials
-    );
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let feedback: string | undefined;
+    const scorePath: number[] = [];
+    let best: {
+      score: number;
+      design: { components: any[]; wires: any[] };
+      validation: any;
+      repairs: number;
+    } | null = null;
+    let used = 0;
 
-    args.onSampling(response.samplingApplied);
+    for (let pass = 1; pass <= args.iterations; pass++) {
+      if (args.signal?.aborted) throw new Error("Benchmark aborted");
+      used = pass;
 
-    const usage = response.usage;
-    base.inputTokens = usage.inputTokens;
-    base.outputTokens = usage.outputTokens;
+      const ctx = { systemVoltage: testCase.systemVoltage, feedback };
+      const response = await target.provider.chat(
+        {
+          model: args.model,
+          json: skill.json,
+          temperature: args.temperature,
+          seed: args.seed,
+          maxOutputTokens: args.maxOutputTokens ?? 32000,
+          signal: args.signal,
+          messages: [
+            { role: "system", content: skill.buildSystemPrompt(ctx) },
+            { role: "user", content: skill.buildUserPrompt(testCase.prompt, ctx) },
+          ],
+        },
+        target.credentials
+      );
+
+      args.onSampling(response.samplingApplied);
+      inputTokens += response.usage.inputTokens;
+      outputTokens += response.usage.outputTokens;
+
+      const parsed = extractJson(response.text);
+      const rawComponents = Array.isArray(parsed.components) ? parsed.components : [];
+      const rawWires = (Array.isArray(parsed.wires) ? parsed.wires : []).map(
+        (w: any, i: number) => ({ ...w, id: w.id ?? `bench-wire-${pass}-${i}` })
+      );
+
+      // Same repair pass production uses, so scores reflect what a user gets.
+      const normalized = normalizeAIDesign(rawComponents, rawWires, testCase.systemVoltage);
+      const design = { components: normalized.components, wires: normalized.wires };
+
+      const validation = validateDesign(
+        design.components as any,
+        design.wires as any,
+        testCase.systemVoltage
+      );
+
+      scorePath.push(validation.score);
+      if (!best || validation.score > best.score) {
+        best = {
+          score: validation.score,
+          design: design as any,
+          validation,
+          repairs: normalized.repairs.length,
+        };
+      }
+
+      if (validation.score >= args.targetScore) break;
+
+      // Feed the errors back the way the production loop does.
+      const errors = validation.issues
+        .filter((i: any) => i.severity === "error")
+        .slice(0, 15)
+        .map((i: any) => `- ${i.message}${i.suggestion ? ` (${i.suggestion})` : ""}`);
+      feedback = errors.length
+        ? `Validation score ${validation.score}/100. Fix these errors:\n${errors.join("\n")}`
+        : `Validation score ${validation.score}/100. Improve the design.`;
+    }
+
+    if (!best) throw new Error("No design produced");
+
+    const usage = { inputTokens, outputTokens };
+    base.inputTokens = inputTokens;
+    base.outputTokens = outputTokens;
     base.costUsd = estimateCostUsd(args.model, usage);
-
-    const parsed = extractJson(response.text);
-    const rawComponents = Array.isArray(parsed.components) ? parsed.components : [];
-    const rawWires = (Array.isArray(parsed.wires) ? parsed.wires : []).map(
-      (w: any, i: number) => ({ ...w, id: w.id ?? `bench-wire-${i}` })
-    );
-
-    // Same repair pass production uses, so benchmark scores reflect what a
-    // user would actually get - and repairCount shows how much the prompt
-    // needed rescuing.
-    const normalized = normalizeAIDesign(rawComponents, rawWires, testCase.systemVoltage);
-    const design = { components: normalized.components, wires: normalized.wires };
-
-    const validation = validateDesign(
-      design.components as any,
-      design.wires as any,
-      testCase.systemVoltage
-    );
 
     const failed = testCase.expectations
       .map(e => {
-        const reason = e.check(design as any);
+        const reason = e.check(best!.design as any);
         return reason ? `${e.id}: ${reason}` : null;
       })
       .filter((x): x is string => x !== null);
@@ -224,17 +283,19 @@ async function runCase(args: {
     return {
       ...base,
       success: true,
-      score: validation.score,
-      errorCount: validation.issues.filter(i => i.severity === "error").length,
-      warningCount: validation.issues.filter(i => i.severity === "warning").length,
-      componentCount: design.components.length,
-      wireCount: design.wires.length,
-      repairCount: normalized.repairs.length,
+      score: best.score,
+      errorCount: best.validation.issues.filter((i: any) => i.severity === "error").length,
+      warningCount: best.validation.issues.filter((i: any) => i.severity === "warning").length,
+      componentCount: best.design.components.length,
+      wireCount: best.design.wires.length,
+      repairCount: best.repairs,
+      iterationsUsed: used,
+      scorePath,
       expectationsMet: failed.length === 0,
       failedExpectations: failed,
       durationMs: Date.now() - started,
-      issues: validation.issues,
-      output: { ...design, repairs: normalized.repairs },
+      issues: best.validation.issues,
+      output: best.design,
     };
   } catch (err: any) {
     return {
@@ -278,6 +339,7 @@ function summarize(results: CaseResult[], suite: BenchmarkSuite, repeats: number
     totalCostUsd: costs.length ? costs.reduce((a, c) => a + c, 0) : null,
     meanDurationMs: durations.length ? Math.round(mean(durations)!) : null,
     totalRepairs: results.reduce((a, r) => a + (r.repairCount ?? 0), 0),
+    meanIterations: mean(results.filter(r => r.success).map(r => r.iterationsUsed)),
   };
 }
 
