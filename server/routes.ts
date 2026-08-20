@@ -6,6 +6,7 @@ import { userDesignsStorage } from "./user-designs-storage";
 import { observabilityStorage } from "./observability-storage";
 import { appSettingsStorage, DEFAULT_AI_MODEL, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLE_VALUES } from "./app-settings-storage";
 import { normalizeAIDesign } from "./ai-design-normalizer";
+import { registerAIRoutes } from "./ai/routes";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
@@ -70,6 +71,9 @@ function extractJSON(content: string): string {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Benchmarking, provider and skill admin API
+  registerAIRoutes(app);
+
   const getAIModel = () => appSettingsStorage.getAIModel();
 
   // Authentication routes

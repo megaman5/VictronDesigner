@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, boolean, jsonb, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, boolean, jsonb, timestamp, index, numeric, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -95,11 +95,107 @@ export const aiLogs = pgTable("ai_logs", {
   wireCount: integer("wire_count"),
   errorMessage: text("error_message"),
   model: varchar("model"),
+  provider: varchar("provider"),
+  skillId: varchar("skill_id"),
+  skillVersion: varchar("skill_version"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  // Estimated from list prices; null when the model is not in the price table
+  costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+  // False when the caller supplied their own API key, so it is not our spend
+  billedToPlatform: boolean("billed_to_platform").notNull().default(true),
   response: jsonb("response"), // { components, wires, description, recommendations }
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   createdAtIdx: index("ai_logs_created_at_idx").on(table.createdAt),
   visitorIdIdx: index("ai_logs_visitor_id_idx").on(table.visitorId),
+  userSpendIdx: index("ai_logs_user_spend_idx").on(table.userId, table.createdAt),
+}));
+
+/**
+ * Benchmark runs: one row per (suite x skill version x provider x model)
+ * execution, so prompt and model changes can be compared over time.
+ */
+export const benchmarkRuns = pgTable("benchmark_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  suiteId: varchar("suite_id").notNull(),
+  skillId: varchar("skill_id").notNull(),
+  skillVersion: varchar("skill_version").notNull(),
+  provider: varchar("provider").notNull(),
+  model: varchar("model").notNull(),
+  // repeats per case, so run-to-run variance is measurable
+  repeats: integer("repeats").notNull().default(1),
+  temperature: numeric("temperature", { precision: 4, scale: 2 }),
+  seed: integer("seed"),
+  // False when the provider rejected the sampling parameters we asked for
+  samplingApplied: boolean("sampling_applied"),
+  status: varchar("status").notNull().default("running"), // running | completed | failed
+  label: text("label"),
+  triggeredBy: varchar("triggered_by"),
+  caseCount: integer("case_count").notNull().default(0),
+  completedCount: integer("completed_count").notNull().default(0),
+  meanScore: numeric("mean_score", { precision: 6, scale: 2 }),
+  medianScore: numeric("median_score", { precision: 6, scale: 2 }),
+  minScore: integer("min_score"),
+  maxScore: integer("max_score"),
+  passRate: numeric("pass_rate", { precision: 5, scale: 2 }),
+  totalCostUsd: numeric("total_cost_usd", { precision: 12, scale: 6 }),
+  totalInputTokens: integer("total_input_tokens"),
+  totalOutputTokens: integer("total_output_tokens"),
+  meanDurationMs: integer("mean_duration_ms"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+}, (table) => ({
+  startedAtIdx: index("benchmark_runs_started_at_idx").on(table.startedAt),
+  suiteIdx: index("benchmark_runs_suite_idx").on(table.suiteId, table.model),
+}));
+
+/** One row per case execution (repeat included) inside a run. */
+export const benchmarkResults = pgTable("benchmark_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull(),
+  caseId: varchar("case_id").notNull(),
+  repeat: integer("repeat").notNull().default(1),
+  success: boolean("success").notNull(),
+  score: integer("score"),
+  errorCount: integer("error_count"),
+  warningCount: integer("warning_count"),
+  componentCount: integer("component_count"),
+  wireCount: integer("wire_count"),
+  // Repairs the deterministic normalizer had to make - a direct measure of
+  // how well the prompt is landing, independent of the design score
+  repairCount: integer("repair_count"),
+  expectationsMet: boolean("expectations_met"),
+  failedExpectations: jsonb("failed_expectations"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+  durationMs: integer("duration_ms"),
+  errorMessage: text("error_message"),
+  issues: jsonb("issues"),
+  output: jsonb("output"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  runIdx: index("benchmark_results_run_idx").on(table.runId),
+}));
+
+/**
+ * Per-user provider API keys (BYOK). The key itself is stored encrypted;
+ * only the last four characters are ever returned to a client.
+ */
+export const userApiKeys = pgTable("user_api_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  provider: varchar("provider").notNull(),
+  encryptedKey: text("encrypted_key").notNull(),
+  keyLastFour: varchar("key_last_four", { length: 4 }).notNull(),
+  baseUrl: text("base_url"),
+  label: text("label"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+}, (table) => ({
+  userProviderIdx: uniqueIndex("user_api_keys_user_provider_idx").on(table.userId, table.provider),
 }));
 
 // Tracking events
