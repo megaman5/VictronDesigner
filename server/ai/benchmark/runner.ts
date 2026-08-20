@@ -207,7 +207,14 @@ async function runCase(args: {
       if (args.signal?.aborted) throw new Error("Benchmark aborted");
       used = pass;
 
-      const ctx = { systemVoltage: testCase.systemVoltage, feedback };
+      const ctx = {
+        systemVoltage: testCase.systemVoltage,
+        feedback,
+        // Wiring skills score against a fixed starting canvas
+        existingDesign: testCase.existingComponents
+          ? { components: testCase.existingComponents, wires: testCase.existingWires ?? [] }
+          : undefined,
+      };
       const response = await target.provider.chat(
         {
           model: args.model,
@@ -229,7 +236,10 @@ async function runCase(args: {
       outputTokens += response.usage.outputTokens;
 
       const parsed = extractJson(response.text);
-      const rawComponents = Array.isArray(parsed.components) ? parsed.components : [];
+      // A wiring skill returns wires only - the components are the fixed input
+      const rawComponents = Array.isArray(parsed.components) && parsed.components.length
+        ? parsed.components
+        : (testCase.existingComponents ?? []);
       const rawWires = (Array.isArray(parsed.wires) ? parsed.wires : []).map(
         (w: any, i: number) => ({ ...w, id: w.id ?? `bench-wire-${pass}-${i}` })
       );

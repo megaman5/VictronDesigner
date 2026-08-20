@@ -111,6 +111,11 @@ export function wiringRulesFragment(): string {
     "- Battery positive must connect DIRECTLY to a fuse or dc-breaker",
     "- Every wire needs fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge and length",
     '- polarity is one of "positive", "negative", "hot", "neutral", "ground"',
+    "- polarity MUST match the terminal it lands on:",
+    '  * terminal contains "hot" -> polarity "hot"',
+    '  * terminal contains "neutral" -> polarity "neutral"',
+    '  * terminal contains "ground" -> polarity "ground"',
+    '  * terminal is positive/negative -> polarity "positive"/"negative" (DC)',
   ].join("\n");
 }
 

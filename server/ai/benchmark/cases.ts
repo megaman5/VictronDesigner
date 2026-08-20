@@ -19,6 +19,13 @@ export interface BenchmarkCase {
   id: string;
   prompt: string;
   systemVoltage: number;
+  /**
+   * Components already on the canvas, for wiring skills. The runner passes
+   * these through as the skill's existingDesign and merges the returned wires
+   * back before scoring.
+   */
+  existingComponents?: any[];
+  existingWires?: any[];
   /** Minimum validator score for this case to count as a pass. */
   minScore: number;
   expectations: BenchmarkExpectation[];
@@ -172,8 +179,86 @@ export const CORE_SUITE: BenchmarkSuite = {
   ],
 };
 
+const allComponentsConnected: BenchmarkExpectation = {
+  id: "all-components-wired",
+  description: "no component is left unconnected",
+  check: design => {
+    const wired = new Set<string>();
+    for (const w of design.wires) {
+      wired.add(w.fromComponentId);
+      wired.add(w.toComponentId);
+    }
+    const orphans = design.components.filter(c => !wired.has(c.id));
+    return orphans.length === 0
+      ? null
+      : `${orphans.length} unconnected: ${orphans.map(o => o.id).join(", ")}`;
+  },
+};
+
+const acPolarityMatchesTerminal: BenchmarkExpectation = {
+  id: "ac-polarity-matches-terminal",
+  description: "AC wire polarity matches the terminal it lands on",
+  check: design => {
+    const bad: string[] = [];
+    for (const w of design.wires) {
+      for (const t of [w.fromTerminal, w.toTerminal]) {
+        const term = String(t ?? "");
+        if (term.includes("hot") && w.polarity !== "hot") bad.push(`${term} as ${w.polarity}`);
+        if (term.includes("neutral") && w.polarity !== "neutral") bad.push(`${term} as ${w.polarity}`);
+      }
+    }
+    return bad.length === 0 ? null : `${bad.length} mismatch(es): ${bad.slice(0, 3).join("; ")}`;
+  },
+};
+
+const VAN_COMPONENTS = [
+  { id: "battery-1", type: "battery", name: "House Bank", x: 200, y: 500, properties: { voltage: 12, capacity: 200, batteryType: "LiFePO4" } },
+  { id: "fuse-1", type: "fuse", name: "Main Fuse", x: 500, y: 500, properties: { fuseType: "class-t", fuseRating: 250 } },
+  { id: "shunt-1", type: "smartshunt", name: "SmartShunt", x: 500, y: 700, properties: { voltage: 12 } },
+  { id: "buspos-1", type: "busbar-positive", name: "DC Positive Bus", x: 800, y: 460, properties: { voltage: 12 } },
+  { id: "busneg-1", type: "busbar-negative", name: "DC Negative Bus", x: 800, y: 700, properties: { voltage: 12 } },
+  { id: "mppt-1", type: "mppt", name: "MPPT 100/30", x: 500, y: 200, properties: { maxCurrent: 30, model: "100|30", voltage: 12 } },
+  { id: "solar-1", type: "solar-panel", name: "400W Array", x: 200, y: 200, properties: { watts: 400, voltage: 18 } },
+  { id: "load-1", type: "dc-load", name: "12V Fridge", x: 1100, y: 560, properties: { watts: 60, voltage: 12 } },
+];
+
+const AC_COMPONENTS = [
+  { id: "battery-1", type: "battery", name: "House Bank", x: 200, y: 500, properties: { voltage: 24, capacity: 400, batteryType: "LiFePO4" } },
+  { id: "fuse-1", type: "fuse", name: "Main Fuse", x: 500, y: 500, properties: { fuseType: "class-t", fuseRating: 400 } },
+  { id: "inv-1", type: "multiplus", name: "MultiPlus 3000", x: 900, y: 460, properties: { powerRating: 3000, watts: 3000, voltage: 24, acOutputVoltage: "120" } },
+  { id: "acpanel-1", type: "ac-panel", name: "AC Panel", x: 1300, y: 400, properties: {} },
+  { id: "acload-1", type: "ac-load", name: "Galley Outlets", x: 1650, y: 400, properties: { watts: 800, acVoltage: 120 } },
+];
+
+export const WIRING_SUITE: BenchmarkSuite = {
+  id: "wiring",
+  label: "Wire existing components",
+  skillId: "wire-components",
+  cases: [
+    {
+      id: "van-dc-wiring",
+      systemVoltage: 12,
+      minScore: 60,
+      prompt: "Wire these components into a complete, safe 12V system.",
+      existingComponents: VAN_COMPONENTS,
+      existingWires: [],
+      expectations: [allComponentsConnected, acPolarityMatchesTerminal],
+    },
+    {
+      id: "ac-path-wiring",
+      systemVoltage: 24,
+      minScore: 60,
+      prompt: "Wire these components, including the AC path from the inverter to the panel and outlets.",
+      existingComponents: AC_COMPONENTS,
+      existingWires: [],
+      expectations: [allComponentsConnected, acPolarityMatchesTerminal],
+    },
+  ],
+};
+
 export const SUITES: Record<string, BenchmarkSuite> = {
   [CORE_SUITE.id]: CORE_SUITE,
+  [WIRING_SUITE.id]: WIRING_SUITE,
 };
 
 export function getSuite(id: string): BenchmarkSuite {

@@ -80,7 +80,7 @@ export const systemDesignSkill: Skill = {
 /** Wire up components the user has already placed. */
 export const wireComponentsSkill: Skill = {
   id: "wire-components",
-  version: "2026-08-20.1",
+  version: "2026-08-20.2",
   description: "Create wire connections between components already on the canvas",
   json: true,
   buildSystemPrompt(ctx) {
