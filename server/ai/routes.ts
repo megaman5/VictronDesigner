@@ -1,5 +1,9 @@
 import type { Express, Request, Response } from "express";
-import { isAdmin, type AuthUser } from "../auth";
+import { isAdmin, isAuthenticated, type AuthUser } from "../auth";
+import { byokStorage } from "./byok-storage";
+import { KeyVaultError, redactSecrets } from "./key-vault";
+import { checkQuota, getMonthlySpend, monthlyLimitUsd } from "./usage-limits";
+import { PROVIDERS } from "./providers";
 import { listSuites, getSuite } from "./benchmark/cases";
 import { listSkills, getSkill } from "./skills";
 import { startBenchmarkRun, cancelBenchmarkRun, listActiveRuns } from "./benchmark/service";
@@ -51,6 +55,97 @@ export function registerAIRoutes(app: Express): void {
 
   app.get("/api/admin/ai/suites", isAdmin, (_req, res) => {
     res.json({ suites: listSuites() });
+  });
+
+  // --- bring your own key (per user, not admin) ---------------------------
+
+  /** Which providers a user may store a key for, and whether they have one. */
+  app.get("/api/ai/keys", isAuthenticated, async (req, res) => {
+    const user = req.user as AuthUser;
+    if (!byokStorage.isAvailable()) {
+      return res.status(503).json({
+        error: "Key storage is not configured on this server (API_KEY_ENCRYPTION_KEY is unset).",
+      });
+    }
+    try {
+      const keys = await byokStorage.listKeys(user.id);
+      res.json({
+        keys, // last four only - the key itself is never returned
+        providers: Object.values(PROVIDERS).map(p => ({
+          id: p.id,
+          label: p.label,
+          requiresBaseUrl: p.requiresBaseUrl,
+        })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
+  });
+
+  app.put("/api/ai/keys/:provider", isAuthenticated, async (req, res) => {
+    const user = req.user as AuthUser;
+    const provider = req.params.provider as keyof typeof PROVIDERS;
+
+    if (!PROVIDERS[provider]) {
+      return res.status(400).json({ error: `Unknown provider "${provider}"` });
+    }
+    if (!byokStorage.isAvailable()) {
+      return res.status(503).json({ error: "Key storage is not configured on this server." });
+    }
+
+    const { apiKey, baseUrl, label } = req.body ?? {};
+    if (typeof apiKey !== "string" || !apiKey.trim()) {
+      return res.status(400).json({ error: "apiKey is required" });
+    }
+    if (PROVIDERS[provider].requiresBaseUrl && !baseUrl) {
+      return res.status(400).json({ error: `${PROVIDERS[provider].label} also needs a baseUrl` });
+    }
+
+    try {
+      const saved = await byokStorage.saveKey({
+        userId: user.id,
+        provider,
+        apiKey,
+        baseUrl,
+        label,
+      });
+      res.json({ saved });
+    } catch (err: any) {
+      const status = err instanceof KeyVaultError ? 400 : 500;
+      res.status(status).json({ error: redactSecrets(err.message) });
+    }
+  });
+
+  app.delete("/api/ai/keys/:provider", isAuthenticated, async (req, res) => {
+    const user = req.user as AuthUser;
+    const provider = req.params.provider as keyof typeof PROVIDERS;
+    if (!PROVIDERS[provider]) {
+      return res.status(400).json({ error: `Unknown provider "${provider}"` });
+    }
+    const deleted = await byokStorage.deleteKey(user.id, provider);
+    res.json({ deleted });
+  });
+
+  /** What the signed-in user has spent this month against the platform key. */
+  app.get("/api/ai/usage", isAuthenticated, async (req, res) => {
+    const user = req.user as AuthUser;
+    try {
+      const quota = await checkQuota(user.id);
+      res.json({
+        limitUsd: quota.limitUsd,
+        spentUsd: Number(quota.spend.costUsd.toFixed(4)),
+        remainingUsd: Number(quota.remainingUsd.toFixed(4)),
+        requests: quota.spend.requests,
+        // Requests on models with no price entry - cost is unknown, not zero
+        unpricedRequests: quota.spend.unpricedRequests,
+        inputTokens: quota.spend.inputTokens,
+        outputTokens: quota.spend.outputTokens,
+        since: quota.spend.since.toISOString(),
+        allowed: quota.allowed,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
   });
 
   // --- runs --------------------------------------------------------------

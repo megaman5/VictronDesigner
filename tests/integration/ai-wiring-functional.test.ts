@@ -8,7 +8,11 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const SKIP_AI_TESTS = !OPENAI_API_KEY;
 
 describe.skipIf(SKIP_AI_TESTS)('AI Wiring Functional Tests', () => {
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  // Built lazily: the describe body still executes during collection even when
+  // the suite is skipped, and `new OpenAI()` throws without a key - which made
+  // this file fail to collect on every run rather than skipping cleanly.
+  let _openai: OpenAI | undefined;
+  const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: OPENAI_API_KEY }));
   const baseUrl = process.env.TEST_API_URL || 'http://localhost:5000';
 
   // Test case 1: Simple solar + battery + load system
