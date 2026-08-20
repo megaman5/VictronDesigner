@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
-import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, TERMINAL_CONFIGS } from "@/lib/terminal-config";
+import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, getComponentTerminals, TERMINAL_CONFIGS } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, GRID_SIZE, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
 import { computeBusbarTerminalOverrides } from "@/lib/busbar-ordering";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -280,7 +280,7 @@ export function SchematicCanvas({
   const handleTerminalClick = (component: SchematicComponentType, terminal: Terminal, e: React.MouseEvent) => {
     if (!wireConnectionMode) return;
 
-    const terminalPos = getTerminalPosition(component.x, component.y, component.type, terminal.id);
+    const terminalPos = getTerminalPosition(component.x, component.y, component.type, terminal.id, component.properties);
     if (!terminalPos) return;
 
     if (!wireStart) {
@@ -345,8 +345,16 @@ export function SchematicCanvas({
           const isPos1 = ['positive', 'pv-positive'].includes(t1.type);
           const isPos2 = ['positive', 'pv-positive'].includes(t2.type);
           if (isPos1 !== isPos2) {
-            valid = false;
-            errorMsg = `Cannot connect ${t1.type} to ${t2.type}. Polarity mismatch!`;
+            // Series links are legitimate: battery + to battery - (e.g. 2x12V
+            // in series for a 24V bank) or panel + to panel - to add voltage.
+            const startComp = components.find(c => c.id === wireStart.componentId);
+            const seriesAllowed =
+              (startComp?.type === 'battery' && component.type === 'battery') ||
+              (startComp?.type === 'solar-panel' && component.type === 'solar-panel');
+            if (!seriesAllowed) {
+              valid = false;
+              errorMsg = `Cannot connect ${t1.type} to ${t2.type}. Polarity mismatch!`;
+            }
           }
         }
         // 4. AC Polarity (L/N)
@@ -522,7 +530,8 @@ export function SchematicCanvas({
           comp.type,
           draggedEndpointPos.x,
           draggedEndpointPos.y,
-          closestDistance
+          closestDistance,
+          comp.properties
         );
 
         if (terminal) {
@@ -554,7 +563,7 @@ export function SchematicCanvas({
           : components.find(c => c.id === wire.fromComponentId);
         const otherTermId = endpoint === 'from' ? wire.toTerminal : wire.fromTerminal;
         const otherTermType = otherComp
-          ? TERMINAL_CONFIGS[otherComp.type]?.terminals.find(t => t.id === otherTermId)?.type
+          ? getComponentTerminals(otherComp.type, otherComp.properties).find(t => t.id === otherTermId)?.type
           : undefined;
         const isPos = (t?: string) => t === 'positive' || t === 'pv-positive';
         const isNeg = (t?: string) => t === 'negative' || t === 'pv-negative';
@@ -590,8 +599,8 @@ export function SchematicCanvas({
         const toComp = endpoint === 'to' ? targetComponent : components.find(c => c.id === wire.toComponentId);
 
         if (fromComp && toComp) {
-          const fromTerm = endpoint === 'from' ? targetTerminal : TERMINAL_CONFIGS[fromComp.type]?.terminals.find(t => t.id === wire.fromTerminal);
-          const toTerm = endpoint === 'to' ? targetTerminal : TERMINAL_CONFIGS[toComp.type]?.terminals.find(t => t.id === wire.toTerminal);
+          const fromTerm = endpoint === 'from' ? targetTerminal : getComponentTerminals(fromComp.type, fromComp.properties).find(t => t.id === wire.fromTerminal);
+          const toTerm = endpoint === 'to' ? targetTerminal : getComponentTerminals(toComp.type, toComp.properties).find(t => t.id === wire.toTerminal);
 
           if (fromTerm && toTerm) {
             // Use default wire length based on component types
@@ -741,8 +750,8 @@ export function SchematicCanvas({
     const pt = snapPointToGrid(raw.x, raw.y);
     const rel = { x: pt.x - fromComp.x, y: pt.y - fromComp.y };
 
-    const fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal) || { x: fromComp.x, y: fromComp.y };
-    const toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal) || { x: toComp.x, y: toComp.y };
+    const fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal, fromComp.properties) || { x: fromComp.x, y: fromComp.y };
+    const toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal, toComp.properties) || { x: toComp.x, y: toComp.y };
     const dx = toPos.x - fromPos.x;
     const dy = toPos.y - fromPos.y;
     const len2 = dx * dx + dy * dy || 1;
@@ -770,8 +779,8 @@ export function SchematicCanvas({
     const pt = snapPointToGrid(raw.x, raw.y);
 
     // Decide where the new bend fits among existing ones (by position along wire).
-    const fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal) || { x: fromComp.x, y: fromComp.y };
-    const toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal) || { x: toComp.x, y: toComp.y };
+    const fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, wire.fromTerminal, fromComp.properties) || { x: fromComp.x, y: fromComp.y };
+    const toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, wire.toTerminal, toComp.properties) || { x: toComp.x, y: toComp.y };
     const dx = toPos.x - fromPos.x;
     const dy = toPos.y - fromPos.y;
     const len2 = dx * dx + dy * dy || 1;
@@ -955,8 +964,8 @@ export function SchematicCanvas({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
-      <div className="border-b p-2 flex items-center gap-2 bg-background">
+    <div className="flex-1 min-w-0 flex flex-col bg-background">
+      <div className="border-b p-2 flex items-center gap-2 flex-wrap bg-background">
         <Button
           variant={showGrid ? "default" : "outline"}
           size="sm"
@@ -1333,8 +1342,8 @@ export function SchematicCanvas({
               const fromTerminalId = resolved.from;
               const toTerminalId = resolved.to;
 
-              let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, fromTerminalId);
-              let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, toTerminalId);
+              let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, fromTerminalId, fromComp.properties);
+              let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, toTerminalId, toComp.properties);
 
               if (!fromPos) {
                 if (draggedComponentId === fromComp.id && dragPreviewPos) {
@@ -1367,8 +1376,8 @@ export function SchematicCanvas({
                 }
               }
 
-              let fromOrientation = getTerminalOrientation(fromComp.type, fromTerminalId);
-              let toOrientation = getTerminalOrientation(toComp.type, toTerminalId);
+              let fromOrientation = getTerminalOrientation(fromComp.type, fromTerminalId, fromComp.properties);
+              let toOrientation = getTerminalOrientation(toComp.type, toTerminalId, toComp.properties);
 
               // Bus bars are horizontal nodes whose slots can exit either up or
               // down. Point the exit toward the connected component so wires to
@@ -2079,8 +2088,8 @@ export function SchematicCanvas({
             if (!fromComp || !toComp) return null;
 
             const handleResolved = resolveTerminals(wire);
-            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, handleResolved.from);
-            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, handleResolved.to);
+            let fromPos = getTerminalPosition(fromComp.x, fromComp.y, fromComp.type, handleResolved.from, fromComp.properties);
+            let toPos = getTerminalPosition(toComp.x, toComp.y, toComp.type, handleResolved.to, toComp.properties);
 
             if (!fromPos) {
               const from = getComponentPosition(wire.fromComponentId);

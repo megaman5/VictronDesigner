@@ -946,7 +946,7 @@ export default function SchematicDesigner() {
   ): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number; maxDCInputCurrent: number } => {
     const comps = componentsOverride || components;
     const inverter = comps.find(c => c.id === inverterId);
-    if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "inverter")) {
+    if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "quattro" && inverter.type !== "inverter")) {
       return { acLoadWatts: 0, dcInputWatts: 0, dcInputCurrent: 0, acVoltage: 120, maxDCInputCurrent: 0 };
     }
 
@@ -1091,9 +1091,9 @@ export default function SchematicDesigner() {
         // Keep main inverter cables sized for the inverter's capacity even when
         // the present load is small.
         const invDcId =
-          (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") &&
+          (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") &&
             (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative")) ? fromComp.id
-          : (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") &&
+          : (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") &&
             (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative")) ? toComp.id
           : null;
         if (invDcId) {
@@ -1108,7 +1108,7 @@ export default function SchematicDesigner() {
       // that once so the positive and negative sides agree and pass-through parts
       // (fuses, switches, series battery links) aren't left at a stale default or
       // shown as their device rating.
-      const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor"]);
+      const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
       const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
       const isTrunkWire = (wire.polarity === "positive" || wire.polarity === "negative") &&
         isTrunkComp(fromComp?.type) && isTrunkComp(toComp?.type);
@@ -1116,7 +1116,7 @@ export default function SchematicDesigner() {
         let loadA = 0;
         let sourceA = 0;
         for (const c of comps) {
-          if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter") {
+          if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter" || c.type === "quattro") {
             loadA += inverterCurrentFor(calculateInverterDCInput(c.id, 0.875, comps));
           } else if (c.type === "dc-load") {
             const w = (c.properties?.watts || c.properties?.power || 0) as number;
@@ -1135,13 +1135,13 @@ export default function SchematicDesigner() {
 
         // Check if this is an inverter DC connection - use inverter DC input current
         const isInverterDCWire = 
-          ((fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+          ((fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter") &&
            (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative")) ||
-          ((toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+          ((toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro" || toComp?.type === "inverter") &&
            (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative"));
         
         if (isInverterDCWire) {
-          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
+          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter"
             ? fromComp.id
             : toComp?.id;
           if (inverterId) {
@@ -1163,15 +1163,15 @@ export default function SchematicDesigner() {
         } else {
           // Check if this is an inverter AC output wire (to AC panel or AC load)
           const isInverterACWire = 
-            ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") &&
+            ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro") &&
              (wire.fromTerminal === "ac-out-hot" || wire.fromTerminal === "ac-out-neutral" || wire.fromTerminal === "ac-out-ground") &&
              (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) ||
-            ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") &&
+            ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro") &&
              (wire.toTerminal === "ac-out-hot" || wire.toTerminal === "ac-out-neutral" || wire.toTerminal === "ac-out-ground") &&
              (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground"));
           
           if (isInverterACWire) {
-            const inverterId = fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter"
+            const inverterId = fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro"
               ? fromComp.id
               : toComp?.id;
             if (inverterId) {
@@ -1347,7 +1347,7 @@ export default function SchematicDesigner() {
                 if (otherComp.type === "ac-load" || otherComp.type === "ac-panel") continue;
                 
                 // For inverters, get DC input current (load)
-                if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
+                if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter" || otherComp.type === "quattro") {
                   const inverterDC = calculateInverterDCInput(otherComp.id, 0.875, comps);
                   totalLoadCurrent += inverterDC.dcInputCurrent;
                 }
@@ -1444,7 +1444,7 @@ export default function SchematicDesigner() {
                         if (connectedComp.type === "ac-load" || connectedComp.type === "ac-panel") continue;
                         
                         // For inverters, get DC input current (load)
-                        if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter") {
+                        if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter" || connectedComp.type === "quattro") {
                           const inverterDC = calculateInverterDCInput(connectedComp.id, 0.875, comps);
                           totalLoadCurrent += inverterDC.dcInputCurrent;
                         }
@@ -1622,15 +1622,20 @@ export default function SchematicDesigner() {
         'ac-load': { watts: 1000, acVoltage: 120 },
         'solar-panel': { watts: 300, voltage: systemVoltage * 1.5 }, // Default to typical Vmp (1.5x system voltage)
         mppt: { amps: 30, voltage: systemVoltage },
-        multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage },
-        inverter: { watts: 2000, voltage: systemVoltage },
-        'phoenix-inverter': { watts: 1200, voltage: systemVoltage },
+        multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage, acOutputVoltage: '120' },
+        quattro: { watts: 5000, powerRating: 5000, voltage: systemVoltage, acOutputVoltage: '120' },
+        argofet: { amps: 100, voltage: systemVoltage },
+        'cyrix-ct': { amps: 120, voltage: systemVoltage },
+        inverter: { watts: 2000, voltage: systemVoltage, acOutputVoltage: '120' },
+        'phoenix-inverter': { watts: 1200, voltage: systemVoltage, acOutputVoltage: '120' },
         'blue-smart-charger': { amps: 15, voltage: systemVoltage },
         'orion-dc-dc': { amps: 30, voltage: systemVoltage, inputVoltage: systemVoltage, outputVoltage: systemVoltage === 12 ? 24 : 12 },
         'battery-balancer': { voltage: 24 },
         alternator: { amps: 100, current: 100, voltage: systemVoltage },
         'battery-protect': { amps: 100, voltage: systemVoltage },
-        fuse: { fuseRating: 400, amps: 400 },
+        fuse: { fuseType: 'class-t', fuseRating: 400, amps: 400 },
+        'dc-breaker': { amps: 50, rating: 50, voltage: systemVoltage },
+        'ac-breaker': { amps: 30, rating: 30, poles: 2, acVoltage: 120 },
         switch: { voltage: systemVoltage },
         'busbar-positive': { voltage: systemVoltage },
         'busbar-negative': { voltage: systemVoltage },
@@ -1638,6 +1643,10 @@ export default function SchematicDesigner() {
         smartshunt: { voltage: systemVoltage },
         'shore-power': { voltage: 120, maxAmps: 30 },
         'transfer-switch': { switchType: 'manual', priority: 'source1' },
+        'lynx-power-in': { voltage: systemVoltage, maxCurrent: 1000 },
+        'lynx-distributor': { voltage: systemVoltage, maxCurrent: 1000, fuseRating: 125 },
+        'lynx-shunt': { voltage: systemVoltage, maxCurrent: 1000, fuseRating: 400 },
+        'lynx-smart-bms': { voltage: systemVoltage, amps: 500, maxCurrent: 500 },
       };
       return defaults[type] || { voltage: systemVoltage };
     };
@@ -1873,7 +1882,7 @@ export default function SchematicDesigner() {
         temperatureC: 30,
         conductorMaterial: "copper",
         currentGauge: undefined,
-        insulationType: "75C",
+        insulationType: "105C",
         bundlingFactor: 0.8,
         maxVoltageDrop: 3,
       });

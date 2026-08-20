@@ -18,6 +18,9 @@ interface Component {
 
 const victronComponents: Component[] = [
   { id: "multiplus", name: "MultiPlus Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "quattro", name: "Quattro Inverter/Charger", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "argofet", name: "Argo FET Isolator", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "cyrix-ct", name: "Cyrix-CT Combiner", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "phoenix-inverter", name: "Phoenix Inverter", icon: <Cable className="h-5 w-5" />, category: "victron" },
   { id: "mppt", name: "MPPT Controller", icon: <Sun className="h-5 w-5" />, category: "victron" },
   { id: "orion-dc-dc", name: "Orion DC-DC Charger", icon: <Battery className="h-5 w-5" />, category: "victron" },
@@ -26,6 +29,10 @@ const victronComponents: Component[] = [
   { id: "cerbo", name: "Cerbo GX", icon: <Cpu className="h-5 w-5" />, category: "victron" },
   { id: "smartshunt", name: "SmartShunt", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "battery-protect", name: "Battery Protect", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-power-in", name: "Lynx Power In", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-distributor", name: "Lynx Distributor", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-shunt", name: "Lynx Shunt VE.Can", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-smart-bms", name: "Lynx Smart BMS", icon: <Cpu className="h-5 w-5" />, category: "victron" },
 ];
 
 const genericComponents: Component[] = [
@@ -40,7 +47,9 @@ const genericComponents: Component[] = [
 ];
 
 const safetyComponents: Component[] = [
-  { id: "fuse", name: "Class T Fuse", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "fuse", name: "Fuse (Class T, MEGA, blade...)", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "dc-breaker", name: "DC Circuit Breaker", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "ac-breaker", name: "AC Circuit Breaker", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "switch", name: "Battery Switch", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "ac-panel", name: "AC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
   { id: "dc-panel", name: "DC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
@@ -60,7 +69,7 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
   };
 
   return (
-    <div className="w-80 border-r bg-card flex flex-col h-full">
+    <div className="w-80 shrink-0 border-r bg-card flex flex-col h-full">
       <div className="p-4 border-b">
         <h2 className="font-semibold text-lg">Components</h2>
         <p className="text-sm text-muted-foreground mt-1">

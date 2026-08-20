@@ -239,4 +239,334 @@ describe('Design Validator', () => {
       expect(result.valid).toBe(false);
     });
   });
+  describe('SmartShunt Placement Validation', () => {
+    const shuntError = (components: SchematicComponent[], wires: Wire[]) => {
+      const validator = new DesignValidator(components, wires, 12);
+      return validator.validate().issues.filter(i =>
+        i.message.includes('SmartShunt not properly connected')
+      );
+    };
+
+    const termWire = (
+      id: string,
+      fromId: string,
+      fromTerminal: string,
+      toId: string,
+      toTerminal: string
+    ): Wire => ({
+      id,
+      fromComponentId: fromId,
+      toComponentId: toId,
+      fromTerminal,
+      toTerminal,
+      polarity: 'negative',
+      gauge: '4/0 AWG',
+      length: 2,
+    });
+
+    it('accepts a wire drawn battery -> shunt', () => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12 }),
+        createComponent('shunt1', 'smartshunt', 400, 100),
+      ];
+      const wires = [termWire('w1', 'battery1', 'negative', 'shunt1', 'negative')];
+      expect(shuntError(components, wires)).toHaveLength(0);
+    });
+
+    it('accepts the same wire drawn shunt -> battery (reverse direction)', () => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12 }),
+        createComponent('shunt1', 'smartshunt', 400, 100),
+      ];
+      const wires = [termWire('w1', 'shunt1', 'negative', 'battery1', 'negative')];
+      expect(shuntError(components, wires)).toHaveLength(0);
+    });
+
+    it('accepts a shunt wired to the second battery in a bank', () => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12 }),
+        createComponent('battery2', 'battery', 100, 400, { voltage: 12 }),
+        createComponent('shunt1', 'smartshunt', 400, 400),
+      ];
+      const wires = [termWire('w1', 'battery2', 'negative', 'shunt1', 'negative')];
+      expect(shuntError(components, wires)).toHaveLength(0);
+    });
+
+    it('accepts a shunt reached through a disconnect switch', () => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12 }),
+        createComponent('switch1', 'switch', 250, 100),
+        createComponent('shunt1', 'smartshunt', 400, 100),
+      ];
+      const wires = [
+        termWire('w1', 'battery1', 'negative', 'switch1', 'in'),
+        termWire('w2', 'switch1', 'out', 'shunt1', 'negative'),
+      ];
+      expect(shuntError(components, wires)).toHaveLength(0);
+    });
+
+    it('still flags a shunt with nothing on its battery side', () => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12 }),
+        createComponent('busbar1', 'busbar-negative', 400, 100),
+        createComponent('shunt1', 'smartshunt', 700, 100),
+      ];
+      // system-minus is wired, but the battery side is not
+      const wires = [termWire('w1', 'shunt1', 'system-minus', 'busbar1', 'neg-1')];
+      expect(shuntError(components, wires).length).toBeGreaterThan(0);
+    });
+
+    it('does not flag the shunt when the battery connects to its positive post only', () => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12 }),
+        createComponent('shunt1', 'smartshunt', 400, 100),
+      ];
+      // Wire lands on the battery POSITIVE post - not a valid negative path
+      const wires = [termWire('w1', 'shunt1', 'negative', 'battery1', 'positive')];
+      expect(shuntError(components, wires).length).toBeGreaterThan(0);
+    });
+  });
+  describe('AC Output Voltage Validation', () => {
+    const acWire = (id: string, fromId: string, toId: string): Wire => ({
+      id,
+      fromComponentId: fromId,
+      toComponentId: toId,
+      fromTerminal: 'ac-out-hot',
+      toTerminal: 'ac-in',
+      polarity: 'hot',
+      gauge: '12 AWG',
+      length: 10,
+    });
+
+    const acIssues = (components: SchematicComponent[], wires: Wire[]) => {
+      const validator = new DesignValidator(components, wires, 12);
+      return validator.validate().issues.filter(i => i.message.includes('outputs'));
+    };
+
+    it('flags a 240V load on a 120V inverter', () => {
+      const components = [
+        createComponent('inv1', 'multiplus', 100, 100, { watts: 3000, acOutputVoltage: '120' }),
+        createComponent('load1', 'ac-load', 500, 100, { watts: 1500, acVoltage: 240 }),
+      ];
+      expect(acIssues(components, [acWire('w1', 'inv1', 'load1')]).length).toBeGreaterThan(0);
+    });
+
+    it('accepts a 240V load on a split-phase inverter', () => {
+      const components = [
+        createComponent('inv1', 'quattro', 100, 100, { watts: 5000, acOutputVoltage: 'split-120-240' }),
+        createComponent('load1', 'ac-load', 500, 100, { watts: 1500, acVoltage: 240 }),
+      ];
+      expect(acIssues(components, [acWire('w1', 'inv1', 'load1')])).toHaveLength(0);
+    });
+
+    it('accepts a 120V load on a split-phase inverter', () => {
+      const components = [
+        createComponent('inv1', 'quattro', 100, 100, { watts: 5000, acOutputVoltage: 'split-120-240' }),
+        createComponent('load1', 'ac-load', 500, 100, { watts: 600, acVoltage: 120 }),
+      ];
+      expect(acIssues(components, [acWire('w1', 'inv1', 'load1')])).toHaveLength(0);
+    });
+
+    it('accepts a 220V load on a 230V inverter (same family)', () => {
+      const components = [
+        createComponent('inv1', 'multiplus', 100, 100, { watts: 3000, acOutputVoltage: '230' }),
+        createComponent('load1', 'ac-load', 500, 100, { watts: 600, acVoltage: 220 }),
+      ];
+      expect(acIssues(components, [acWire('w1', 'inv1', 'load1')])).toHaveLength(0);
+    });
+
+    it('flags a 120V load on a 230V inverter', () => {
+      const components = [
+        createComponent('inv1', 'multiplus', 100, 100, { watts: 3000, acOutputVoltage: '230' }),
+        createComponent('load1', 'ac-load', 500, 100, { watts: 600, acVoltage: 120 }),
+      ];
+      expect(acIssues(components, [acWire('w1', 'inv1', 'load1')]).length).toBeGreaterThan(0);
+    });
+
+    it('traces through an AC panel to reach the source', () => {
+      const components = [
+        createComponent('inv1', 'multiplus', 100, 100, { watts: 3000, acOutputVoltage: '120' }),
+        createComponent('panel1', 'ac-panel', 400, 100),
+        createComponent('load1', 'ac-load', 700, 100, { watts: 1500, acVoltage: 240 }),
+      ];
+      const wires = [acWire('w1', 'inv1', 'panel1'), acWire('w2', 'panel1', 'load1')];
+      expect(acIssues(components, wires).length).toBeGreaterThan(0);
+    });
+
+    it('defaults to 120V when no output voltage is set (unchanged behaviour)', () => {
+      const components = [
+        createComponent('inv1', 'multiplus', 100, 100, { watts: 3000 }),
+        createComponent('load1', 'ac-load', 500, 100, { watts: 600, acVoltage: 120 }),
+      ];
+      expect(acIssues(components, [acWire('w1', 'inv1', 'load1')])).toHaveLength(0);
+    });
+  });
+  describe('MPPT LOAD Output Terminals', () => {
+    const loadWire = (mpptModel: string | undefined): { components: SchematicComponent[]; wires: Wire[] } => ({
+      components: [
+        createComponent('mppt1', 'mppt', 100, 100, { maxCurrent: 20, model: mpptModel }),
+        createComponent('load1', 'dc-load', 500, 100, { watts: 60, voltage: 12 }),
+      ],
+      wires: [
+        {
+          id: 'w1',
+          fromComponentId: 'mppt1',
+          toComponentId: 'load1',
+          fromTerminal: 'load-positive',
+          toTerminal: 'positive',
+          polarity: 'positive',
+          gauge: '10 AWG',
+          length: 5,
+        },
+      ],
+    });
+
+    const terminalErrors = (components: SchematicComponent[], wires: Wire[]) => {
+      const validator = new DesignValidator(components, wires, 12);
+      return validator.validate().issues.filter(i => i.message.includes('Invalid terminal'));
+    };
+
+    it('accepts load-positive on an MPPT 100|20', () => {
+      const { components, wires } = loadWire('100|20');
+      expect(terminalErrors(components, wires)).toHaveLength(0);
+    });
+
+    it('accepts load-positive on an MPPT 75|15', () => {
+      const { components, wires } = loadWire('75|15');
+      expect(terminalErrors(components, wires)).toHaveLength(0);
+    });
+
+    it('rejects load-positive on an MPPT 150|45 (no load output)', () => {
+      const { components, wires } = loadWire('150|45');
+      expect(terminalErrors(components, wires).length).toBeGreaterThan(0);
+    });
+
+    it('rejects load-positive when no model is set', () => {
+      const { components, wires } = loadWire(undefined);
+      expect(terminalErrors(components, wires).length).toBeGreaterThan(0);
+    });
+
+    it('still accepts the standard MPPT terminals on every model', () => {
+      const components = [
+        createComponent('mppt1', 'mppt', 100, 100, { maxCurrent: 60, model: '150|60' }),
+        createComponent('bus1', 'busbar-positive', 500, 100),
+      ];
+      const wires: Wire[] = [
+        {
+          id: 'w1',
+          fromComponentId: 'mppt1',
+          toComponentId: 'bus1',
+          fromTerminal: 'batt-positive',
+          toTerminal: 'pos-1',
+          polarity: 'positive',
+          gauge: '6 AWG',
+          length: 5,
+        },
+      ];
+      expect(terminalErrors(components, wires)).toHaveLength(0);
+    });
+  });
+  describe('Fuse Families and Breakers', () => {
+    const battery = (chem: string) =>
+      createComponent('battery1', 'battery', 100, 100, { voltage: 12, capacity: 200, batteryType: chem });
+
+    const posWire = (id: string, fromId: string, toId: string): Wire => ({
+      id,
+      fromComponentId: fromId,
+      toComponentId: toId,
+      fromTerminal: 'positive',
+      toTerminal: 'in',
+      polarity: 'positive',
+      gauge: '2 AWG',
+      length: 1,
+    });
+
+    const issuesFor = (components: SchematicComponent[], wires: Wire[]) =>
+      new DesignValidator(components, wires, 12).validate().issues;
+
+    it('accepts a blade fuse as battery protection (no unfused error)', () => {
+      const components = [
+        battery('AGM'),
+        createComponent('fuse1', 'fuse', 300, 100, { fuseType: 'blade', fuseRating: 30 }),
+      ];
+      const unfused = issuesFor(components, [posWire('w1', 'battery1', 'fuse1')])
+        .filter(i => i.message.includes('Unfused battery cable'));
+      expect(unfused).toHaveLength(0);
+    });
+
+    it('accepts a DC breaker as battery protection', () => {
+      const components = [
+        battery('AGM'),
+        createComponent('brk1', 'dc-breaker', 300, 100, { amps: 100 }),
+      ];
+      const unfused = issuesFor(components, [posWire('w1', 'battery1', 'brk1')])
+        .filter(i => i.message.includes('Unfused battery cable'));
+      expect(unfused).toHaveLength(0);
+    });
+
+    it('warns when a lithium bank main is a DC breaker', () => {
+      const components = [
+        battery('LiFePO4'),
+        createComponent('brk1', 'dc-breaker', 300, 100, { amps: 100 }),
+      ];
+      const warn = issuesFor(components, [posWire('w1', 'battery1', 'brk1')])
+        .filter(i => i.message.includes('protected by a circuit breaker'));
+      expect(warn).toHaveLength(1);
+      expect(warn[0].severity).toBe('warning');
+    });
+
+    it('warns when a lithium bank main uses a low-interrupt fuse family', () => {
+      const components = [
+        battery('LiFePO4'),
+        createComponent('fuse1', 'fuse', 300, 100, { fuseType: 'mega', fuseRating: 200 }),
+      ];
+      const warn = issuesFor(components, [posWire('w1', 'battery1', 'fuse1')])
+        .filter(i => i.message.includes('interrupt'));
+      expect(warn.length).toBeGreaterThan(0);
+    });
+
+    it('does not warn when a lithium bank main is a Class T fuse', () => {
+      const components = [
+        battery('LiFePO4'),
+        createComponent('fuse1', 'fuse', 300, 100, { fuseType: 'class-t', fuseRating: 400 }),
+      ];
+      const warn = issuesFor(components, [posWire('w1', 'battery1', 'fuse1')])
+        .filter(i => i.message.includes('interrupt') || i.message.includes('circuit breaker'));
+      expect(warn).toHaveLength(0);
+    });
+
+    it('treats an untyped legacy fuse as Class T', () => {
+      const components = [
+        battery('LiFePO4'),
+        createComponent('fuse1', 'fuse', 300, 100, { fuseRating: 400 }),
+      ];
+      const warn = issuesFor(components, [posWire('w1', 'battery1', 'fuse1')])
+        .filter(i => i.message.includes('interrupt') || i.message.includes('circuit breaker'));
+      expect(warn).toHaveLength(0);
+    });
+
+    it('flags an undersized DC breaker', () => {
+      const components = [
+        battery('AGM'),
+        createComponent('brk1', 'dc-breaker', 300, 100, { amps: 10 }),
+        createComponent('load1', 'dc-load', 600, 100, { watts: 600, voltage: 12 }),
+      ];
+      const wires = [
+        posWire('w1', 'battery1', 'brk1'),
+        {
+          id: 'w2',
+          fromComponentId: 'brk1',
+          toComponentId: 'load1',
+          fromTerminal: 'out',
+          toTerminal: 'positive',
+          polarity: 'positive',
+          gauge: '10 AWG',
+          length: 5,
+        } as Wire,
+      ];
+      const undersized = issuesFor(components, wires)
+        .filter(i => i.message.includes('Breaker') && i.message.includes('undersized'));
+      expect(undersized.length).toBeGreaterThan(0);
+    });
+  });
 });

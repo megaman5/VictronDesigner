@@ -290,7 +290,10 @@ CANVAS: 2000px wide × 1500px tall
 
 COMPONENT DIMENSIONS & SPACING:
 - multiplus: 160×180px
-- mppt: 140×150px  
+- quattro: 240×150px (inverter/charger with 2 AC inputs, e.g. shore + generator)
+- argofet: 150×110px (Argo FET battery isolator - one alternator charges 2-3 batteries)
+- cyrix-ct: 130×90px (battery combiner relay - parallels two batteries while charging)
+- mppt: 140×150px
 - cerbo: 160×140px
 - bmv: 140×140px
 - smartshunt: 140×130px
@@ -306,7 +309,13 @@ COMPONENT DIMENSIONS & SPACING:
 - dc-load: 100×100px
 - busbar-positive: 200×60px
 - busbar-negative: 200×60px
+- lynx-power-in: 220×100px (Lynx busbar pair, unfused)
+- lynx-distributor: 220×100px (Lynx busbar pair with 4 fused outputs)
+- lynx-shunt: 220×120px (Lynx busbar pair with built-in shunt and main fuse)
+- lynx-smart-bms: 220×140px (Lynx BMS with contactor and shunt, Victron lithium only)
 - fuse: 80×60px
+- dc-breaker: 80×80px (resettable DC branch protection)
+- ac-breaker: 100×100px (shore power main or AC branch protection)
 - switch: 80×80px
 - breaker-panel: 160×200px
 - ac-panel: 180×220px
@@ -332,6 +341,8 @@ LAYOUT RULES (CRITICAL - PREVENT OVERLAP):
    - MultiPlus: x=1000, y=400
    - Breaker Panel: x=1200, y=400
 - fuse: "in", "out"
+- dc-breaker: "in", "out"
+- ac-breaker: "in-hot", "in-neutral", "in-ground", "out-hot", "out-neutral", "out-ground"
 - switch: "in", "out"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", ...
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", ...
@@ -364,7 +375,7 @@ CRITICAL WIRING RULES:
    - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
-4. Use bus bars when connecting 3+ devices of the same type to simplify wiring; prefer busbar-positive, busbar-negative, and fuse components unless the user explicitly asks for a Lynx Distributor
+4. Use bus bars when connecting 3+ devices of the same type to simplify wiring; prefer busbar-positive, busbar-negative, and fuse components unless the user explicitly asks for Lynx (lynx-power-in, lynx-distributor, lynx-shunt, lynx-smart-bms)
 5. Main battery cables (battery to inverter): Use largest gauge (4/0 AWG or 2/0 AWG)
 6. Never mix polarities on same bus bar
 7. MultiPlus Connections:
@@ -386,14 +397,18 @@ ${d.name.toUpperCase()} (${d.type}):
 ${d.wiringRules.map(r => `  * ${r}`).join("\n")}
 `).join("\n")}
 
-WIRE GAUGE SELECTION (BASED ON CURRENT):
-- 0-20A: 12 AWG or 10 AWG
-- 20-40A: 8 AWG
-- 40-60A: 6 AWG
-- 60-100A: 4 AWG
-- 100-150A: 2 AWG
-- 150-200A: 1/0 AWG
-- 200A+: 4/0 AWG
+WIRE GAUGE SELECTION (BASED ON CURRENT, ABYC 105°C free air with 20% margin):
+- 0-50A: 10 AWG
+- 50-65A: 8 AWG
+- 65-100A: 6 AWG
+- 100-130A: 4 AWG
+- 130-175A: 2 AWG
+- 175-200A: 1 AWG
+- 200-235A: 1/0 AWG
+- 235-275A: 2/0 AWG
+- 275-320A: 3/0 AWG
+- 320-370A: 4/0 AWG
+- 370A+: parallel runs of 4/0 AWG
 - Battery to Inverter: ALWAYS 4/0 AWG or 2/0 AWG
 
 COMPONENT PROPERTIES (MUST BE REALISTIC):
@@ -421,15 +436,35 @@ AC Loads:
 Other Components:
 - battery: { "voltage": <12/24/48>, "capacity": <amp-hours, e.g., 200-800> }
 - solar-panel: { "watts": <realistic value, e.g., 100-400W per panel> }
-- mppt: { "maxCurrent": <amps, e.g., 30-100A> }
-- multiplus: { "powerRating": <watts, e.g., 1200-3000W> }
+- mppt: { "maxCurrent": <amps, e.g., 30-100A>, "model": "<e.g. 100|20 or 150|45>" }
+- multiplus: { "powerRating": <watts, e.g., 1200-3000W>, "acOutputVoltage": "120" | "230" | "split-120-240" }
+- quattro: { "powerRating": <watts, e.g., 3000-10000W>, "acOutputVoltage": "120" | "230" | "split-120-240" }
 - alternator: { "amps": <output current 60-200A>, "voltage": <12 or 24> }
 - orion-dc-dc: { "amps": <charge current 12-50A>, "voltage": <output voltage 12 or 24>, "inputVoltage": <12 or 24>, "outputVoltage": <12 or 24> }
 - battery-balancer: { "voltage": 24 }
 - blue-smart-charger: { "amps": <charge current 15-30A>, "voltage": <12 or 24> }
-- shore-power: { "voltage": <120 or 230>, "maxAmps": <15/30/50A> }
+- shore-power: { "voltage": <120, 230 or 240>, "maxAmps": <15/30/50A> }
+- fuse: { "fuseType": "class-t" | "mrbf" | "anl" | "mega" | "midi" | "blade", "fuseRating": <amps for that family> }
+- dc-breaker: { "amps": <5-300> }
+- ac-breaker: { "amps": <5-100>, "poles": <1 or 2> }
 - inverter: { "watts": <power rating 1000-3000W> }
 - transfer-switch: { "switchType": "automatic" or "manual" }
+
+AC OUTPUT VOLTAGE (120V vs 230V vs 240V):
+- Every inverter (multiplus, quattro, phoenix-inverter, inverter) MUST have an "acOutputVoltage" property
+- "120" = North American single phase (default when the user gives no country hint)
+- "230" = Europe/Australia/UK/NZ/South Africa - use when the user mentions those regions, or 230V European appliances
+- "split-120-240" = North American split phase, two 120V legs plus 240V line-to-line. Use when the user mentions 240V loads such as a well pump, clothes dryer, electric range, large air conditioner, or a 50A/240V shore power hookup
+- AC loads (ac-load) must have an "acVoltage" the inverter can supply. A 240V load REQUIRES a split-120-240 inverter (or a 230V system). Never put a 240V load on a "120" inverter
+- Example 240V load: {"id": "load-1", "type": "ac-load", "name": "Well Pump", "x": 700, "y": 400, "properties": {"watts": 1500, "acVoltage": 240}}
+
+OVERCURRENT PROTECTION (fuses and breakers):
+- Match the protection to the circuit. A 10A LED lighting circuit takes a blade fuse or a small dc-breaker, NOT a 400A Class T
+- Battery main (battery positive to busbar/inverter): "class-t" for lithium, sized at inverter DC current x 1.25
+- Charger/MPPT/DC panel feeds: "midi", "mega" or a dc-breaker sized to the device
+- Small DC branch circuits (lights, pumps, fans): "blade" fuse or a small dc-breaker
+- Shore power inlet MUST pass through an ac-breaker (2-pole) before reaching the inverter/charger AC input
+- A dc-breaker is a legal alternative to a fuse on branch circuits, and gives the user an on/off disconnect
 
 ALTERNATOR CHARGING SETUP (for boats/RVs):
 When user mentions alternator charging:
@@ -852,10 +887,10 @@ ${allValidationErrors.filter((e: any) => e.message?.includes("Parallel wire") ||
 ${allValidationErrors.filter((e: any) => e.message?.includes("Parallel wire") || e.message?.includes("parallel") || e.message?.includes("Parallel conductors")).map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - ${e.suggestion}` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
 
 CRITICAL PARALLEL WIRE RULES:
-- If current ≤230A: REMOVE parallel runs, use single larger gauge wire
-- If current >230A: Use parallel runs, but ALL wires must be 4/0 AWG (identical gauges)
+- If current ≤370A: REMOVE parallel runs, use single larger gauge wire (4/0 AWG carries 445A per ABYC 105°C free air)
+- If current >370A: Use parallel runs, but ALL wires must be 4/0 AWG (identical gauges)
 - NEVER mix different gauges in parallel runs
-- NEVER use parallel runs for currents ≤230A
+- NEVER use parallel runs for currents ≤370A
 ` : ""}
 
 ${allValidationErrors.filter((e: any) => e.category !== "wire-sizing" && !e.wireId && !e.wireIds).length > 0 ? `OTHER ERRORS:
@@ -885,21 +920,21 @@ WIRE CAPACITY WARNINGS (REDUCE QUALITY SCORE):
 - These warnings prevent achieving high quality scores (>90)
 - Fix capacity warnings in early iterations to improve quality faster
 
-PARALLEL WIRE RUNS - STRICT RULES (NEC/ABYC - CRITICAL):
-- ONLY create parallel wire runs when current exceeds 230A (4/0 AWG max capacity)
-- NEVER create parallel runs for currents ≤230A - use single larger gauge instead
+PARALLEL WIRE RUNS - STRICT RULES (ABYC - CRITICAL):
+- ONLY create parallel wire runs when current exceeds 370A (4/0 AWG carries 445A per ABYC 105°C free air; 370A keeps a 20% margin)
+- NEVER create parallel runs for currents ≤370A - use single larger gauge instead
 - ALL parallel conductors MUST be 4/0 AWG (per NEC/ABYC standard practice)
 - NEVER mix different gauges in parallel runs (e.g., don't use 2 AWG + 1 AWG in parallel)
 - When creating parallel runs, each wire must have the SAME gauge (all 4/0 AWG)
 - Each parallel wire's "current" field should be the TOTAL current (system divides automatically)
-- Example CORRECT: 300A load → 2 parallel 4/0 AWG wires, each wire has current: 300 (system calculates 150A per wire automatically)
-- Example CORRECT: 238A load → 2 parallel 4/0 AWG wires, each wire has current: 238 (system calculates 119A per wire automatically)
+- Example CORRECT: 500A load → 2 parallel 4/0 AWG wires, each wire has current: 500 (system calculates 250A per wire automatically)
+- Example CORRECT: 800A load → 3 parallel 4/0 AWG wires, each wire has current: 800 (system calculates 267A per wire automatically)
 - CRITICAL: When creating parallel wires, set current field to TOTAL current on EACH wire (don't divide it yourself)
-- Example WRONG: 200A load → 2 parallel 2/0 AWG wires (should use single 4/0 AWG instead)
-- Example WRONG: 100A load → 2 parallel 1/0 AWG wires (should use single 2 AWG or 1 AWG instead)
+- Example WRONG: 300A load → 2 parallel 2/0 AWG wires (should use single 4/0 AWG instead)
+- Example WRONG: 100A load → 2 parallel 1/0 AWG wires (should use single 6 AWG instead)
 - Example WRONG: 16.7A load → 3 parallel 6 AWG wires (should use single 10 AWG instead)
-- If you see errors about "insufficient for XA" where X > 230A, use parallel 4/0 AWG runs
-- If you see errors about "Parallel wire runs used for XA" where X ≤ 230A, REMOVE parallel runs and use single gauge
+- If you see errors about "insufficient for XA" where X > 370A, use parallel 4/0 AWG runs
+- If you see errors about "Parallel wire runs used for XA" where X ≤ 370A, REMOVE parallel runs and use single gauge
 
 QUALITY IMPROVEMENT GUIDELINES:
 - For complex systems with multiple components, prioritize clean organization:
@@ -909,22 +944,22 @@ QUALITY IMPROVEMENT GUIDELINES:
 - WIRE CAPACITY MANAGEMENT (CRITICAL FOR QUALITY):
   * NEVER size wires at >90% of their ampacity - always leave 10-20% safety margin
   * If a wire would run at >90% capacity, use the next larger gauge
-  * Example: 190A load → use 2/0 AWG (175A max) OR 3/0 AWG (200A max)
-  * Example: 200A load → use 3/0 AWG (200A max) OR 4/0 AWG (230A max)
-  * ONLY use parallel wire runs when you've reached 4/0 AWG (230A) and still need more capacity
+  * Example: 190A load → use 2 AWG (210A max) OR 1 AWG (245A max)
+  * Example: 300A load → use 3/0 AWG (385A max) OR 4/0 AWG (445A max)
+  * ONLY use parallel wire runs when you've reached 4/0 AWG (445A) and still need more capacity
   * Parallel runs require each conductor to be at least 1/0 AWG per NEC/ABYC
-  * Example: 300A load → use 2 parallel 4/0 AWG wires (150A each) since single 4/0 AWG maxes at 230A
+  * Example: 500A load → use 2 parallel 4/0 AWG wires (250A each) since single 4/0 AWG maxes at 445A
   * Wires at 95-100% capacity will generate warnings and reduce quality score
 - When multiple parallel wires exist between the same components:
   * Each wire carries total current ÷ number of parallel wires
   * Calculate current per wire correctly (e.g., 154.3A total ÷ 2 wires = 77.1A per wire)
   * Size each wire based on its per-wire current, not total current
-- For high current applications exceeding 4/0 AWG capacity (230A), use parallel wire runs:
-  * ONLY suggest parallel runs when single 4/0 AWG (230A max) is insufficient
+- For high current applications exceeding 4/0 AWG capacity (445A per ABYC 105°C free air), use parallel wire runs:
+  * ONLY suggest parallel runs when single 4/0 AWG (445A max) is insufficient (current >370A with 20% margin)
   * Each parallel conductor must be at least 1/0 AWG per NEC/ABYC requirements
-  * Use multiple 4/0 AWG wires in parallel for currents >230A
-  * Example: 300A load → use 2 parallel 4/0 AWG wires (150A each, 230A max per wire = 65% capacity)
-  * Example: 400A load → use 2 parallel 4/0 AWG wires (200A each, 230A max = 87% capacity)
+  * Use multiple 4/0 AWG wires in parallel for currents >370A
+  * Example: 500A load → use 2 parallel 4/0 AWG wires (250A each, 445A max per wire = 56% capacity)
+  * Example: 700A load → use 2 parallel 4/0 AWG wires (350A each, 445A max = 79% capacity)
 - Ground wire gauge matching is CRITICAL:
   * Always match ground gauge to hot/neutral in the same circuit
   * This is a safety requirement and will cause validation errors if violated
@@ -948,7 +983,10 @@ DO NOT regenerate wires that are already correct and have no errors. Preserve th
 
 COMPONENT TERMINALS (EXACT NAMES):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
-- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- quattro: "ac-in-1-hot", "ac-in-1-neutral", "ac-in-1-ground", "ac-in-2-hot", "ac-in-2-neutral", "ac-in-2-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- argofet: "input-positive" (from alternator), "out-1-positive", "out-2-positive", "out-3-positive" (to battery positives)
+- cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"; ALSO "load-positive", "load-negative" but ONLY when properties.model is "75|10", "75|15", "100|15" or "100|20" (the compact models with a LOAD output). Never use load terminals on 150V or 250V models
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - bmv: "data"
 - smartshunt: "negative" (battery side), "system-minus" (system side), "data"
@@ -959,6 +997,8 @@ COMPONENT TERMINALS (EXACT NAMES):
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
+- dc-breaker: "in", "out"
+- ac-breaker: "in-hot", "in-neutral", "in-ground", "out-hot", "out-neutral", "out-ground"
 - switch: "in", "out"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
@@ -1005,7 +1045,7 @@ CRITICAL WIRING RULES:
    - AC Bus Bars (120V/230V): Connect AC loads (ac-load) to dedicated AC positive/negative busbars OR directly to inverter AC outputs
    - Name busbars clearly: "DC Positive Bus", "DC Negative Bus", "AC Positive Bus", "AC Negative Bus"
    - Never connect DC and AC loads to the same bus bar
-4. Use bus bars when connecting 3+ devices of the same type to simplify wiring; prefer busbar-positive, busbar-negative, and fuse components unless the user explicitly asks for a Lynx Distributor
+4. Use bus bars when connecting 3+ devices of the same type to simplify wiring; prefer busbar-positive, busbar-negative, and fuse components unless the user explicitly asks for Lynx (lynx-power-in, lynx-distributor, lynx-shunt, lynx-smart-bms)
    - DISTRIBUTE connections across bus bar terminals (e.g., pos-1, pos-2, pos-3)
    - Do NOT connect all wires to the same terminal (e.g., do not put everything on pos-1)
 5. DC loads connect to battery/bus bars after SmartShunt on negative side
@@ -1033,24 +1073,25 @@ ${d.name.toUpperCase()} (${d.type}):
 ${d.wiringRules.map(r => `  * ${r}`).join("\n")}
 `).join("\n")}
 
-WIRE GAUGE SELECTION (with safety margins):
-- 0-20A: 10 AWG (20% margin)
-- 20-35A: 8 AWG (20% margin)
-- 35-50A: 6 AWG (20% margin)
-- 50-80A: 4 AWG (20% margin)
-- 80-115A: 2 AWG (20% margin)
-- 115-150A: 1 AWG (20% margin)
-- 150-180A: 1/0 AWG (20% margin)
-- 180-200A: 2/0 AWG (20% margin)
-- 200-230A: Use 4/0 AWG (230A max)
-- 230A+: Use parallel runs of 4/0 AWG (each parallel conductor must be at least 1/0 AWG per NEC/ABYC)
+WIRE GAUGE SELECTION (ABYC 105°C free-air ampacity, with 20% safety margin):
+- 0-50A: 10 AWG (60A max)
+- 50-65A: 8 AWG (80A max)
+- 65-100A: 6 AWG (120A max)
+- 100-130A: 4 AWG (160A max)
+- 130-175A: 2 AWG (210A max)
+- 175-200A: 1 AWG (245A max)
+- 200-235A: 1/0 AWG (285A max)
+- 235-275A: 2/0 AWG (330A max)
+- 275-320A: 3/0 AWG (385A max)
+- 320-370A: 4/0 AWG (445A max)
+- 370A+: Use parallel runs of 4/0 AWG (each parallel conductor must be at least 1/0 AWG per NEC/ABYC)
 
 CRITICAL: Avoid wires running at >90% capacity. If current approaches wire limit:
 - Use next larger gauge (e.g., if 2 AWG at 95%, use 1 AWG → 1/0 AWG → 2/0 AWG → 3/0 AWG → 4/0 AWG)
-- ONLY use parallel wire runs when 4/0 AWG (230A max) is insufficient
+- ONLY use parallel wire runs when 4/0 AWG (445A max) is insufficient
 - Per NEC/ABYC: Parallel conductors must be at least 1/0 AWG
-- Example: 200A load → use 4/0 AWG (230A max = 87% capacity)
-- Example: 300A load → use 2 parallel 4/0 AWG wires (150A each, 230A max per wire = 65% capacity)
+- Example: 300A load → use 4/0 AWG (445A max = 67% capacity)
+- Example: 500A load → use 2 parallel 4/0 AWG wires (250A each, 445A max per wire = 56% capacity)
 
 CRITICAL: For AC circuits with hot, neutral, and ground wires:
 - Calculate gauge based on current for hot/neutral wires
@@ -1500,6 +1541,9 @@ CANVAS DIMENSIONS: 2000px width × 1500px height (0,0 is top-left corner)
 
 COMPONENT DIMENSIONS (width × height):
 - multiplus: 180×140px
+- quattro: 240×150px (inverter/charger with 2 AC inputs, e.g. shore + generator)
+- argofet: 150×110px (Argo FET battery isolator - one alternator charges 2-3 batteries)
+- cyrix-ct: 130×90px (battery combiner relay - parallels two batteries while charging)
 - mppt: 160×130px
 - cerbo: 180×120px
 - bmv: 140×140px
@@ -1518,7 +1562,13 @@ COMPONENT DIMENSIONS (width × height):
 - dc-load: 120×100px
 - busbar-positive: 200×60px
 - busbar-negative: 200×60px
+- lynx-power-in: 220×100px (Lynx busbar pair, unfused)
+- lynx-distributor: 220×100px (Lynx busbar pair with 4 fused outputs)
+- lynx-shunt: 220×120px (Lynx busbar pair with built-in shunt and main fuse)
+- lynx-smart-bms: 220×140px (Lynx BMS with contactor and shunt, Victron lithium only)
 - fuse: 80×60px
+- dc-breaker: 80×80px (resettable DC branch protection)
+- ac-breaker: 100×100px (shore power main or AC branch protection)
 - switch: 80×80px
 - breaker-panel: 160×200px
 - ac-panel: 180×220px
@@ -1536,7 +1586,10 @@ LAYOUT RULES:
 
 TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
-- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- quattro: "ac-in-1-hot", "ac-in-1-neutral", "ac-in-1-ground", "ac-in-2-hot", "ac-in-2-neutral", "ac-in-2-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- argofet: "input-positive" (from alternator), "out-1-positive", "out-2-positive", "out-3-positive" (to battery positives)
+- cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"; ALSO "load-positive", "load-negative" but ONLY when properties.model is "75|10", "75|15", "100|15" or "100|20" (the compact models with a LOAD output). Never use load terminals on 150V or 250V models
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
@@ -1554,6 +1607,8 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
+- dc-breaker: "in", "out"
+- ac-breaker: "in-hot", "in-neutral", "in-ground", "out-hot", "out-neutral", "out-ground"
 - switch: "in", "out"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
@@ -1575,25 +1630,25 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 CRITICAL WIRING RULES:
 1. BATTERY FUSE (BEST PRACTICE): For NEW systems, include fuse: Battery "positive" → Fuse "in", Fuse "out" → system (100px from battery). If modifying existing design, may skip if already wired.
 2. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
-3. Use bus bars when 3+ connections needed (separate bars for positive/negative); prefer busbar/fuse components over Lynx unless the user explicitly asks for Lynx
+3. Use bus bars when 3+ connections needed (separate bars for positive/negative); prefer busbar/fuse components over Lynx (lynx-power-in, lynx-distributor, lynx-shunt, lynx-smart-bms) unless the user explicitly asks for Lynx
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge sizing - CRITICAL: You MUST calculate gauge based on BOTH current AND voltage drop:
    - Calculate current from load: I = P / V (watts / voltage)
    - For each wire, calculate required gauge using: current, length, and 3% max voltage drop
    - Example calculations:
-     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 35A, <3% drop)
-     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 115A, <3% drop)
-     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "1/0 AWG" (handles 150A, <3% drop)
-   - Quick reference (for SHORT runs <5ft only):
-     * 0-25A: "10 AWG"
-     * 25-40A: "8 AWG"
-     * 40-60A: "6 AWG"
-     * 60-100A: "4 AWG"
-     * 100-150A: "2 AWG"
-     * 150-200A: "1 AWG"
-     * 200-250A: "1/0 AWG"
-     * 250-300A: "2/0 AWG"
+     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 60A, <3% drop)
+     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 210A, <3% drop governs)
+     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "2 AWG" (handles 210A, <3% drop); use 1/0 AWG for extra margin
+   - Quick reference (ABYC 105°C free air, for SHORT runs <5ft only):
+     * 0-50A: "10 AWG"
+     * 50-65A: "8 AWG"
+     * 65-100A: "6 AWG"
+     * 100-130A: "4 AWG"
+     * 130-175A: "2 AWG"
+     * 175-200A: "1 AWG"
+     * 200-235A: "1/0 AWG"
+     * 235-275A: "2/0 AWG"
    - For LONGER runs, use LARGER gauge to keep voltage drop <3%
    - ALWAYS err on the side of larger gauge for safety
    - Wire gauge format: "10 AWG" (with space between number and AWG)
@@ -1648,10 +1703,19 @@ AC Loads (ac-load) - "properties": {"watts": <number>} REQUIRED:
 Other Components - ALL need properties:
 - battery: {"voltage": 12, "capacity": 400} - REQUIRED: voltage and capacity
 - solar-panel: {"watts": 300, "voltage": 18} - REQUIRED: BOTH watts AND voltage properties. Voltage is PV voltage/Vmp (18V, 36V, 72V, etc.), NOT system voltage. NEVER omit either!
-- mppt: {"maxCurrent": 50} - REQUIRED: maxCurrent property
-- multiplus: {"powerRating": 3000} - REQUIRED: powerRating property
+- mppt: {"maxCurrent": 50, "model": "150|60"} - REQUIRED: maxCurrent. Set "model" to a real SmartSolar model; only 75|10, 75|15, 100|15 and 100|20 have LOAD output terminals
+- multiplus: {"powerRating": 3000, "acOutputVoltage": "120"} - REQUIRED: powerRating. acOutputVoltage is "120" (North America), "230" (Europe/Australia) or "split-120-240" (US split phase)
+- quattro: {"powerRating": 5000, "acOutputVoltage": "120"} - REQUIRED: powerRating. Same acOutputVoltage options as multiplus
 - cerbo: {"voltage": 12} - REQUIRED: voltage property (typically 12V or 24V). MUST connect power-positive and power-negative terminals!
-- fuse: {"fuseRating": 400} - REQUIRED: fuseRating property (amps)
+- fuse: {"fuseType": "class-t", "fuseRating": 400} - REQUIRED: fuseType and fuseRating.
+  * fuseType "class-t" ratings: 100-800A - battery main on lithium banks
+  * fuseType "mrbf" ratings: 30-300A - battery terminal fuse, also fine as a lithium main
+  * fuseType "anl" ratings: 35-750A, "mega" 40-500A - inverter and charger feeds
+  * fuseType "midi" ratings: 30-200A - MPPT or DC panel feed
+  * fuseType "blade" ratings: 1-40A - lights, pumps, fans, small electronics
+  * NEVER put a 100A+ class-t fuse on a small circuit. Match the family to the current
+- dc-breaker: {"amps": 50} - REQUIRED: amps (5-300A). Resettable branch protection plus disconnect. NOT for the main battery fuse on a lithium bank
+- ac-breaker: {"amps": 30, "poles": 2} - REQUIRED: amps (5-100A) and poles (1 or 2). Use a 2-pole breaker for a shore power main and for 240V split-phase circuits
 - alternator: {"amps": 100, "voltage": 12} - REQUIRED: amps (60-200A) and voltage (12 or 24)
 - orion-dc-dc: {"amps": 20, "voltage": 24, "inputVoltage": 12, "outputVoltage": 24} - REQUIRED: amps (12-50A), inputVoltage, outputVoltage
 - battery-balancer: {"voltage": 24} - Use when 24V bank is built from two 12V batteries in series
@@ -1659,6 +1723,22 @@ Other Components - ALL need properties:
 - shore-power: {"voltage": 120, "maxAmps": 30} - REQUIRED: AC voltage and max amps
 - inverter: {"watts": 3000} - REQUIRED: power rating in watts
 - transfer-switch: {"switchType": "automatic"} - REQUIRED: "automatic" or "manual"
+
+AC OUTPUT VOLTAGE (120V vs 230V vs 240V):
+- Every inverter (multiplus, quattro, phoenix-inverter, inverter) MUST have an "acOutputVoltage" property
+- "120" = North American single phase (default when the user gives no country hint)
+- "230" = Europe/Australia/UK/NZ/South Africa - use when the user mentions those regions, or 230V European appliances
+- "split-120-240" = North American split phase, two 120V legs plus 240V line-to-line. Use when the user mentions 240V loads such as a well pump, clothes dryer, electric range, large air conditioner, or a 50A/240V shore power hookup
+- AC loads (ac-load) must have an "acVoltage" the inverter can supply. A 240V load REQUIRES a split-120-240 inverter (or a 230V system). Never put a 240V load on a "120" inverter
+- Example 240V load: {"id": "load-1", "type": "ac-load", "name": "Well Pump", "x": 700, "y": 400, "properties": {"watts": 1500, "acVoltage": 240}}
+
+OVERCURRENT PROTECTION (fuses and breakers):
+- Match the protection to the circuit. A 10A LED lighting circuit takes a blade fuse or a small dc-breaker, NOT a 400A Class T
+- Battery main (battery positive to busbar/inverter): "class-t" for lithium, sized at inverter DC current x 1.25
+- Charger/MPPT/DC panel feeds: "midi", "mega" or a dc-breaker sized to the device
+- Small DC branch circuits (lights, pumps, fans): "blade" fuse or a small dc-breaker
+- Shore power inlet MUST pass through an ac-breaker (2-pole) before reaching the inverter/charger AC input
+- A dc-breaker is a legal alternative to a fuse on branch circuits, and gives the user an on/off disconnect
 
 ALTERNATOR CHARGING SETUP (for boats/RVs):
 When user mentions alternator charging:
@@ -2071,6 +2151,9 @@ CANVAS DIMENSIONS: 2000px width × 1500px height (0,0 is top-left corner)
 
 COMPONENT DIMENSIONS (width × height):
 - multiplus: 180×140px
+- quattro: 240×150px (inverter/charger with 2 AC inputs, e.g. shore + generator)
+- argofet: 150×110px (Argo FET battery isolator - one alternator charges 2-3 batteries)
+- cyrix-ct: 130×90px (battery combiner relay - parallels two batteries while charging)
 - mppt: 160×130px
 - cerbo: 180×120px
 - bmv: 140×140px
@@ -2089,7 +2172,13 @@ COMPONENT DIMENSIONS (width × height):
 - dc-load: 120×100px
 - busbar-positive: 200×60px
 - busbar-negative: 200×60px
+- lynx-power-in: 220×100px (Lynx busbar pair, unfused)
+- lynx-distributor: 220×100px (Lynx busbar pair with 4 fused outputs)
+- lynx-shunt: 220×120px (Lynx busbar pair with built-in shunt and main fuse)
+- lynx-smart-bms: 220×140px (Lynx BMS with contactor and shunt, Victron lithium only)
 - fuse: 80×60px
+- dc-breaker: 80×80px (resettable DC branch protection)
+- ac-breaker: 100×100px (shore power main or AC branch protection)
 - switch: 80×80px
 - breaker-panel: 160×200px
 - ac-panel: 180×220px
@@ -2107,7 +2196,10 @@ LAYOUT RULES:
 
 TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - multiplus: "ac-in-hot", "ac-in-neutral", "ac-in-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
-- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
+- quattro: "ac-in-1-hot", "ac-in-1-neutral", "ac-in-1-ground", "ac-in-2-hot", "ac-in-2-neutral", "ac-in-2-ground", "ac-out-hot", "ac-out-neutral", "ac-out-ground", "dc-positive", "dc-negative"
+- argofet: "input-positive" (from alternator), "out-1-positive", "out-2-positive", "out-3-positive" (to battery positives)
+- cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
+- mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"; ALSO "load-positive", "load-negative" but ONLY when properties.model is "75|10", "75|15", "100|15" or "100|20" (the compact models with a LOAD output). Never use load terminals on 150V or 250V models
 - cerbo: "power-positive", "power-negative", "ve-bus", "ve-direct", "ve-can"
 - smartshunt: "negative", "system-minus", "data"
 - battery: "positive", "negative"
@@ -2125,6 +2217,8 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
+- dc-breaker: "in", "out"
+- ac-breaker: "in-hot", "in-neutral", "in-ground", "out-hot", "out-neutral", "out-ground"
 - switch: "in", "out"
 - ac-panel: "main-in-hot", "main-in-neutral", "main-in-ground", "load-1-hot", "load-1-neutral", "load-1-ground", "load-2-hot", "load-2-neutral", "load-2-ground"
 - dc-panel: "main-in-pos", "main-in-neg", "load-1-pos", "load-1-neg", "load-2-pos", "load-2-neg", "load-3-pos", "load-3-neg"
@@ -2146,25 +2240,25 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 CRITICAL WIRING RULES:
 1. BATTERY FUSE (BEST PRACTICE): For NEW systems, include fuse: Battery "positive" → Fuse "in", Fuse "out" → system (100px from battery). If modifying existing design, may skip if already wired.
 2. SmartShunt MUST be in negative path: Battery "negative" → SmartShunt "negative", SmartShunt "system-minus" → all loads
-3. Use bus bars when 3+ connections needed (separate bars for positive/negative); prefer busbar/fuse components over Lynx unless the user explicitly asks for Lynx
+3. Use bus bars when 3+ connections needed (separate bars for positive/negative); prefer busbar/fuse components over Lynx (lynx-power-in, lynx-distributor, lynx-shunt, lynx-smart-bms) unless the user explicitly asks for Lynx
 4. ALL wires MUST have: fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge, length
 5. Use EXACT terminal IDs from list above (copy them character-by-character)
 6. Wire gauge sizing - CRITICAL: You MUST calculate gauge based on BOTH current AND voltage drop:
    - Calculate current from load: I = P / V (watts / voltage)
    - For each wire, calculate required gauge using: current, length, and 3% max voltage drop
    - Example calculations:
-     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 35A, <3% drop)
-     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 115A, <3% drop)
-     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "1/0 AWG" (handles 150A, <3% drop)
-   - Quick reference (for SHORT runs <5ft only):
-     * 0-25A: "10 AWG"
-     * 25-40A: "8 AWG"
-     * 40-60A: "6 AWG"
-     * 60-100A: "4 AWG"
-     * 100-150A: "2 AWG"
-     * 150-200A: "1 AWG"
-     * 200-250A: "1/0 AWG"
-     * 250-300A: "2/0 AWG"
+     * 50W load at 12V = 4.17A. For 10ft run: needs "10 AWG" (handles 60A, <3% drop)
+     * 1000W load at 12V = 83.3A. For 10ft run: needs "2 AWG" (handles 210A, <3% drop governs)
+     * 2000W inverter at 12V = 166.7A. For 5ft run: needs "2 AWG" (handles 210A, <3% drop); use 1/0 AWG for extra margin
+   - Quick reference (ABYC 105°C free air, for SHORT runs <5ft only):
+     * 0-50A: "10 AWG"
+     * 50-65A: "8 AWG"
+     * 65-100A: "6 AWG"
+     * 100-130A: "4 AWG"
+     * 130-175A: "2 AWG"
+     * 175-200A: "1 AWG"
+     * 200-235A: "1/0 AWG"
+     * 235-275A: "2/0 AWG"
    - For LONGER runs, use LARGER gauge to keep voltage drop <3%
    - ALWAYS err on the side of larger gauge for safety
    - Wire gauge format: "10 AWG" (with space between number and AWG)
@@ -2219,10 +2313,19 @@ AC Loads (ac-load) - "properties": {"watts": <number>} REQUIRED:
 Other Components - ALL need properties:
 - battery: {"voltage": 12, "capacity": 400} - REQUIRED: voltage and capacity
 - solar-panel: {"watts": 300, "voltage": 18} - REQUIRED: BOTH watts AND voltage properties. Voltage is PV voltage/Vmp (18V, 36V, 72V, etc.), NOT system voltage. NEVER omit either!
-- mppt: {"maxCurrent": 50} - REQUIRED: maxCurrent property
-- multiplus: {"powerRating": 3000} - REQUIRED: powerRating property
+- mppt: {"maxCurrent": 50, "model": "150|60"} - REQUIRED: maxCurrent. Set "model" to a real SmartSolar model; only 75|10, 75|15, 100|15 and 100|20 have LOAD output terminals
+- multiplus: {"powerRating": 3000, "acOutputVoltage": "120"} - REQUIRED: powerRating. acOutputVoltage is "120" (North America), "230" (Europe/Australia) or "split-120-240" (US split phase)
+- quattro: {"powerRating": 5000, "acOutputVoltage": "120"} - REQUIRED: powerRating. Same acOutputVoltage options as multiplus
 - cerbo: {"voltage": 12} - REQUIRED: voltage property (typically 12V or 24V). MUST connect power-positive and power-negative terminals!
-- fuse: {"fuseRating": 400} - REQUIRED: fuseRating property (amps)
+- fuse: {"fuseType": "class-t", "fuseRating": 400} - REQUIRED: fuseType and fuseRating.
+  * fuseType "class-t" ratings: 100-800A - battery main on lithium banks
+  * fuseType "mrbf" ratings: 30-300A - battery terminal fuse, also fine as a lithium main
+  * fuseType "anl" ratings: 35-750A, "mega" 40-500A - inverter and charger feeds
+  * fuseType "midi" ratings: 30-200A - MPPT or DC panel feed
+  * fuseType "blade" ratings: 1-40A - lights, pumps, fans, small electronics
+  * NEVER put a 100A+ class-t fuse on a small circuit. Match the family to the current
+- dc-breaker: {"amps": 50} - REQUIRED: amps (5-300A). Resettable branch protection plus disconnect. NOT for the main battery fuse on a lithium bank
+- ac-breaker: {"amps": 30, "poles": 2} - REQUIRED: amps (5-100A) and poles (1 or 2). Use a 2-pole breaker for a shore power main and for 240V split-phase circuits
 - alternator: {"amps": 100, "voltage": 12} - REQUIRED: amps (60-200A) and voltage (12 or 24)
 - orion-dc-dc: {"amps": 20, "voltage": 24, "inputVoltage": 12, "outputVoltage": 24} - REQUIRED: amps (12-50A), inputVoltage, outputVoltage
 - battery-balancer: {"voltage": 24} - Use when 24V bank is built from two 12V batteries in series
@@ -2230,6 +2333,22 @@ Other Components - ALL need properties:
 - shore-power: {"voltage": 120, "maxAmps": 30} - REQUIRED: AC voltage and max amps
 - inverter: {"watts": 3000} - REQUIRED: power rating in watts
 - transfer-switch: {"switchType": "automatic"} - REQUIRED: "automatic" or "manual"
+
+AC OUTPUT VOLTAGE (120V vs 230V vs 240V):
+- Every inverter (multiplus, quattro, phoenix-inverter, inverter) MUST have an "acOutputVoltage" property
+- "120" = North American single phase (default when the user gives no country hint)
+- "230" = Europe/Australia/UK/NZ/South Africa - use when the user mentions those regions, or 230V European appliances
+- "split-120-240" = North American split phase, two 120V legs plus 240V line-to-line. Use when the user mentions 240V loads such as a well pump, clothes dryer, electric range, large air conditioner, or a 50A/240V shore power hookup
+- AC loads (ac-load) must have an "acVoltage" the inverter can supply. A 240V load REQUIRES a split-120-240 inverter (or a 230V system). Never put a 240V load on a "120" inverter
+- Example 240V load: {"id": "load-1", "type": "ac-load", "name": "Well Pump", "x": 700, "y": 400, "properties": {"watts": 1500, "acVoltage": 240}}
+
+OVERCURRENT PROTECTION (fuses and breakers):
+- Match the protection to the circuit. A 10A LED lighting circuit takes a blade fuse or a small dc-breaker, NOT a 400A Class T
+- Battery main (battery positive to busbar/inverter): "class-t" for lithium, sized at inverter DC current x 1.25
+- Charger/MPPT/DC panel feeds: "midi", "mega" or a dc-breaker sized to the device
+- Small DC branch circuits (lights, pumps, fans): "blade" fuse or a small dc-breaker
+- Shore power inlet MUST pass through an ac-breaker (2-pole) before reaching the inverter/charger AC input
+- A dc-breaker is a legal alternative to a fuse on branch circuits, and gives the user an on/off disconnect
 
 ALTERNATOR CHARGING SETUP (for boats/RVs):
 When user mentions alternator charging:
@@ -3161,7 +3280,16 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         appSettingsStorage.getWireRoutingSelectorEnabled(),
         appSettingsStorage.getDefaultWireRoutingStyle(),
       ]);
-      res.json({ wireRoutingSelectorEnabled, defaultWireRoutingStyle });
+      // Allow key rotation to take effect without stale cached copies
+      res.set("Cache-Control", "no-store");
+      res.json({
+        wireRoutingSelectorEnabled,
+        defaultWireRoutingStyle,
+        // PostHog project key is a public client-side key; served at
+        // runtime so rotating it doesn't require a rebuild.
+        posthogKey: process.env.POSTHOG_PROJ || null,
+        posthogHost: process.env.POSTHOG_HOST || "https://us.i.posthog.com",
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -3237,9 +3365,42 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
   // Get daily analytics
   app.get("/api/admin/observability/analytics", isAdmin, async (req, res) => {
     try {
-      const days = parseInt(req.query.days as string) || 30;
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
       const analytics = await observabilityStorage.getAnalytics(days);
       res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Error breakdown by type + most frequent messages
+  app.get("/api/admin/observability/error-breakdown", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      const breakdown = await observabilityStorage.getErrorBreakdown(days);
+      res.json(breakdown);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Top events by name
+  app.get("/api/admin/observability/top-events", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      const topEvents = await observabilityStorage.getTopEvents(days);
+      res.json(topEvents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Session engagement metrics
+  app.get("/api/admin/observability/session-metrics", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
+      const metrics = await observabilityStorage.getSessionMetrics(days);
+      res.json(metrics);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

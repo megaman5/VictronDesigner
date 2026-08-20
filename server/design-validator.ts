@@ -1,6 +1,15 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
-import { TERMINAL_CONFIGS } from "../client/src/lib/terminal-config";
+import { TERMINAL_CONFIGS, getComponentTerminals } from "../client/src/lib/terminal-config";
 import { getWireAmpacity, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
+import { getInverterACVoltage, getSupportedACVoltages, isSplitPhase } from "@shared/ac-voltage";
+import {
+  DC_PROTECTION_TYPES,
+  DC_BREAKER_RATINGS,
+  FUSE_TYPES,
+  getFuseType,
+  smallestRatingFor,
+  suggestFuseType,
+} from "@shared/protection-devices";
 import { findBatteryBanks, isSeriesLink, type BatteryBank } from "@shared/battery-bank";
 
 // Helper function to check if two wires are different (handles null IDs)
@@ -126,6 +135,78 @@ export class DesignValidator {
 
     // Rule 11: Series battery bank best practices
     this.validateBatteryBanks();
+
+    // Rule 12: AC loads must match their source's AC output voltage
+    this.validateACVoltageCompatibility();
+  }
+
+  /**
+   * AC loads must match the AC output of whatever feeds them. A 240V well pump
+   * on a 120V-only MultiPlus will not run; a 120V outlet on a 230V unit is a
+   * safety problem. Split-phase (120/240V) sources feed both.
+   */
+  private validateACVoltageCompatibility(): void {
+    const acLoads = this.components.filter(c => c.type === "ac-load");
+    if (acLoads.length === 0) return;
+
+    const AC_PASS_THROUGH = new Set(["ac-panel", "transfer-switch"]);
+    const SOURCE_TYPES = new Set(["multiplus", "quattro", "phoenix-inverter", "inverter", "shore-power"]);
+
+    for (const load of acLoads) {
+      const loadVoltage = getACVoltage(load);
+      const source = this.findACSource(load.id, SOURCE_TYPES, AC_PASS_THROUGH);
+      if (!source) continue; // Unpowered loads are reported by other rules
+
+      const supported = getSupportedACVoltages(source);
+      if (supported.includes(loadVoltage)) continue;
+
+      const sourceVoltage = isSplitPhase(source)
+        ? "120/240V split phase"
+        : `${getInverterACVoltage(source)}V`;
+
+      this.issues.push({
+        severity: "error",
+        category: "electrical",
+        message: `${load.name || "AC load"} is ${loadVoltage}V but ${source.name || source.type} outputs ${sourceVoltage}`,
+        componentIds: [load.id, source.id],
+        suggestion: isSplitPhase(source)
+          ? `Set the load to 120V or 240V to match the split-phase output`
+          : `Set the load to ${getInverterACVoltage(source)}V, or change the inverter's AC output voltage (120/240V split-phase models can feed both)`,
+      });
+    }
+  }
+
+  /** Walk the AC (hot/neutral/ground) path from a load back to its source. */
+  private findACSource(
+    loadId: string,
+    sourceTypes: Set<string>,
+    passThrough: Set<string>
+  ): SchematicComponent | null {
+    const queue = [loadId];
+    const visited = new Set<string>([loadId]);
+
+    while (queue.length > 0) {
+      const compId = queue.shift()!;
+
+      for (const wire of this.wires) {
+        if (wire.polarity !== "hot" && wire.polarity !== "neutral" && wire.polarity !== "ground") continue;
+
+        let nextId: string | undefined;
+        if (wire.fromComponentId === compId) nextId = wire.toComponentId;
+        else if (wire.toComponentId === compId) nextId = wire.fromComponentId;
+        if (!nextId || visited.has(nextId)) continue;
+
+        const next = this.components.find(c => c.id === nextId);
+        if (!next) continue;
+
+        if (sourceTypes.has(next.type)) return next;
+
+        visited.add(nextId);
+        if (passThrough.has(next.type)) queue.push(nextId);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -215,10 +296,35 @@ export class DesignValidator {
         const otherCompId = wire.fromComponentId === battery.id ? wire.toComponentId : wire.fromComponentId;
         const otherComp = this.components.find(c => c.id === otherCompId);
         
-        // Should connect to a Fuse, or a Lynx Distributor (which has fuses)
-        if (otherComp?.type === "fuse" || otherComp?.type === "lynx-distributor") {
+        // Any overcurrent protection counts: a fuse of any family, a DC
+        // breaker, or a Lynx module with a built-in fuse holder.
+        if (otherComp && DC_PROTECTION_TYPES.has(otherComp.type)) {
           hasImmediateFuse = true;
           fusedWireId = wire.id;
+
+          // A lithium bank can deliver thousands of amps into a dead short.
+          // Breakers and low-AIC fuse families cannot safely break that.
+          const chemistry = String(battery.properties?.batteryType || battery.properties?.chemistry || "").toLowerCase();
+          const isLithium = chemistry.includes("lifepo") || chemistry.includes("lithium");
+          if (isLithium) {
+            if (otherComp.type === "dc-breaker") {
+              this.issues.push({
+                severity: "warning",
+                category: "electrical",
+                message: "Lithium battery main protected by a circuit breaker",
+                componentIds: [battery.id, otherComp.id],
+                suggestion: "Use a Class T or MRBF fuse on the battery main - most DC breakers cannot interrupt a lithium short circuit",
+              });
+            } else if (otherComp.type === "fuse" && !FUSE_TYPES[getFuseType(otherComp)].suitableForLithiumMain) {
+              this.issues.push({
+                severity: "warning",
+                category: "electrical",
+                message: `Lithium battery main uses a ${FUSE_TYPES[getFuseType(otherComp)].label} fuse (${FUSE_TYPES[getFuseType(otherComp)].interruptCapacity.toLocaleString()}A interrupt)`,
+                componentIds: [battery.id, otherComp.id],
+                suggestion: "Use a Class T (20,000A) or MRBF (10,000A) fuse for the main battery connection on a lithium bank",
+              });
+            }
+          }
           
           // Check distance/length logic if available (ABYC requires within 7 inches/175mm if not sheathed)
           // We'll just warn if it looks "long" in our logical canvas (e.g. > 10ft)
@@ -236,12 +342,24 @@ export class DesignValidator {
       }
 
       if (!hasImmediateFuse && posWires.length > 0) {
+        // Point at a real part: the family and rating that suit this circuit,
+        // rather than implying every system needs a 400A Class T.
+        const mainCurrent = Math.max(
+          0,
+          ...posWires.map(w => this.calculateFuseCurrent(battery.id) || 0)
+        );
+        const suggestedType = suggestFuseType(mainCurrent, true);
+        const suggestedRating = smallestRatingFor(suggestedType, mainCurrent * 1.25);
+        const partHint = suggestedRating
+          ? ` A ${suggestedRating}A ${FUSE_TYPES[suggestedType].label} fuse suits this circuit.`
+          : "";
+
         this.issues.push({
           severity: "error",
           category: "electrical",
-          message: "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse.",
+          message: "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse or breaker.",
           componentIds: [battery.id],
-          suggestion: "Add a main fuse immediately after the battery positive terminal."
+          suggestion: `Add overcurrent protection immediately after the battery positive terminal.${partHint}`
         });
       }
 
@@ -297,58 +415,118 @@ export class DesignValidator {
   }
 
   private validateSmartShuntPlacement(): void {
-    const smartShunt = this.components.find(c => c.type === "smartshunt");
-    if (!smartShunt) return; // No SmartShunt, no rule to check
+    const smartShunts = this.components.filter(c => c.type === "smartshunt");
+    if (smartShunts.length === 0) return; // No SmartShunt, no rule to check
 
-    const battery = this.components.find(c => c.type === "battery");
-    if (!battery) {
+    const batteries = this.components.filter(c => c.type === "battery");
+    if (batteries.length === 0) {
       this.issues.push({
         severity: "error",
         category: "electrical",
         message: "SmartShunt present but no battery found",
-        componentIds: [smartShunt.id],
+        componentIds: [smartShunts[0].id],
         suggestion: "Add a battery or remove the SmartShunt",
       });
       return;
     }
 
-    // Check that battery negative connects to SmartShunt "negative" terminal
-    const batteryToShunt = this.wires.find(
-      w => w.fromComponentId === battery.id &&
-           w.toComponentId === smartShunt.id &&
-           w.fromTerminal === "negative" &&
-           w.toTerminal === "negative"
-    );
+    for (const smartShunt of smartShunts) {
+      // A shunt is correctly placed when its battery-side "negative" terminal
+      // reaches a battery negative. The wire may be drawn in EITHER direction,
+      // and may pass through negative-path hardware (disconnect switch, class-T
+      // fuse, negative busbar used as a bank collector) on the way.
+      const reachedBattery = this.findBatteryOnNegativePath(smartShunt.id, "negative", batteries);
 
-    if (!batteryToShunt) {
-      this.issues.push({
-        severity: "error",
-        category: "electrical",
-        message: "SmartShunt not properly connected in negative path from battery",
-        componentIds: [battery.id, smartShunt.id],
-        suggestion: "Connect battery negative to SmartShunt 'negative' terminal",
-      });
-    }
+      if (!reachedBattery) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: "SmartShunt not properly connected in negative path from battery",
+          componentIds: [batteries[0].id, smartShunt.id],
+          suggestion: "Connect battery negative to SmartShunt 'negative' terminal",
+        });
+      }
 
-    // Check that all loads connect to system-minus (not directly to battery negative)
-    const loads = this.components.filter(c => c.type === "dc-load" || c.type === "multiplus");
-    const loadsConnectedDirectly = loads.filter(load => {
-      return this.wires.some(
-        w => w.fromComponentId === battery.id &&
-             w.toComponentId === load.id &&
-             w.polarity === "negative"
+      // Check that all loads connect to system-minus (not directly to battery negative)
+      const loads = this.components.filter(c => c.type === "dc-load" || c.type === "multiplus" || c.type === "quattro");
+      const loadsConnectedDirectly = loads.filter(load =>
+        this.wires.some(w =>
+          w.polarity === "negative" &&
+          batteries.some(b =>
+            (w.fromComponentId === b.id && w.toComponentId === load.id) ||
+            (w.toComponentId === b.id && w.fromComponentId === load.id)
+          )
+        )
       );
-    });
 
-    if (loadsConnectedDirectly.length > 0) {
-      this.issues.push({
-        severity: "warning",
-        category: "electrical",
-        message: `${loadsConnectedDirectly.length} load(s) connected directly to battery negative, bypassing SmartShunt`,
-        componentIds: loadsConnectedDirectly.map(l => l.id),
-        suggestion: "Connect loads to SmartShunt 'system-minus' terminal for accurate current monitoring",
-      });
+      if (loadsConnectedDirectly.length > 0) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `${loadsConnectedDirectly.length} load(s) connected directly to battery negative, bypassing SmartShunt`,
+          componentIds: loadsConnectedDirectly.map(l => l.id),
+          suggestion: "Connect loads to SmartShunt 'system-minus' terminal for accurate current monitoring",
+        });
+      }
     }
+  }
+
+  /**
+   * Walk the negative path outward from a component terminal looking for a
+   * battery negative. Pass-through hardware (switches, fuses, negative
+   * busbars) is traversed; anything else ends that branch.
+   */
+  private findBatteryOnNegativePath(
+    startCompId: string,
+    startTerminal: string,
+    batteries: SchematicComponent[]
+  ): SchematicComponent | null {
+    const PASS_THROUGH = new Set(["switch", "fuse", "busbar-negative", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
+    const batteryIds = new Set(batteries.map(b => b.id));
+
+    // Queue of (componentId, terminalId | null). A null terminal means "entered
+    // this pass-through device, continue out of any of its other terminals".
+    const queue: Array<{ compId: string; terminal: string | null }> = [
+      { compId: startCompId, terminal: startTerminal },
+    ];
+    const visited = new Set<string>([`${startCompId}:${startTerminal}`]);
+
+    while (queue.length > 0) {
+      const { compId, terminal } = queue.shift()!;
+
+      for (const wire of this.wires) {
+        let nextCompId: string | undefined;
+        let nextTerminal: string | undefined;
+
+        if (wire.fromComponentId === compId && (terminal === null || wire.fromTerminal === terminal)) {
+          nextCompId = wire.toComponentId;
+          nextTerminal = wire.toTerminal ?? undefined;
+        } else if (wire.toComponentId === compId && (terminal === null || wire.toTerminal === terminal)) {
+          nextCompId = wire.fromComponentId;
+          nextTerminal = wire.fromTerminal ?? undefined;
+        }
+
+        if (!nextCompId) continue;
+
+        if (batteryIds.has(nextCompId)) {
+          // Only the battery's negative post counts as being in the negative path.
+          if (!nextTerminal || nextTerminal === "negative") {
+            return batteries.find(b => b.id === nextCompId) ?? null;
+          }
+          continue;
+        }
+
+        const nextComp = this.components.find(c => c.id === nextCompId);
+        if (!nextComp || !PASS_THROUGH.has(nextComp.type)) continue;
+
+        const key = `${nextCompId}:*`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        queue.push({ compId: nextCompId, terminal: null });
+      }
+    }
+
+    return null;
   }
 
   private validateBusBarPolarity(): void {
@@ -618,7 +796,7 @@ export class DesignValidator {
   private validateDCACMingling(): void {
     // Check that DC and AC loads aren't mixed on same bus bar or circuit
     // (already covered in validateBusBarPolarity, but this is more general)
-    const acComponents = this.components.filter(c => c.type === "ac-load" || c.type === "multiplus");
+    const acComponents = this.components.filter(c => c.type === "ac-load" || c.type === "multiplus" || c.type === "quattro");
     const dcComponents = this.components.filter(c => c.type === "dc-load" || c.type === "battery");
 
     // This is more of an informational check
@@ -822,42 +1000,52 @@ export class DesignValidator {
    * Validate that fuse ratings exceed current through them
    */
   private validateFuseRatings(): void {
-    const fuses = this.components.filter(c => c.type === 'fuse');
-    
-    fuses.forEach(fuse => {
-      const fuseRating = fuse.properties?.fuseRating || fuse.properties?.amps || 0;
-      
-      if (fuseRating === 0) {
+    const devices = this.components.filter(c => c.type === 'fuse' || c.type === 'dc-breaker');
+
+    devices.forEach(device => {
+      const isBreaker = device.type === 'dc-breaker';
+      const noun = isBreaker ? 'Breaker' : 'Fuse';
+      const rating = isBreaker
+        ? (device.properties?.amps || device.properties?.rating || 0)
+        : (device.properties?.fuseRating || device.properties?.amps || 0);
+
+      if (rating === 0) {
         this.issues.push({
           severity: 'warning',
           category: 'electrical',
-          message: `Fuse "${fuse.name}" has no rating specified`,
-          componentIds: [fuse.id],
-          suggestion: 'Set fuse rating in component properties',
+          message: `${noun} "${device.name}" has no rating specified`,
+          componentIds: [device.id],
+          suggestion: `Set the ${noun.toLowerCase()} rating in component properties`,
         });
         return;
       }
-      
-      const currentThroughFuse = this.calculateFuseCurrent(fuse.id);
-      const utilizationPercent = fuseRating > 0 ? (currentThroughFuse / fuseRating) * 100 : 0;
-      
-      if (currentThroughFuse > fuseRating) {
-        // Current exceeds rating - fuse will blow (ERROR)
+
+      const currentThrough = this.calculateFuseCurrent(device.id);
+      const utilizationPercent = rating > 0 ? (currentThrough / rating) * 100 : 0;
+
+      // Suggest a size the part is actually sold in rather than rounding to 50A
+      const nextSize = isBreaker
+        ? DC_BREAKER_RATINGS.find(r => r >= currentThrough)
+        : smallestRatingFor(getFuseType(device), currentThrough);
+      const sizeHint = nextSize ? `${nextSize}A` : `${Math.ceil(currentThrough / 50) * 50}A`;
+
+      if (currentThrough > rating) {
         this.issues.push({
           severity: 'error',
           category: 'electrical',
-          message: `Fuse "${fuse.name}" (${fuseRating}A) is undersized: ${currentThroughFuse.toFixed(1)}A exceeds rating (${utilizationPercent.toFixed(1)}% utilization)`,
-          componentIds: [fuse.id],
-          suggestion: `Increase fuse rating to at least ${Math.ceil(currentThroughFuse / 50) * 50}A (next standard size above ${currentThroughFuse.toFixed(1)}A)`,
+          message: `${noun} "${device.name}" (${rating}A) is undersized: ${currentThrough.toFixed(1)}A exceeds rating (${utilizationPercent.toFixed(1)}% utilization)`,
+          componentIds: [device.id],
+          suggestion: nextSize
+            ? `Increase the rating to ${sizeHint}`
+            : `${currentThrough.toFixed(1)}A is above the largest size in this family - use a larger fuse type`,
         });
       } else if (utilizationPercent > 80) {
-        // Near limit - warning
         this.issues.push({
           severity: 'warning',
           category: 'electrical',
-          message: `Fuse "${fuse.name}" (${fuseRating}A) is near capacity: ${currentThroughFuse.toFixed(1)}A (${utilizationPercent.toFixed(1)}% utilization)`,
-          componentIds: [fuse.id],
-          suggestion: `Consider increasing fuse rating to ${Math.ceil(currentThroughFuse / 50) * 50}A for safety margin`,
+          message: `${noun} "${device.name}" (${rating}A) is near capacity: ${currentThrough.toFixed(1)}A (${utilizationPercent.toFixed(1)}% utilization)`,
+          componentIds: [device.id],
+          suggestion: `Consider increasing the rating to ${sizeHint} for safety margin`,
         });
       }
     });
@@ -865,21 +1053,22 @@ export class DesignValidator {
 
   private validateWireSizing(): void {
     // Import wire data for validation
+    // maxCurrent per ABYC E-11 Table VI: 105°C insulation, free air, 30°C ambient
     const WIRE_DATA: Record<string, { maxCurrent: number; resistance: number }> = {
-      "18 AWG": { maxCurrent: 14, resistance: 6.385 },
-      "16 AWG": { maxCurrent: 18, resistance: 4.016 },
-      "14 AWG": { maxCurrent: 20, resistance: 2.525 },
-      "12 AWG": { maxCurrent: 25, resistance: 1.588 },
-      "10 AWG": { maxCurrent: 35, resistance: 0.9989 },
-      "8 AWG": { maxCurrent: 50, resistance: 0.6282 },
-      "6 AWG": { maxCurrent: 65, resistance: 0.3951 },
-      "4 AWG": { maxCurrent: 85, resistance: 0.2485 },
-      "2 AWG": { maxCurrent: 115, resistance: 0.1563 },
-      "1 AWG": { maxCurrent: 130, resistance: 0.1240 },
-      "1/0 AWG": { maxCurrent: 150, resistance: 0.0983 },
-      "2/0 AWG": { maxCurrent: 175, resistance: 0.0779 },
-      "3/0 AWG": { maxCurrent: 200, resistance: 0.0618 },
-      "4/0 AWG": { maxCurrent: 230, resistance: 0.0490 },
+      "18 AWG": { maxCurrent: 20, resistance: 6.385 },
+      "16 AWG": { maxCurrent: 25, resistance: 4.016 },
+      "14 AWG": { maxCurrent: 35, resistance: 2.525 },
+      "12 AWG": { maxCurrent: 45, resistance: 1.588 },
+      "10 AWG": { maxCurrent: 60, resistance: 0.9989 },
+      "8 AWG": { maxCurrent: 80, resistance: 0.6282 },
+      "6 AWG": { maxCurrent: 120, resistance: 0.3951 },
+      "4 AWG": { maxCurrent: 160, resistance: 0.2485 },
+      "2 AWG": { maxCurrent: 210, resistance: 0.1563 },
+      "1 AWG": { maxCurrent: 245, resistance: 0.1240 },
+      "1/0 AWG": { maxCurrent: 285, resistance: 0.0983 },
+      "2/0 AWG": { maxCurrent: 330, resistance: 0.0779 },
+      "3/0 AWG": { maxCurrent: 385, resistance: 0.0618 },
+      "4/0 AWG": { maxCurrent: 445, resistance: 0.0490 },
     };
 
     this.wires.forEach(wire => {
@@ -933,9 +1122,11 @@ export class DesignValidator {
         const currentPerWire = totalCurrent / parallelCount;
         const gauges = Array.from(new Set(allParallelWires.map(w => w.gauge).filter(Boolean)));
         
-        // Check 1: Parallel wires should only be used for currents >230A (4/0 AWG max)
-        // Only flag if we can determine the current and it's <= 230A
-        if (totalCurrent > 0 && totalCurrent <= 230) {
+        // Check 1: Parallel wires should only be used when a single 4/0 AWG can't
+        // carry the current. 4/0 is 445A per ABYC 105°C free air; with the same
+        // 20% margin suggestWireGauge uses, a single run covers up to ~370A.
+        const singleRunLimit = getWireAmpacity("4/0", "105C") / 1.2;
+        if (totalCurrent > 0 && totalCurrent <= singleRunLimit) {
           this.issues.push({
             severity: "error",
             category: "wire-sizing",
@@ -994,13 +1185,13 @@ export class DesignValidator {
       if (current === 0 && (wire.polarity === "positive" || wire.polarity === "negative")) {
         const fromCompT = this.components.find(c => c.id === wire.fromComponentId);
         const toCompT = this.components.find(c => c.id === wire.toComponentId);
-        const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor"]);
+        const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
         const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
         if (isTrunkComp(fromCompT?.type) && isTrunkComp(toCompT?.type)) {
           let loadA = 0;
           let sourceA = 0;
           for (const c of this.components) {
-            if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter") {
+            if (c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter" || c.type === "quattro") {
               loadA += calculateInverterDCInput(c.id, this.components, this.wires, this.systemVoltage).dcInputCurrent;
             } else if (c.type === "dc-load") {
               const w = (c.properties?.watts || c.properties?.power || 0) as number;
@@ -1040,7 +1231,7 @@ export class DesignValidator {
           }
           
           // If this is an inverter, calculate DC input from connected AC loads
-          if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "inverter") {
+          if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "quattro" || comp.type === "inverter") {
             const inverterDC = calculateInverterDCInput(comp.id, this.components, this.wires, this.systemVoltage);
             if (inverterDC.dcCurrent > 0) {
               return inverterDC.dcCurrent;
@@ -1083,7 +1274,7 @@ export class DesignValidator {
               if (otherComp.type === "ac-load" || otherComp.type === "ac-panel") continue;
               
               // For inverters, get DC input current directly
-              if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
+              if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter" || otherComp.type === "quattro") {
                 const inverterDC = calculateInverterDCInput(otherComp.id, this.components, this.wires, this.systemVoltage);
                 totalCurrent += inverterDC.dcInputCurrent;
               } 
@@ -1217,14 +1408,14 @@ export class DesignValidator {
         };
         
         // Check if this is an inverter DC connection
-        const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
+        const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter") &&
                             (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
-                            (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
+                            (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro" || toComp?.type === "inverter") &&
                             (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
         
         if (isInverterDC) {
           // Calculate DC input from connected AC loads
-          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
+          const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro" || fromComp?.type === "inverter"
             ? fromComp.id
             : toComp?.id;
           if (inverterId) {
@@ -1282,7 +1473,7 @@ export class DesignValidator {
               if (totalWatts > 0) {
                 current = totalWatts / acVoltage;
               }
-            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // For inverter AC output wires (hot, neutral, or ground), use AC load current
               // Note: Only hot and neutral carry current, but we detect all for completeness
               const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
@@ -1292,7 +1483,7 @@ export class DesignValidator {
                   ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
                   : 0;
               }
-            } else if (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            } else if (toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // For inverter AC output wires (from panel to inverter) - this shouldn't happen, but handle it
               const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
               if (inverterDC.acLoadWatts > 0) {
@@ -1301,7 +1492,7 @@ export class DesignValidator {
                   ? (inverterDC.acLoadWatts / inverterDC.acVoltage)
                   : 0;
               }
-            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            } else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && toComp && toComp.type === "ac-panel" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // For inverter → AC panel wires, calculate from connected AC loads through the panel
               const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
               if (inverterDC.acLoadWatts > 0) {
@@ -1334,7 +1525,7 @@ export class DesignValidator {
               }
             }
             // For inverter → transfer switch wires
-            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && 
+            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && 
                      toComp && toComp.type === "transfer-switch" && 
                      (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               // Find what's connected to transfer switch output
@@ -1372,7 +1563,7 @@ export class DesignValidator {
               }
             }
             // For direct inverter → AC load wires (no panel in between)
-            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter") && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && toComp && toComp.type === "ac-load" && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
               const acVoltage = getACVoltage(toComp) || 120;
               if (loadWatts > 0) {
@@ -1383,7 +1574,7 @@ export class DesignValidator {
               }
             }
             // For AC load → inverter wires (reverse direction)
-            else if (fromComp && fromComp.type === "ac-load" && toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
+            else if (fromComp && fromComp.type === "ac-load" && toComp && (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") && (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")) {
               const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
               const acVoltage = getACVoltage(fromComp) || 120;
               if (loadWatts > 0) {
@@ -1462,7 +1653,7 @@ export class DesignValidator {
                 if (otherComp.type === "ac-load" || otherComp.type === "ac-panel") continue;
                 
                 // For inverters, get DC input current (this is a load)
-                if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
+                if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter" || otherComp.type === "quattro") {
                   const inverterDC = calculateInverterDCInput(otherComp.id, this.components, this.wires, this.systemVoltage);
                   totalLoadCurrent += inverterDC.dcInputCurrent;
                 }
@@ -1570,7 +1761,7 @@ export class DesignValidator {
                 }
               }
               // For inverters, get DC input current
-              else if (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter") {
+              else if (toComp.type === "inverter" || toComp.type === "multiplus" || toComp.type === "phoenix-inverter" || toComp.type === "quattro") {
                 const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
                 current = inverterDC.dcInputCurrent;
               }
@@ -1690,7 +1881,7 @@ export class DesignValidator {
                       if (connComp.type === "ac-load" || connComp.type === "ac-panel") continue;
                       
                       // For inverters, get DC input current (load)
-                      if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter") {
+                      if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter" || connComp.type === "quattro") {
                         const inverterDC = calculateInverterDCInput(connComp.id, this.components, this.wires, this.systemVoltage);
                         totalLoadCurrent += inverterDC.dcInputCurrent;
                       }
@@ -1746,7 +1937,7 @@ export class DesignValidator {
                   if (connComp.type === "ac-load" || connComp.type === "ac-panel") continue;
                   
                   // For inverters, get DC input current (load)
-                  if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter") {
+                  if (connComp.type === "inverter" || connComp.type === "multiplus" || connComp.type === "phoenix-inverter" || connComp.type === "quattro") {
                     const inverterDC = calculateInverterDCInput(connComp.id, this.components, this.wires, this.systemVoltage);
                     totalLoadCurrent += inverterDC.dcInputCurrent;
                   }
@@ -1822,7 +2013,7 @@ export class DesignValidator {
                         if (connectedComp.type === "ac-load" || connectedComp.type === "ac-panel") continue;
                         
                         // For inverters, get DC input current (load)
-                        if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter") {
+                        if (connectedComp.type === "inverter" || connectedComp.type === "multiplus" || connectedComp.type === "phoenix-inverter" || connectedComp.type === "quattro") {
                           const inverterDC = calculateInverterDCInput(connectedComp.id, this.components, this.wires, this.systemVoltage);
                           totalLoadCurrent += inverterDC.dcInputCurrent;
                         }
@@ -1905,7 +2096,7 @@ export class DesignValidator {
       if (currentPerWire > 0) {
         // Normalize gauge format (remove " AWG" suffix if present)
         const normalizedGauge = wire.gauge.replace(/ AWG$/i, '').replace(/\\0/g, '/0');
-        const maxAmpacity = getWireAmpacity(normalizedGauge, "75C", 30, 1.0);
+        const maxAmpacity = getWireAmpacity(normalizedGauge, "105C", 30, 1.0);
 
         if (maxAmpacity === 0) {
           this.issues.push({
@@ -2041,10 +2232,10 @@ export class DesignValidator {
               }
             }
             // For inverters (DC negative), use DC input current
-            else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") {
+            else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro") {
               const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
               current = inverterDC.dcInputCurrent;
-            } else if (toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") {
+            } else if (toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro") {
               const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
               current = inverterDC.dcInputCurrent;
             }
@@ -2121,11 +2312,11 @@ export class DesignValidator {
         // For AC wires, use AC voltage (110V/120V/220V/230V)
         else if (isACWire) {
           // For inverter AC output wires, get AC voltage from connected loads
-          if ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") && 
+          if ((fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "quattro") && 
               (wire.polarity === "hot" || wire.polarity === "neutral")) {
             const inverterDC = calculateInverterDCInput(fromComp.id, this.components, this.wires, this.systemVoltage);
             voltage = inverterDC.acVoltage;
-          } else if ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter") && 
+          } else if ((toComp?.type === "inverter" || toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "quattro") && 
                      (wire.polarity === "hot" || wire.polarity === "neutral")) {
             const inverterDC = calculateInverterDCInput(toComp.id, this.components, this.wires, this.systemVoltage);
             voltage = inverterDC.acVoltage;
@@ -2174,22 +2365,22 @@ export class DesignValidator {
 
   private suggestWireGauge(current: number): string {
     // Return a gauge that can actually handle the current (with safety margin)
-    // Using 75°C ampacity values with 30°C ambient (no derating)
+    // Using ABYC E-11 105°C free-air ampacities with 30°C ambient (no derating)
     // Add 20% safety margin
     const requiredAmpacity = current * 1.2;
-    
-    if (requiredAmpacity <= 25) return "10 AWG";  // 35A capacity
-    if (requiredAmpacity <= 40) return "8 AWG";   // 50A capacity
-    if (requiredAmpacity <= 60) return "6 AWG";   // 65A capacity
-    if (requiredAmpacity <= 85) return "4 AWG";   // 85A capacity
-    if (requiredAmpacity <= 115) return "2 AWG"; // 115A capacity
-    if (requiredAmpacity <= 130) return "1 AWG";  // 130A capacity
-    if (requiredAmpacity <= 150) return "1/0 AWG"; // 150A capacity
-    if (requiredAmpacity <= 175) return "2/0 AWG"; // 175A capacity
-    if (requiredAmpacity <= 200) return "3/0 AWG"; // 200A capacity
-    if (requiredAmpacity <= 230) return "4/0 AWG"; // 230A capacity
+
+    if (requiredAmpacity <= 60) return "10 AWG";   // 60A capacity
+    if (requiredAmpacity <= 80) return "8 AWG";    // 80A capacity
+    if (requiredAmpacity <= 120) return "6 AWG";   // 120A capacity
+    if (requiredAmpacity <= 160) return "4 AWG";   // 160A capacity
+    if (requiredAmpacity <= 210) return "2 AWG";   // 210A capacity
+    if (requiredAmpacity <= 245) return "1 AWG";   // 245A capacity
+    if (requiredAmpacity <= 285) return "1/0 AWG"; // 285A capacity
+    if (requiredAmpacity <= 330) return "2/0 AWG"; // 330A capacity
+    if (requiredAmpacity <= 385) return "3/0 AWG"; // 385A capacity
+    if (requiredAmpacity <= 445) return "4/0 AWG"; // 445A capacity
     // For currents exceeding 4/0 AWG capacity, suggest parallel runs
-    const maxAmpacity = 230; // 4/0 AWG at 75°C
+    const maxAmpacity = getWireAmpacity("4/0", "105C"); // 445A at 105°C free air
     const parallelRunsNeeded = Math.ceil(requiredAmpacity / maxAmpacity);
     return `${parallelRunsNeeded} parallel run(s) of 4/0 AWG`;
   }
@@ -2372,9 +2563,14 @@ export class DesignValidator {
         return;
       }
 
-      // Check if terminals exist
-      const fromConfig = TERMINAL_CONFIGS[fromComp.type];
-      const toConfig = TERMINAL_CONFIGS[toComp.type];
+      // Check if terminals exist. Terminals can vary per instance (e.g. only
+      // some MPPT models have LOAD output), so resolve against the component.
+      const fromConfig = TERMINAL_CONFIGS[fromComp.type]
+        ? { terminals: getComponentTerminals(fromComp.type, fromComp.properties) }
+        : undefined;
+      const toConfig = TERMINAL_CONFIGS[toComp.type]
+        ? { terminals: getComponentTerminals(toComp.type, toComp.properties) }
+        : undefined;
 
       if (fromConfig) {
         const fromTerminal = fromConfig.terminals.find(t => t.id === wire.fromTerminal);
@@ -2744,7 +2940,7 @@ export class DesignValidator {
     }
 
     // Check AC loads vs inverter capacity
-    const inverters = this.components.filter(c => c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter");
+    const inverters = this.components.filter(c => c.type === "inverter" || c.type === "multiplus" || c.type === "phoenix-inverter" || c.type === "quattro");
     
     if (inverters.length > 0 && totalACLoads > 0) {
       const totalInverterCapacity = inverters.reduce((sum, inv) => {

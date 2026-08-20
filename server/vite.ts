@@ -81,6 +81,13 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
+  // Missing hashed assets (e.g. chunks from a previous deploy) must 404, not
+  // fall through to index.html - returning HTML for a .js request causes
+  // "'text/html' is not a valid JavaScript MIME type" errors on stale clients.
+  app.use("/assets", (_req, res) => {
+    res.status(404).end();
+  });
+
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));

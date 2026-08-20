@@ -147,6 +147,9 @@ When AI generates systems, components must not overlap. Minimum spacing:
 ```typescript
 // Component sizes (width × height)
 multiplus: 180×140px
+quattro: 240×150px
+argofet: 150×110px
+cyrix-ct: 130×90px
 mppt: 160×130px
 cerbo: 180×120px
 bmv: 140×140px
@@ -164,6 +167,9 @@ busbar-negative: 200×60px
 
 ```typescript
 multiplus: "ac-in", "ac-out", "dc-positive", "dc-negative"
+quattro: "ac-in-1-*", "ac-in-2-*", "ac-out-*" (hot/neutral/ground each), "dc-positive", "dc-negative"
+argofet: "input-positive", "out-1-positive", "out-2-positive", "out-3-positive"
+cyrix-ct: "batt-1-positive", "batt-2-positive", "ground"
 mppt: "pv-positive", "pv-negative", "batt-positive", "batt-negative"
 cerbo: "data-1", "data-2", "data-3", "power"
 bmv: "data"
@@ -226,14 +232,16 @@ busbar-negative: "neg-1" through "neg-6"
    - If both voltage drop and ampacity requirements met, use this gauge
 4. Return smallest gauge that meets both requirements
 
-**Wire Gauge Selection Guide** (used by AI):
+**Wire Gauge Selection Guide** (used by AI; ABYC 105°C free-air ampacity with 20% margin):
 ```
-0-25A: 10 AWG
-25-40A: 8 AWG
-40-60A: 6 AWG
-60-100A: 4 AWG
-100-150A: 2 AWG
-150-200A: 1 AWG
+0-50A: 10 AWG
+50-65A: 8 AWG
+65-100A: 6 AWG
+100-130A: 4 AWG
+130-175A: 2 AWG
+175-200A: 1 AWG
+200-235A: 1/0 AWG
+370A+: parallel 4/0 AWG runs
 ```
 
 ## AI System Generation

@@ -62,7 +62,8 @@ export function getDefaultWireLength(
         fromType === "ac-load" || toType === "ac-load" ||
         fromType === "inverter" || toType === "inverter" ||
         fromType === "multiplus" || toType === "multiplus" ||
-        fromType === "phoenix-inverter" || toType === "phoenix-inverter") {
+        fromType === "phoenix-inverter" || toType === "phoenix-inverter" ||
+        fromType === "quattro" || toType === "quattro") {
       return 10;
     }
     // Bus bar to other components: medium (8 feet)
@@ -93,7 +94,8 @@ export function getDefaultWireLength(
     // Load to inverter: short (5 feet)
     if (fromType === "inverter" || toType === "inverter" ||
         fromType === "multiplus" || toType === "multiplus" ||
-        fromType === "phoenix-inverter" || toType === "phoenix-inverter") {
+        fromType === "phoenix-inverter" || toType === "phoenix-inverter" ||
+        fromType === "quattro" || toType === "quattro") {
       return 5;
     }
     // Load to other: medium (8 feet)
@@ -103,7 +105,8 @@ export function getDefaultWireLength(
   // Inverter connections
   if (fromType === "inverter" || toType === "inverter" ||
       fromType === "multiplus" || toType === "multiplus" ||
-      fromType === "phoenix-inverter" || toType === "phoenix-inverter") {
+      fromType === "phoenix-inverter" || toType === "phoenix-inverter" ||
+      fromType === "quattro" || toType === "quattro") {
     // Inverter to bus bar: medium (8 feet)
     if (fromType.includes("busbar") || toType.includes("busbar")) {
       return 8;

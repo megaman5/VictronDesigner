@@ -1,6 +1,7 @@
 import type { Schematic, SchematicComponent, Wire } from "@shared/schema";
 import { validateDesign } from "./design-validator";
 import { calculateInverterDCInput, getACVoltage } from "./wire-calculator";
+import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
 type WireGaugeFormat = "awg" | "metric";
 
@@ -69,6 +70,20 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
         category = "Inverter/Charger";
         description = `Victron MultiPlus ${comp.properties.power}W Inverter/Charger`;
         break;
+      case "quattro":
+        category = "Inverter/Charger";
+        description = comp.properties.power
+          ? `Victron Quattro ${comp.properties.power}W Inverter/Charger (2x AC in)`
+          : "Victron Quattro Inverter/Charger (2x AC in)";
+        break;
+      case "argofet":
+        category = "Battery Isolators";
+        description = "Victron Argo FET Battery Isolator";
+        break;
+      case "cyrix-ct":
+        category = "Battery Combiners";
+        description = "Victron Cyrix-CT Battery Combiner";
+        break;
       case "mppt":
         category = "Solar Controllers";
         description = `Victron SmartSolar MPPT ${comp.properties.voltage || 100}/${comp.properties.current || 30}`;
@@ -96,6 +111,37 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
       case "dc-load":
         category = "DC Loads";
         description = `DC Load: ${comp.name}`;
+        break;
+      case "fuse": {
+        const spec = FUSE_TYPES[getFuseType(comp)];
+        const rating = comp.properties?.fuseRating || comp.properties?.amps || spec.ratings[0];
+        category = "Circuit Protection";
+        description = `${rating}A ${spec.label} fuse and holder (${spec.interruptCapacity.toLocaleString()}A interrupt)`;
+        break;
+      }
+      case "dc-breaker":
+        category = "Circuit Protection";
+        description = `${comp.properties?.amps || comp.properties?.rating || 50}A DC circuit breaker`;
+        break;
+      case "ac-breaker":
+        category = "Circuit Protection";
+        description = `${comp.properties?.amps || comp.properties?.rating || 30}A ${comp.properties?.poles || 2}-pole AC circuit breaker`;
+        break;
+      case "lynx-power-in":
+        category = "DC Distribution";
+        description = "Victron Lynx Power In (1000A busbar, unfused)";
+        break;
+      case "lynx-distributor":
+        category = "DC Distribution";
+        description = "Victron Lynx Distributor (4x MEGA fused outputs)";
+        break;
+      case "lynx-shunt":
+        category = "DC Distribution";
+        description = "Victron Lynx Shunt VE.Can (1000A busbar with shunt and main fuse)";
+        break;
+      case "lynx-smart-bms":
+        category = "DC Distribution";
+        description = `Victron Lynx Smart BMS ${comp.properties?.amps || 500}A`;
         break;
     }
 
@@ -293,7 +339,7 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
     }
     
     // For inverters, show AC output and DC input
-    if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "inverter") {
+    if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "quattro" || comp.type === "inverter") {
       const inverterRating = (props.powerRating || props.watts || props.power || 0) as number;
       if (inverterRating > 0) {
         report += `   AC Output Rating: ${inverterRating.toFixed(0)}W\n`;
@@ -358,7 +404,7 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
         const otherProps = otherComp.properties || {};
         
         // For inverters, get DC input current
-        if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter") {
+        if (otherComp.type === "inverter" || otherComp.type === "multiplus" || otherComp.type === "phoenix-inverter" || otherComp.type === "quattro") {
           const inverterDC = calculateInverterDCInput(otherComp.id, components, wires, schematic.systemVoltage);
           totalWatts += inverterDC.dcInputWatts;
           totalCurrent += inverterDC.dcInputCurrent;
@@ -495,13 +541,13 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
       // Calculate current if not set
       if (wireCurrent === 0) {
         // Check if inverter DC connection
-        const isInverterDC = (from.type === "multiplus" || from.type === "phoenix-inverter" || from.type === "inverter") &&
+        const isInverterDC = (from.type === "multiplus" || from.type === "phoenix-inverter" || from.type === "quattro" || from.type === "inverter") &&
                             (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
-                            (to.type === "multiplus" || to.type === "phoenix-inverter" || to.type === "inverter") &&
+                            (to.type === "multiplus" || to.type === "phoenix-inverter" || to.type === "quattro" || to.type === "inverter") &&
                             (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
         
         if (isInverterDC) {
-          const inverterId = from.type === "multiplus" || from.type === "phoenix-inverter" || from.type === "inverter"
+          const inverterId = from.type === "multiplus" || from.type === "phoenix-inverter" || from.type === "quattro" || from.type === "inverter"
             ? from.id
             : to.id;
           if (inverterId) {
@@ -539,7 +585,7 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
             wireCurrent = loadWatts / loadVoltage;
             wireVoltage = loadVoltage;
           }
-        } else if (isACWire && (from.type === "inverter" || from.type === "multiplus" || from.type === "phoenix-inverter")) {
+        } else if (isACWire && (from.type === "inverter" || from.type === "multiplus" || from.type === "phoenix-inverter" || from.type === "quattro")) {
           // For inverter AC output wires, calculate from connected AC loads
           const inverterDC = calculateInverterDCInput(from.id, components, wires, schematic.systemVoltage);
           if (inverterDC.acLoadWatts > 0) {
@@ -549,7 +595,7 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
               : 0;
             wireVoltage = inverterDC.acVoltage;
           }
-        } else if (isACWire && (to.type === "inverter" || to.type === "multiplus" || to.type === "phoenix-inverter")) {
+        } else if (isACWire && (to.type === "inverter" || to.type === "multiplus" || to.type === "phoenix-inverter" || to.type === "quattro")) {
           // For inverter AC input wires (from panel to inverter)
           const inverterDC = calculateInverterDCInput(to.id, components, wires, schematic.systemVoltage);
           if (inverterDC.acLoadWatts > 0) {

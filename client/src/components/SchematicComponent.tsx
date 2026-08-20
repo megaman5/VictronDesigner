@@ -1,4 +1,5 @@
-import { TERMINAL_CONFIGS, Terminal } from "@/lib/terminal-config";
+import { TERMINAL_CONFIGS, Terminal, getComponentTerminals, mpptHasLoadOutput } from "@/lib/terminal-config";
+import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
 interface ComponentProperties {
   voltage?: number;
@@ -34,13 +35,15 @@ export function SchematicComponent({
   viewMode = 'standard'
 }: SchematicComponentProps) {
   const config = TERMINAL_CONFIGS[type];
+  // Terminals can vary per instance (e.g. MPPT models with a LOAD output)
+  const terminals = getComponentTerminals(type, properties);
 
   const getLoadLabel = () => {
      if (!properties) return null;
      if (type === 'ac-load' || type === 'dc-load') {
         return `${properties.watts || properties.power || 0}W`;
      }
-     if (type === 'inverter' || type === 'phoenix-inverter' || type === 'multiplus') {
+     if (type === 'inverter' || type === 'phoenix-inverter' || type === 'multiplus' || type === 'quattro') {
         return `${properties.watts || 3000}W`;
      }
      if (type === 'mppt') {
@@ -97,6 +100,85 @@ export function SchematicComponent({
           </svg>
         );
 
+      case "quattro":
+        return (
+          <svg width="240" height="150" viewBox="0 0 240 150">
+            {/* Main blue housing */}
+            <rect x="10" y="10" width="220" height="130" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Top label area */}
+            <rect x="20" y="20" width="200" height="30" fill="hsl(var(--victron-blue-light))" rx="4" />
+            <text x="120" y="32" textAnchor="middle" className="fill-white text-xs font-bold">Quattro</text>
+            <text x="120" y="44" textAnchor="middle" className="fill-white text-[10px] opacity-90">Inverter/Charger · 2x AC In</text>
+
+            {/* LED indicators */}
+            <circle cx="30" cy="65" r="4" fill="#00ff00" className="opacity-80" />
+            <circle cx="45" cy="65" r="4" fill="#ffaa00" className="opacity-80" />
+            <circle cx="60" cy="65" r="4" fill="#ff0000" className="opacity-80" />
+
+            {/* Connection terminals */}
+            <rect x="20" y="85" width="200" height="45" fill="black" fillOpacity="0.2" rx="3" />
+            <text x="45" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">AC IN 1</text>
+            <text x="110" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">AC IN 2</text>
+            <text x="175" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">AC OUT</text>
+            <text x="217" y="100" textAnchor="middle" className="fill-white text-[9px] font-semibold">DC</text>
+            <circle cx="45" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="110" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="175" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="217" cy="115" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+
+            {/* Victron branding */}
+            <text x="120" y="137" textAnchor="middle" className="fill-white text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "argofet":
+        return (
+          <svg width="150" height="110" viewBox="0 0 150 110">
+            {/* Main blue housing */}
+            <rect x="10" y="10" width="130" height="90" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+
+            {/* Label */}
+            <text x="75" y="30" textAnchor="middle" className="fill-white text-xs font-bold">Argo FET</text>
+            <text x="75" y="43" textAnchor="middle" className="fill-white text-[10px] opacity-90">Battery Isolator</text>
+
+            {/* Isolator diagram: one input feeding three outputs */}
+            <line x1="25" y1="60" x2="60" y2="60" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="35" x2="60" y2="85" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="35" x2="125" y2="35" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="60" x2="125" y2="60" stroke="white" strokeWidth="2" />
+            <line x1="60" y1="85" x2="125" y2="85" stroke="white" strokeWidth="2" />
+            {/* FET symbols (no voltage drop diodes) */}
+            <polygon points="95,30 105,35 95,40" fill="white" />
+            <polygon points="95,55 105,60 95,65" fill="white" />
+            <polygon points="95,80 105,85 95,90" fill="white" />
+
+            <text x="30" y="53" textAnchor="middle" className="fill-white text-[8px]">ALT</text>
+
+            {/* Victron branding */}
+            <text x="75" y="97" textAnchor="middle" className="fill-white text-[8px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "cyrix-ct":
+        return (
+          <svg width="130" height="90" viewBox="0 0 130 90">
+            {/* Round relay housing on a plate */}
+            <rect x="10" y="15" width="110" height="65" fill="hsl(var(--victron-blue))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" rx="8" />
+            <circle cx="65" cy="47" r="26" fill="hsl(var(--victron-blue-light))" />
+
+            {/* Label */}
+            <text x="65" y="44" textAnchor="middle" className="fill-white text-[10px] font-bold">Cyrix-CT</text>
+            <text x="65" y="56" textAnchor="middle" className="fill-white text-[8px] opacity-90">Combiner</text>
+
+            {/* Battery posts */}
+            <circle cx="22" cy="47" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <circle cx="108" cy="47" r="5" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+            <text x="22" y="30" textAnchor="middle" className="fill-white text-[8px]">BAT1</text>
+            <text x="108" y="30" textAnchor="middle" className="fill-white text-[8px]">BAT2</text>
+          </svg>
+        );
+
       case "mppt": {
         const mpptAmps = properties.maxCurrent || properties.amps || properties.current || 30;
         const maxPVVoltage = properties.maxPVVoltage || 100;
@@ -127,6 +209,15 @@ export function SchematicComponent({
 
             <text x="40" y="122" textAnchor="middle" className="fill-white text-[8px]">PV</text>
             <text x="120" y="122" textAnchor="middle" className="fill-white text-[8px]">BATT</text>
+
+            {/* LOAD output - only on the compact 75V/100V models */}
+            {mpptHasLoadOutput(properties) && (
+              <g>
+                <circle cx="146" cy="60" r="4" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+                <circle cx="146" cy="80" r="4" fill="hsl(var(--background))" stroke="white" strokeWidth="1" />
+                <text x="136" y="72" textAnchor="middle" className="fill-white text-[7px]">LOAD</text>
+              </g>
+            )}
           </svg>
         );
       }
@@ -435,17 +526,22 @@ export function SchematicComponent({
       }
 
       case "fuse": {
-        const fuseRating = properties.fuseRating || properties.amps || 400;
+        const fuseType = getFuseType({ properties });
+        const spec = FUSE_TYPES[fuseType];
+        const fuseRating = properties.fuseRating || properties.amps || spec.ratings[0];
+        // Blade fuses are colour-coded by rating; the rest share a holder look
+        const bodyFill = fuseType === "blade" ? "#4a3a1e" : "#1e3a5f";
+        const bodyStroke = fuseType === "blade" ? "#8f7a2a" : "#2a5a8f";
         return (
           <svg width="80" height="60" viewBox="0 0 80 60">
-            {/* Fuse holder body - blue for Class T */}
-            <rect x="10" y="15" width="60" height="30" fill="#1e3a5f" stroke="#2a5a8f" strokeWidth="2" rx="4" />
+            {/* Fuse holder body */}
+            <rect x="10" y="15" width="60" height="30" fill={bodyFill} stroke={bodyStroke} strokeWidth="2" rx="4" />
 
             {/* Fuse element window */}
             <rect x="25" y="20" width="30" height="20" fill="#0a1a2e" rx="2" />
-            
-            {/* Class T indicator */}
-            <text x="40" y="28" textAnchor="middle" className="fill-cyan-400 text-[8px] font-bold">CLASS T</text>
+
+            {/* Family + rating */}
+            <text x="40" y="28" textAnchor="middle" className="fill-cyan-400 text-[7px] font-bold">{spec.label.split(" ")[0].toUpperCase()}</text>
             <text x="40" y="37" textAnchor="middle" className="fill-white text-[9px] font-bold">{fuseRating}A</text>
 
             {/* Connection terminals */}
@@ -453,8 +549,58 @@ export function SchematicComponent({
             <circle cx="70" cy="30" r="4" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" />
 
             {/* Label */}
-            <text x="40" y="8" textAnchor="middle" className="fill-foreground text-[9px] font-bold">CLASS T FUSE</text>
-            <text x="40" y="55" textAnchor="middle" className="fill-muted-foreground text-[7px]">20kAIC</text>
+            <text x="40" y="8" textAnchor="middle" className="fill-foreground text-[9px] font-bold">FUSE</text>
+            <text x="40" y="55" textAnchor="middle" className="fill-muted-foreground text-[7px]">{(spec.interruptCapacity / 1000)}kAIC</text>
+          </svg>
+        );
+      }
+
+      case "dc-breaker": {
+        const breakerAmps = properties.amps || properties.rating || 50;
+        return (
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            {/* Breaker body */}
+            <rect x="12" y="12" width="56" height="56" fill="#2a2a3a" stroke="#4a4a5a" strokeWidth="2" rx="4" />
+
+            {/* Toggle lever */}
+            <rect x="32" y="20" width="16" height="26" fill="#d0d0d0" stroke="#909090" strokeWidth="1" rx="3" />
+            <rect x="34" y="22" width="12" height="10" fill="#e74c3c" rx="2" />
+
+            {/* Rating readout */}
+            <rect x="18" y="50" width="44" height="14" fill="#0a1a2e" rx="2" />
+            <text x="40" y="60" textAnchor="middle" className="fill-white text-[9px] font-bold">{breakerAmps}A</text>
+
+            {/* Connection terminals */}
+            <circle cx="12" cy="40" r="4" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" />
+            <circle cx="68" cy="40" r="4" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" />
+
+            <text x="40" y="8" textAnchor="middle" className="fill-foreground text-[8px] font-bold">DC BREAKER</text>
+          </svg>
+        );
+      }
+
+      case "ac-breaker": {
+        const acBreakerAmps = properties.amps || properties.rating || 30;
+        const poles = properties.poles || 2;
+        return (
+          <svg width="100" height="100" viewBox="0 0 100 100">
+            {/* Breaker body */}
+            <rect x="15" y="12" width="70" height="76" fill="#2a2a3a" stroke="#4a4a5a" strokeWidth="2" rx="4" />
+
+            {/* Pole levers */}
+            {Array.from({ length: Math.min(poles, 2) }).map((_, i) => (
+              <g key={i}>
+                <rect x={poles > 1 ? 30 + i * 22 : 42} y="24" width="14" height="24" fill="#d0d0d0" stroke="#909090" strokeWidth="1" rx="3" />
+                <rect x={poles > 1 ? 32 + i * 22 : 44} y="26" width="10" height="9" fill="#e74c3c" rx="2" />
+              </g>
+            ))}
+
+            {/* Rating readout */}
+            <rect x="24" y="56" width="52" height="16" fill="#0a1a2e" rx="2" />
+            <text x="50" y="68" textAnchor="middle" className="fill-white text-[9px] font-bold">{acBreakerAmps}A</text>
+
+            <text x="50" y="82" textAnchor="middle" className="fill-muted-foreground text-[7px]">{poles}-pole AC</text>
+            <text x="50" y="8" textAnchor="middle" className="fill-foreground text-[8px] font-bold">AC BREAKER</text>
           </svg>
         );
       }
@@ -629,6 +775,97 @@ export function SchematicComponent({
             <text x="110" y="96" textAnchor="middle" className="fill-foreground text-[7px] opacity-70">victron energy</text>
           </svg>
         );
+
+      case "lynx-power-in":
+        return (
+          <svg width="220" height="100" viewBox="0 0 220 100">
+            {/* Main housing */}
+            <rect x="5" y="10" width="210" height="80" fill="#2a2a3a" stroke="#3a3a4a" strokeWidth="2" rx="6" />
+
+            {/* Top label */}
+            <rect x="15" y="15" width="190" height="22" fill="hsl(var(--victron-blue))" rx="3" />
+            <text x="110" y="30" textAnchor="middle" className="fill-white text-xs font-bold">LYNX POWER IN</text>
+
+            {/* Positive busbar */}
+            <rect x="15" y="42" width="190" height="10" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" rx="2" />
+            <rect x="17" y="44" width="186" height="2" fill="#d4a574" opacity="0.5" />
+            <text x="10" y="50" textAnchor="middle" className="fill-red-400 text-[8px] font-bold">+</text>
+
+            {/* Negative busbar */}
+            <rect x="15" y="58" width="190" height="10" fill="#8a8a8a" stroke="#666" strokeWidth="1" rx="2" />
+            <text x="10" y="66" textAnchor="middle" className="fill-gray-300 text-[8px] font-bold">-</text>
+
+            {/* Connection studs */}
+            {[60, 100, 140, 180].map((x, i) => (
+              <g key={i}>
+                <circle cx={x} cy="47" r="4" fill="#1a1a1a" stroke="#555" strokeWidth="1" />
+                <circle cx={x} cy="63" r="4" fill="#1a1a1a" stroke="#555" strokeWidth="1" />
+              </g>
+            ))}
+
+            <text x="110" y="82" textAnchor="middle" className="fill-gray-400 text-[7px]">4x UNFUSED PAIRS - 1000A</text>
+            <text x="110" y="96" textAnchor="middle" className="fill-foreground text-[7px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "lynx-shunt":
+        return (
+          <svg width="220" height="120" viewBox="0 0 220 120">
+            {/* Main housing */}
+            <rect x="5" y="10" width="210" height="100" fill="#2a2a3a" stroke="#3a3a4a" strokeWidth="2" rx="6" />
+
+            {/* Top label */}
+            <rect x="15" y="15" width="190" height="22" fill="hsl(var(--victron-blue))" rx="3" />
+            <text x="110" y="30" textAnchor="middle" className="fill-white text-xs font-bold">LYNX SHUNT VE.Can</text>
+
+            {/* Positive bar with main fuse holder */}
+            <rect x="15" y="42" width="190" height="10" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" rx="2" />
+            <rect x="95" y="39" width="30" height="16" fill="#1a1a1a" stroke="#c0392b" strokeWidth="1.5" rx="2" />
+            <text x="110" y="51" textAnchor="middle" className="fill-red-400 text-[7px] font-bold">FUSE</text>
+
+            {/* Negative bar with shunt element */}
+            <rect x="15" y="60" width="190" height="10" fill="#8a8a8a" stroke="#666" strokeWidth="1" rx="2" />
+            <rect x="95" y="57" width="30" height="16" fill="#3a3a3a" stroke="#888" strokeWidth="1.5" rx="2" />
+            <text x="110" y="69" textAnchor="middle" className="fill-gray-200 text-[7px] font-bold">SHUNT</text>
+
+            {/* Measurement readout */}
+            <rect x="60" y="78" width="100" height="18" fill="#1a1a1a" stroke="#333" strokeWidth="1" rx="2" />
+            <text x="110" y="91" textAnchor="middle" className="fill-green-400 text-[8px] font-mono">1000A MONITOR</text>
+
+            <text x="110" y="106" textAnchor="middle" className="fill-foreground text-[7px] opacity-70">victron energy</text>
+          </svg>
+        );
+
+      case "lynx-smart-bms": {
+        const bmsAmps = properties.amps || properties.maxCurrent || 500;
+        return (
+          <svg width="220" height="140" viewBox="0 0 220 140">
+            {/* Main housing */}
+            <rect x="5" y="10" width="210" height="120" fill="#2a2a3a" stroke="#3a3a4a" strokeWidth="2" rx="6" />
+
+            {/* Top label */}
+            <rect x="15" y="15" width="190" height="22" fill="hsl(var(--victron-blue))" rx="3" />
+            <text x="110" y="30" textAnchor="middle" className="fill-white text-xs font-bold">LYNX SMART BMS</text>
+
+            {/* Positive bar */}
+            <rect x="15" y="42" width="190" height="10" fill="#b87333" stroke="#8b5a2b" strokeWidth="1" rx="2" />
+
+            {/* Negative bar with contactor + shunt */}
+            <rect x="15" y="60" width="190" height="10" fill="#8a8a8a" stroke="#666" strokeWidth="1" rx="2" />
+            <rect x="70" y="57" width="34" height="16" fill="#3a3a3a" stroke="#888" strokeWidth="1.5" rx="2" />
+            <text x="87" y="69" textAnchor="middle" className="fill-gray-200 text-[7px] font-bold">SHUNT</text>
+            <rect x="116" y="57" width="40" height="16" fill="#1a1a1a" stroke="#e67e22" strokeWidth="1.5" rx="2" />
+            <text x="136" y="69" textAnchor="middle" className="fill-orange-400 text-[7px] font-bold">CONTACT</text>
+
+            {/* BMS status readout */}
+            <rect x="45" y="80" width="130" height="30" fill="#1a1a1a" stroke="#333" strokeWidth="1" rx="2" />
+            <text x="110" y="92" textAnchor="middle" className="fill-green-400 text-[8px] font-mono">{bmsAmps}A BMS</text>
+            <text x="110" y="104" textAnchor="middle" className="fill-gray-400 text-[7px]">pre-alarm + ATC/ATD</text>
+
+            <text x="110" y="126" textAnchor="middle" className="fill-foreground text-[7px] opacity-70">victron energy</text>
+          </svg>
+        );
+      }
 
       case "battery-protect": {
         const bpAmps = properties.amps || 100;
@@ -866,7 +1103,7 @@ export function SchematicComponent({
             viewBox={`0 0 ${config.width} ${config.height}`}
             style={{ overflow: 'visible', zIndex: 10 }}
           >
-            {config.terminals.map((terminal) => {
+            {terminals.map((terminal) => {
               const isHighlighted = highlightedTerminals.includes(terminal.id);
               return (
                 <g key={terminal.id}>

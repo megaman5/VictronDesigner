@@ -247,7 +247,7 @@ export interface WireCalculation {
   voltage: number;
   temperatureC: number;
   conductorMaterial: "copper" | "aluminum";
-  insulationType: "60C" | "75C" | "90C";
+  insulationType: "60C" | "75C" | "90C" | "105C";
   bundlingFactor: number;
   maxVoltageDrop: number;
   recommendedGauge: string;

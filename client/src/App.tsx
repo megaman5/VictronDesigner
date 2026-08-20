@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { initTracking } from "@/lib/tracking";
+import { initPostHog } from "@/lib/posthog";
 import SchematicDesigner from "@/pages/SchematicDesigner";
 import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
@@ -28,6 +29,7 @@ function App() {
   // Initialize tracking on app load
   useEffect(() => {
     initTracking();
+    initPostHog();
   }, []);
 
   return (

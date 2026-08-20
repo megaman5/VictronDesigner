@@ -48,6 +48,48 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     ],
   },
 
+  quattro: {
+    width: 240,
+    height: 150,
+    terminals: [
+      { id: "ac-in-1-hot", type: "ac-in", label: "AC1 L", x: 20, y: 158, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "ac-in-1-neutral", type: "ac-in", label: "AC1 N", x: 40, y: 158, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "ac-in-1-ground", type: "ground", label: "AC1 G", x: 60, y: 158, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+
+      { id: "ac-in-2-hot", type: "ac-in", label: "AC2 L", x: 85, y: 158, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "ac-in-2-neutral", type: "ac-in", label: "AC2 N", x: 105, y: 158, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "ac-in-2-ground", type: "ground", label: "AC2 G", x: 125, y: 158, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+
+      { id: "ac-out-hot", type: "ac-out", label: "AC OUT L", x: 150, y: 158, color: "hsl(var(--wire-ac-hot))", orientation: "bottom" },
+      { id: "ac-out-neutral", type: "ac-out", label: "AC OUT N", x: 170, y: 158, color: "hsl(var(--wire-neutral))", orientation: "bottom" },
+      { id: "ac-out-ground", type: "ground", label: "AC OUT G", x: 190, y: 158, color: "hsl(var(--wire-ac-ground))", orientation: "bottom" },
+
+      { id: "dc-positive", type: "positive", label: "DC+", x: 212, y: 158, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "dc-negative", type: "negative", label: "DC-", x: 232, y: 158, color: "hsl(var(--wire-negative))", orientation: "bottom" },
+    ],
+  },
+
+  argofet: {
+    width: 150,
+    height: 110,
+    terminals: [
+      { id: "input-positive", type: "positive", label: "ALT+", x: 8, y: 55, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "out-1-positive", type: "positive", label: "BAT1+", x: 142, y: 30, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "out-2-positive", type: "positive", label: "BAT2+", x: 142, y: 55, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "out-3-positive", type: "positive", label: "BAT3+", x: 142, y: 80, color: "hsl(var(--wire-positive))", orientation: "right" },
+    ],
+  },
+
+  "cyrix-ct": {
+    width: 130,
+    height: 90,
+    terminals: [
+      { id: "batt-1-positive", type: "positive", label: "BAT1+", x: 8, y: 45, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "batt-2-positive", type: "positive", label: "BAT2+", x: 122, y: 45, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "ground", type: "negative", label: "GND", x: 65, y: 98, color: "hsl(var(--wire-negative))", orientation: "bottom" },
+    ],
+  },
+
   mppt: {
     width: 160,
     height: 130,
@@ -162,16 +204,74 @@ export const TERMINAL_CONFIGS: Record<string, ComponentTerminalConfig> = {
     ],
   },
 
+  // Lynx modular DC distribution system. All Lynx modules share the same
+  // 1000A positive/negative busbar pair, so they bolt together side by side:
+  // wire "bus-out-*" of one module to "main-*" of the next.
   "lynx-distributor": {
     width: 220,
     height: 100,
     terminals: [
       { id: "main-positive", type: "positive", label: "BUS+", x: 8, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
       { id: "main-negative", type: "negative", label: "BUS-", x: 8, y: 60, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "bus-out-positive", type: "positive", label: "OUT+", x: 212, y: 40, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "bus-out-negative", type: "negative", label: "OUT-", x: 212, y: 60, color: "hsl(var(--wire-negative))", orientation: "right" },
       { id: "fuse-1", type: "positive", label: "F1", x: 60, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
       { id: "fuse-2", type: "positive", label: "F2", x: 100, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
       { id: "fuse-3", type: "positive", label: "F3", x: 140, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
       { id: "fuse-4", type: "positive", label: "F4", x: 180, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "neg-1", type: "negative", label: "N1", x: 60, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+      { id: "neg-2", type: "negative", label: "N2", x: 100, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+      { id: "neg-3", type: "negative", label: "N3", x: 140, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+      { id: "neg-4", type: "negative", label: "N4", x: 180, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+    ],
+  },
+
+  // Lynx Power In: passive 1000A busbar pair, four unfused +/- connection pairs.
+  "lynx-power-in": {
+    width: 220,
+    height: 100,
+    terminals: [
+      { id: "main-positive", type: "positive", label: "BUS+", x: 8, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "main-negative", type: "negative", label: "BUS-", x: 8, y: 60, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "bus-out-positive", type: "positive", label: "OUT+", x: 212, y: 40, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "bus-out-negative", type: "negative", label: "OUT-", x: 212, y: 60, color: "hsl(var(--wire-negative))", orientation: "right" },
+      { id: "pos-1", type: "positive", label: "P1", x: 60, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "pos-2", type: "positive", label: "P2", x: 100, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "pos-3", type: "positive", label: "P3", x: 140, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "pos-4", type: "positive", label: "P4", x: 180, y: 92, color: "hsl(var(--wire-positive))", orientation: "bottom" },
+      { id: "neg-1", type: "negative", label: "N1", x: 60, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+      { id: "neg-2", type: "negative", label: "N2", x: 100, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+      { id: "neg-3", type: "negative", label: "N3", x: 140, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+      { id: "neg-4", type: "negative", label: "N4", x: 180, y: 8, color: "hsl(var(--wire-negative))", orientation: "top" },
+    ],
+  },
+
+  // Lynx Shunt VE.Can: busbar pair with an integrated 1000A shunt on the
+  // negative bar and a main fuse holder on the positive bar.
+  "lynx-shunt": {
+    width: 220,
+    height: 120,
+    terminals: [
+      { id: "batt-positive", type: "positive", label: "BATT+", x: 8, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "batt-negative", type: "negative", label: "BATT-", x: 8, y: 60, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "bus-out-positive", type: "positive", label: "SYS+", x: 212, y: 40, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "bus-out-negative", type: "negative", label: "SYS-", x: 212, y: 60, color: "hsl(var(--wire-negative))", orientation: "right" },
+      { id: "ve-can", type: "ground", label: "VE.Can", x: 110, y: 112, color: "hsl(var(--muted))", orientation: "bottom" },
+    ],
+  },
+
+  // Lynx Smart BMS: shunt + contactor + BMS for Victron lithium banks.
+  "lynx-smart-bms": {
+    width: 220,
+    height: 140,
+    terminals: [
+      { id: "batt-positive", type: "positive", label: "BATT+", x: 8, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "batt-negative", type: "negative", label: "BATT-", x: 8, y: 60, color: "hsl(var(--wire-negative))", orientation: "left" },
+      { id: "system-positive", type: "positive", label: "SYS+", x: 212, y: 40, color: "hsl(var(--wire-positive))", orientation: "right" },
+      { id: "system-negative", type: "negative", label: "SYS-", x: 212, y: 60, color: "hsl(var(--wire-negative))", orientation: "right" },
+      { id: "bms-can", type: "ground", label: "BMS-Can", x: 60, y: 132, color: "hsl(var(--muted))", orientation: "bottom" },
+      { id: "ve-can", type: "ground", label: "VE.Can", x: 110, y: 132, color: "hsl(var(--muted))", orientation: "bottom" },
+      { id: "allow-to-charge", type: "ground", label: "ATC", x: 160, y: 132, color: "hsl(var(--muted))", orientation: "bottom" },
     ],
   },
 
@@ -244,6 +344,32 @@ export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> 
     terminals: [
       { id: "in", type: "positive", label: "IN", x: 8, y: 30, color: "hsl(var(--wire-positive))", orientation: "left" },
       { id: "out", type: "positive", label: "OUT", x: 72, y: 30, color: "hsl(var(--wire-positive))", orientation: "right" },
+    ],
+  },
+
+  // DC circuit breaker: resettable protection for a branch circuit (DC panel
+  // feed, MPPT, windlass). Doubles as a disconnect switch.
+  "dc-breaker": {
+    width: 80,
+    height: 80,
+    terminals: [
+      { id: "in", type: "positive", label: "IN", x: 8, y: 40, color: "hsl(var(--wire-positive))", orientation: "left" },
+      { id: "out", type: "positive", label: "OUT", x: 72, y: 40, color: "hsl(var(--wire-positive))", orientation: "right" },
+    ],
+  },
+
+  // AC circuit breaker: shore power main, or a branch breaker ahead of an
+  // AC load. Neutral and ground pass through unswitched.
+  "ac-breaker": {
+    width: 100,
+    height: 100,
+    terminals: [
+      { id: "in-hot", type: "ac-in", label: "L IN", x: 8, y: 30, color: "hsl(var(--wire-ac-hot))", orientation: "left" },
+      { id: "in-neutral", type: "ac-in", label: "N IN", x: 8, y: 50, color: "hsl(var(--wire-neutral))", orientation: "left" },
+      { id: "in-ground", type: "ground", label: "G IN", x: 8, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "left" },
+      { id: "out-hot", type: "ac-out", label: "L OUT", x: 92, y: 30, color: "hsl(var(--wire-ac-hot))", orientation: "right" },
+      { id: "out-neutral", type: "ac-out", label: "N OUT", x: 92, y: 50, color: "hsl(var(--wire-neutral))", orientation: "right" },
+      { id: "out-ground", type: "ground", label: "G OUT", x: 92, y: 70, color: "hsl(var(--wire-ac-ground))", orientation: "right" },
     ],
   },
 
@@ -330,17 +456,52 @@ export const TERMINAL_CONFIGS_EXTENDED: Record<string, ComponentTerminalConfig> 
 
 Object.assign(TERMINAL_CONFIGS, TERMINAL_CONFIGS_EXTENDED);
 
+/**
+ * MPPT models that ship with a LOAD output (low-voltage-disconnect terminals
+ * for small DC loads). Only the compact 75V/100V units have them; the larger
+ * 150V and 250V units do not.
+ */
+const MPPT_MODELS_WITH_LOAD_OUTPUT = new Set(["75|10", "75|15", "100|15", "100|20"]);
+
+const MPPT_LOAD_TERMINALS: Terminal[] = [
+  { id: "load-positive", type: "positive", label: "LOAD+", x: 152, y: 60, color: "hsl(var(--wire-positive))", orientation: "right" },
+  { id: "load-negative", type: "negative", label: "LOAD-", x: 152, y: 80, color: "hsl(var(--wire-negative))", orientation: "right" },
+];
+
+/** True when this MPPT instance is a model with LOAD output terminals. */
+export function mpptHasLoadOutput(properties?: Record<string, any> | null): boolean {
+  const model = properties?.model;
+  return typeof model === "string" && MPPT_MODELS_WITH_LOAD_OUTPUT.has(model);
+}
+
+/**
+ * Terminals for a component instance. Most components have a fixed terminal
+ * set keyed by type, but some (MPPT LOAD output) vary by the selected model,
+ * so pass the component's properties when they are available.
+ */
+export function getComponentTerminals(
+  componentType: string,
+  properties?: Record<string, any> | null
+): Terminal[] {
+  const config = TERMINAL_CONFIGS[componentType];
+  if (!config) return [];
+
+  if (componentType === "mppt" && mpptHasLoadOutput(properties)) {
+    return [...config.terminals, ...MPPT_LOAD_TERMINALS];
+  }
+
+  return config.terminals;
+}
+
 // Helper function to get terminal absolute position on canvas
 export function getTerminalPosition(
   componentX: number,
   componentY: number,
   componentType: string,
-  terminalId: string
+  terminalId: string,
+  properties?: Record<string, any> | null
 ): { x: number; y: number } | null {
-  const config = TERMINAL_CONFIGS[componentType];
-  if (!config) return null;
-
-  const terminal = config.terminals.find(t => t.id === terminalId);
+  const terminal = getComponentTerminals(componentType, properties).find(t => t.id === terminalId);
   if (!terminal) return null;
 
   // Grid size for snapping (must match wire-routing.ts)
@@ -359,15 +520,11 @@ export function getTerminalPosition(
 // Helper function to get terminal orientation
 export function getTerminalOrientation(
   componentType: string,
-  terminalId: string
+  terminalId: string,
+  properties?: Record<string, any> | null
 ): TerminalOrientation | null {
-  const config = TERMINAL_CONFIGS[componentType];
-  if (!config) return null;
-
-  const terminal = config.terminals.find(t => t.id === terminalId);
-  if (!terminal) return null;
-
-  return terminal.orientation;
+  const terminal = getComponentTerminals(componentType, properties).find(t => t.id === terminalId);
+  return terminal ? terminal.orientation : null;
 }
 
 // Helper function to find the closest terminal to a click position
@@ -377,15 +534,13 @@ export function findClosestTerminal(
   componentType: string,
   clickX: number,
   clickY: number,
-  maxDistance: number = 20
+  maxDistance: number = 20,
+  properties?: Record<string, any> | null
 ): Terminal | null {
-  const config = TERMINAL_CONFIGS[componentType];
-  if (!config) return null;
-
   let closestTerminal: Terminal | null = null;
   let closestDistance = maxDistance;
 
-  for (const terminal of config.terminals) {
+  for (const terminal of getComponentTerminals(componentType, properties)) {
     const termX = componentX + terminal.x;
     const termY = componentY + terminal.y;
     const distance = Math.sqrt((clickX - termX) ** 2 + (clickY - termY) ** 2);
