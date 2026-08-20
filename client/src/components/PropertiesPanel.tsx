@@ -13,6 +13,9 @@ import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
 import { findBatteryBanks, getBankForBattery } from "@shared/battery-bank";
 import { formatWireGauge } from "@/lib/wire-calculator";
+import { mpptHasLoadOutput } from "@/lib/terminal-config";
+import { FUSE_TYPES, getFuseType, smallestRatingFor, suggestFuseType, DC_BREAKER_RATINGS, AC_BREAKER_RATINGS, type FuseType } from "@shared/protection-devices";
+import { AC_OUTPUT_OPTIONS, getInverterACVoltage, type ACOutputConfig } from "@shared/ac-voltage";
 import { SaveFeedback } from "@/components/SaveFeedback";
 
 interface WireCalculation {
@@ -56,12 +59,55 @@ interface PropertiesPanelProps {
   onDeleteWire?: (wireId: string) => void;
 }
 
+/**
+ * AC output voltage selector for inverters and inverter/chargers.
+ * Victron ships 120V (NA), 230V (EU/AU) and 120/240V split-phase models, so
+ * the output voltage is a property of the unit rather than a global assumption.
+ */
+function ACOutputVoltageField({
+  component,
+  onUpdateComponent,
+  onSaved,
+}: {
+  component: SchematicComponent;
+  onUpdateComponent?: (id: string, updates: Partial<SchematicComponent>) => void;
+  onSaved?: () => void;
+}) {
+  const current = (component.properties?.acOutputVoltage as ACOutputConfig) ?? "120";
+  const selected = AC_OUTPUT_OPTIONS.find(o => o.value === current) ?? AC_OUTPUT_OPTIONS[0];
+
+  return (
+    <div className="space-y-2">
+      <Label>AC Output Voltage</Label>
+      <Select
+        value={current}
+        onValueChange={(value) => {
+          onUpdateComponent?.(component.id, {
+            properties: { ...component.properties, acOutputVoltage: value as ACOutputConfig },
+          });
+          onSaved?.();
+        }}
+      >
+        <SelectTrigger data-testid="select-ac-output-voltage">
+          <SelectValue placeholder="Select AC output" />
+        </SelectTrigger>
+        <SelectContent>
+          {AC_OUTPUT_OPTIONS.map(o => (
+            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="text-xs text-muted-foreground">{selected.description}</div>
+    </div>
+  );
+}
+
 // Helper function to get available voltages for a component type
 function getAvailableVoltages(componentType: string): number[] {
   switch (componentType) {
     case 'ac-load':
-      // AC loads use AC voltages (110V/120V/220V/230V)
-      return [110, 120, 220, 230];
+      // AC loads use AC voltages (110V/120V/220V/230V/240V)
+      return [110, 120, 220, 230, 240];
     case 'solar-panel':
       // Solar panels use PV voltage (Vmp - Maximum Power Voltage), not system DC voltage
       // Typical Vmp values: 18V, 20V, 36V, 40V, 72V, etc.
@@ -1172,6 +1218,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         </SelectContent>
                       </Select>
                     </div>
+                    <ACOutputVoltageField
+                      component={selectedComponent}
+                      onUpdateComponent={onUpdateComponent}
+                      onSaved={triggerSaveFeedback}
+                    />
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
                       Max DC Current: {Math.ceil((inverterWatts || 3000) / voltage * 1.25)}A (with 25% safety margin)
                     </div>
@@ -1222,6 +1273,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="75|10">SmartSolar MPPT 75|10 (75V PV, 10A)</SelectItem>
+                          <SelectItem value="75|15">SmartSolar MPPT 75|15 (75V PV, 15A)</SelectItem>
                           <SelectItem value="100|15">SmartSolar MPPT 100|15 (100V PV, 15A)</SelectItem>
                           <SelectItem value="100|20">SmartSolar MPPT 100|20 (100V PV, 20A)</SelectItem>
                           <SelectItem value="100|30">SmartSolar MPPT 100|30 (100V PV, 30A)</SelectItem>
@@ -1239,6 +1291,18 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           <SelectItem value="custom">Custom</SelectItem>
                         </SelectContent>
                       </Select>
+                      {mpptHasLoadOutput(selectedComponent.properties) ? (
+                        <div className="text-xs text-muted-foreground">
+                          This model has LOAD output terminals (right side) with low-voltage
+                          disconnect. Wire small DC loads there so the controller can shed
+                          them before the battery is over-discharged.
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          LOAD output terminals are only available on the 75|10, 75|15,
+                          100|15 and 100|20 models.
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -1480,6 +1544,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         </SelectContent>
                       </Select>
                     </div>
+                    <ACOutputVoltageField
+                      component={selectedComponent}
+                      onUpdateComponent={onUpdateComponent}
+                      onSaved={triggerSaveFeedback}
+                    />
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
                       Max DC Current: {Math.ceil((inverterWatts || 1200) / voltage * 1.25)}A (with 25% safety margin)
                     </div>
@@ -1563,6 +1632,11 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           </SelectContent>
                         </Select>
                       </div>
+                      <ACOutputVoltageField
+                        component={selectedComponent}
+                        onUpdateComponent={onUpdateComponent}
+                        onSaved={triggerSaveFeedback}
+                      />
                       <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
                         Max DC Current: {Math.ceil((inverterWatts || 3000) / voltage * 1.25)}A (with 25% safety margin)
                       </div>
@@ -1742,20 +1816,63 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                 {/* Fuse - show calculated current and compare to rating */}
                 {selectedComponent.type === 'fuse' && (() => {
                   const fuseCurrent = getThroughCurrent(selectedComponent.id);
-                  const fuseRating = selectedComponent.properties?.fuseRating || selectedComponent.properties?.amps || 400;
+                  const fuseType = getFuseType(selectedComponent);
+                  const fuseSpec = FUSE_TYPES[fuseType];
+                  const fuseRating = selectedComponent.properties?.fuseRating || selectedComponent.properties?.amps || fuseSpec.ratings[0];
+                  const suggestedType = suggestFuseType(fuseCurrent, false);
                   const utilizationPercent = fuseRating > 0 ? (fuseCurrent / fuseRating) * 100 : 0;
                   const isOverrated = fuseCurrent > fuseRating;
                   const isNearLimit = utilizationPercent > 80;
                   
                   return (
                     <div className="space-y-4">
-                      <h3 className="text-sm font-medium">Class T Fuse Specifications</h3>
+                      <h3 className="text-sm font-medium">Fuse Specifications</h3>
+                      <div className="space-y-2">
+                        <Label>Fuse Type</Label>
+                        <Select
+                          value={fuseType}
+                          onValueChange={(value) => {
+                            const nextType = value as FuseType;
+                            // Keep the rating valid for the new family: reuse it
+                            // if it exists, otherwise pick the closest size up.
+                            const ratings = FUSE_TYPES[nextType].ratings;
+                            const nextRating = ratings.includes(fuseRating)
+                              ? fuseRating
+                              : (smallestRatingFor(nextType, fuseRating) ?? ratings[ratings.length - 1]);
+                            setFuseRating(nextRating);
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: {
+                                ...selectedComponent.properties,
+                                fuseType: nextType,
+                                fuseRating: nextRating,
+                                amps: nextRating,
+                              },
+                            });
+                            triggerSaveFeedback();
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-fuse-type">
+                            <SelectValue placeholder="Select fuse type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(FUSE_TYPES) as FuseType[]).map((t) => (
+                              <SelectItem key={t} value={t}>{FUSE_TYPES[t].label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">{fuseSpec.description}</div>
+                        {fuseCurrent > 0 && suggestedType !== fuseType && (
+                          <div className="text-xs text-yellow-600">
+                            For {fuseCurrent.toFixed(0)}A a {FUSE_TYPES[suggestedType].label} fuse is the usual choice.
+                          </div>
+                        )}
+                      </div>
                       <div className="space-y-2">
                         <Label>Fuse Rating (A)</Label>
                         <Select
                           value={fuseRating.toString()}
                           onValueChange={(value) => {
-                            const r = parseInt(value);
+                            const r = parseFloat(value);
                             setFuseRating(r);
                             onUpdateComponent?.(selectedComponent.id, {
                               properties: { ...selectedComponent.properties, fuseRating: r, amps: r }
@@ -1767,7 +1884,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                             <SelectValue placeholder="Select fuse rating" />
                           </SelectTrigger>
                           <SelectContent>
-                            {[100, 150, 200, 250, 300, 350, 400, 450, 500, 600].map((rating) => (
+                            {fuseSpec.ratings.map((rating) => (
                               <SelectItem key={rating} value={rating.toString()}>
                                 {rating}A
                               </SelectItem>
@@ -1814,7 +1931,136 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                        Class T fuses provide 20,000A interrupt capacity for lithium battery protection.
+                        {fuseSpec.label}: {fuseSpec.interruptCapacity.toLocaleString()}A interrupt capacity.
+                        {fuseSpec.suitableForLithiumMain
+                          ? ' Suitable as the main battery fuse on a lithium bank.'
+                          : ' Use a Class T or MRBF fuse for the main battery connection on a lithium bank.'}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* DC circuit breaker - resettable branch protection */}
+                {selectedComponent.type === 'dc-breaker' && (() => {
+                  const breakerCurrent = getThroughCurrent(selectedComponent.id);
+                  const breakerRating = selectedComponent.properties?.amps || selectedComponent.properties?.rating || 50;
+                  const overloaded = breakerCurrent > breakerRating;
+                  const nearLimit = breakerRating > 0 && breakerCurrent / breakerRating > 0.8;
+
+                  return (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium">DC Breaker Specifications</h3>
+                      <div className="space-y-2">
+                        <Label>Breaker Rating (A)</Label>
+                        <Select
+                          value={breakerRating.toString()}
+                          onValueChange={(value) => {
+                            const r = parseInt(value);
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: { ...selectedComponent.properties, amps: r, rating: r }
+                            });
+                            triggerSaveFeedback();
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-dc-breaker-rating">
+                            <SelectValue placeholder="Select rating" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DC_BREAKER_RATINGS.map((r) => (
+                              <SelectItem key={r} value={r.toString()}>{r}A</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Current Through Breaker (A)</Label>
+                        <div className={`text-sm font-mono p-2 rounded ${
+                          overloaded ? 'bg-destructive/20 text-destructive' :
+                          nearLimit ? 'bg-yellow-500/20 text-yellow-600' :
+                          'bg-muted'
+                        }`}>
+                          {breakerCurrent.toFixed(1)}A
+                        </div>
+                        {overloaded && (
+                          <div className="text-xs text-destructive font-medium">
+                            ⚠️ Current exceeds breaker rating - it will trip.
+                          </div>
+                        )}
+                        {nearLimit && !overloaded && (
+                          <div className="text-xs text-yellow-600 font-medium">
+                            ⚠️ Near the breaker rating. Consider the next size up.
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                        A DC breaker protects a branch circuit (DC panel feed, MPPT, windlass) and
+                        doubles as a disconnect. For the main battery connection on a lithium bank,
+                        use a Class T or MRBF fuse instead - breakers rarely have the interrupt
+                        capacity for a lithium short circuit.
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* AC circuit breaker - shore main or branch protection */}
+                {selectedComponent.type === 'ac-breaker' && (() => {
+                  const acBreakerRating = selectedComponent.properties?.amps || selectedComponent.properties?.rating || 30;
+                  const poles = selectedComponent.properties?.poles || 2;
+
+                  return (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium">AC Breaker Specifications</h3>
+                      <div className="space-y-2">
+                        <Label>Breaker Rating (A)</Label>
+                        <Select
+                          value={acBreakerRating.toString()}
+                          onValueChange={(value) => {
+                            const r = parseInt(value);
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: { ...selectedComponent.properties, amps: r, rating: r }
+                            });
+                            triggerSaveFeedback();
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-ac-breaker-rating">
+                            <SelectValue placeholder="Select rating" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AC_BREAKER_RATINGS.map((r) => (
+                              <SelectItem key={r} value={r.toString()}>{r}A</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Poles</Label>
+                        <Select
+                          value={poles.toString()}
+                          onValueChange={(value) => {
+                            const pcount = parseInt(value);
+                            onUpdateComponent?.(selectedComponent.id, {
+                              properties: { ...selectedComponent.properties, poles: pcount }
+                            });
+                            triggerSaveFeedback();
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select poles" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1-pole (hot only)</SelectItem>
+                            <SelectItem value="2">2-pole (hot + neutral, or both 120V legs)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <ACOutputVoltageField
+                        component={selectedComponent}
+                        onUpdateComponent={onUpdateComponent}
+                        onSaved={triggerSaveFeedback}
+                      />
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                        Use a 2-pole breaker for a shore power main and for any 240V split-phase
+                        circuit, so both conductors break together.
                       </div>
                     </div>
                   );
@@ -1838,6 +2084,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="120">120V AC</SelectItem>
+                          <SelectItem value="240">240V AC (split phase)</SelectItem>
                           <SelectItem value="230">230V AC</SelectItem>
                         </SelectContent>
                       </Select>
@@ -2048,7 +2295,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   );
                 })()}
 
-                {!['battery', 'inverter', 'fuse', 'switch', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel', 'alternator'].includes(selectedComponent.type) && (
+                {!['battery', 'inverter', 'fuse', 'switch', 'mppt', 'blue-smart-charger', 'orion-dc-dc', 'battery-protect', 'phoenix-inverter', 'multiplus', 'busbar-positive', 'busbar-negative', 'ac-panel', 'dc-panel', 'smartshunt', 'shore-power', 'transfer-switch', 'solar-panel', 'alternator', 'dc-breaker', 'ac-breaker'].includes(selectedComponent.type) && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium">Specifications</h3>
                     <div className="space-y-2">

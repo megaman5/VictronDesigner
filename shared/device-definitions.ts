@@ -38,9 +38,10 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             "DC Positive must be fused close to the battery.",
             "DC Negative should connect to the system side of the shunt if a battery monitor is used.",
             "AC Input requires a circuit breaker.",
-            "AC Output should go to an AC distribution panel."
+            "AC Output should go to an AC distribution panel.",
+            "Set acOutputVoltage to match the region: \"120\" (North America), \"230\" (Europe/Australia), or \"split-120-240\" for North American split-phase models that also feed 240V loads."
         ],
-        usageNotes: "The heart of the system. Handles AC power. Ensure DC cables are sized for the maximum inverter current."
+        usageNotes: "The heart of the system. Handles AC power. Ensure DC cables are sized for the maximum inverter current. 120/240V split-phase models are needed for 240V loads such as well pumps, dryers and electric ranges."
     },
     mppt: {
         type: "mppt",
@@ -51,12 +52,15 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             { id: "pv-positive", type: "pv-positive", label: "PV+", mandatory: true, description: "Positive input from solar array" },
             { id: "pv-negative", type: "pv-negative", label: "PV-", mandatory: true, description: "Negative input from solar array" },
             { id: "batt-positive", type: "positive", label: "BATT+", mandatory: true, description: "Positive output to battery/busbar (via fuse)" },
+            { id: "load-positive", type: "positive", label: "LOAD+", mandatory: false, description: "Load output positive - ONLY on 75|10, 75|15, 100|15 and 100|20 models" },
+            { id: "load-negative", type: "negative", label: "LOAD-", mandatory: false, description: "Load output negative - ONLY on 75|10, 75|15, 100|15 and 100|20 models" },
             { id: "batt-negative", type: "negative", label: "BATT-", mandatory: true, description: "Negative output to battery/busbar" }
         ],
         wiringRules: [
             "Connect Battery side FIRST, then PV side.",
             "PV input voltage must never exceed controller max voltage.",
-            "Battery positive requires a fuse."
+            "Battery positive requires a fuse.",
+            "LOAD output (75|10, 75|15, 100|15, 100|20 only) drives small DC loads with low-voltage disconnect - it is limited to the controller's rated current and must not be used for the inverter."
         ],
         usageNotes: "Matches solar voltage to battery voltage. Essential for solar charging."
     },
@@ -166,7 +170,13 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             { id: "fuse-1", type: "positive", label: "F1", mandatory: false, description: "Fused output 1 (MEGA fuse)" },
             { id: "fuse-2", type: "positive", label: "F2", mandatory: false, description: "Fused output 2 (MEGA fuse)" },
             { id: "fuse-3", type: "positive", label: "F3", mandatory: false, description: "Fused output 3 (MEGA fuse)" },
-            { id: "fuse-4", type: "positive", label: "F4", mandatory: false, description: "Fused output 4 (MEGA fuse)" }
+            { id: "fuse-4", type: "positive", label: "F4", mandatory: false, description: "Fused output 4 (MEGA fuse)" },
+            { id: "neg-1", type: "negative", label: "N1", mandatory: false, description: "Unfused negative return 1" },
+            { id: "neg-2", type: "negative", label: "N2", mandatory: false, description: "Unfused negative return 2" },
+            { id: "neg-3", type: "negative", label: "N3", mandatory: false, description: "Unfused negative return 3" },
+            { id: "neg-4", type: "negative", label: "N4", mandatory: false, description: "Unfused negative return 4" },
+            { id: "bus-out-positive", type: "positive", label: "OUT+", mandatory: false, description: "Positive busbar to the next Lynx module" },
+            { id: "bus-out-negative", type: "negative", label: "OUT-", mandatory: false, description: "Negative busbar to the next Lynx module" }
         ],
         wiringRules: [
             "Connect to Lynx Shunt or battery via main busbars.",
@@ -175,6 +185,74 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
             "Provides pre-alarm contacts for blown fuse detection."
         ],
         usageNotes: "Professional power distribution. Each slot accepts MEGA fuses up to 500A."
+    },
+    "lynx-power-in": {
+        type: "lynx-power-in",
+        name: "Lynx Power In",
+        description: "Passive 1000A positive/negative busbar pair with four unfused connection pairs. Used to join batteries or Lynx modules.",
+        category: "distribution",
+        terminals: [
+            { id: "main-positive", type: "positive", label: "BUS+", mandatory: true, description: "Main positive busbar" },
+            { id: "main-negative", type: "negative", label: "BUS-", mandatory: true, description: "Main negative busbar" },
+            { id: "pos-1", type: "positive", label: "P1", mandatory: false, description: "Unfused positive connection 1" },
+            { id: "pos-2", type: "positive", label: "P2", mandatory: false, description: "Unfused positive connection 2" },
+            { id: "pos-3", type: "positive", label: "P3", mandatory: false, description: "Unfused positive connection 3" },
+            { id: "pos-4", type: "positive", label: "P4", mandatory: false, description: "Unfused positive connection 4" },
+            { id: "neg-1", type: "negative", label: "N1", mandatory: false, description: "Unfused negative connection 1" },
+            { id: "neg-2", type: "negative", label: "N2", mandatory: false, description: "Unfused negative connection 2" },
+            { id: "neg-3", type: "negative", label: "N3", mandatory: false, description: "Unfused negative connection 3" },
+            { id: "neg-4", type: "negative", label: "N4", mandatory: false, description: "Unfused negative connection 4" },
+            { id: "bus-out-positive", type: "positive", label: "OUT+", mandatory: false, description: "Positive busbar to the next Lynx module" },
+            { id: "bus-out-negative", type: "negative", label: "OUT-", mandatory: false, description: "Negative busbar to the next Lynx module" }
+        ],
+        wiringRules: [
+            "Connections are UNFUSED - every battery landed here still needs its own fuse.",
+            "Bolts directly to a Lynx Distributor, Lynx Shunt or Lynx Smart BMS via the busbars.",
+            "Typically used to parallel multiple batteries into one bank."
+        ],
+        usageNotes: "Pure busbar - no fuses, no monitoring. Rated 1000A."
+    },
+    "lynx-shunt": {
+        type: "lynx-shunt",
+        name: "Lynx Shunt VE.Can",
+        description: "Lynx busbar module with an integrated 1000A shunt for battery monitoring and a main fuse holder on the positive bar.",
+        category: "distribution",
+        terminals: [
+            { id: "batt-positive", type: "positive", label: "BATT+", mandatory: true, description: "Battery positive (fused inside the module)" },
+            { id: "batt-negative", type: "negative", label: "BATT-", mandatory: true, description: "Battery negative - shunt measures here" },
+            { id: "bus-out-positive", type: "positive", label: "SYS+", mandatory: true, description: "System positive to loads/chargers or the next Lynx module" },
+            { id: "bus-out-negative", type: "negative", label: "SYS-", mandatory: true, description: "System negative to loads/chargers or the next Lynx module" },
+            { id: "ve-can", type: "data", label: "VE.Can", mandatory: false, description: "VE.Can to Cerbo GX" }
+        ],
+        wiringRules: [
+            "Battery connects to the BATT+ / BATT- side; everything else connects on the SYS+ / SYS- side.",
+            "ALL system current must pass through the module so the shunt reads correctly - same rule as a SmartShunt.",
+            "The integrated fuse holder satisfies the main battery fuse requirement.",
+            "Connect VE.Can to a Cerbo GX for monitoring."
+        ],
+        usageNotes: "Replaces a separate SmartShunt plus main fuse in a Lynx system."
+    },
+    "lynx-smart-bms": {
+        type: "lynx-smart-bms",
+        name: "Lynx Smart BMS",
+        description: "Battery management system for Victron lithium (VE.Can) batteries with an integrated contactor, shunt and pre-alarm.",
+        category: "distribution",
+        terminals: [
+            { id: "batt-positive", type: "positive", label: "BATT+", mandatory: true, description: "Battery bank positive" },
+            { id: "batt-negative", type: "negative", label: "BATT-", mandatory: true, description: "Battery bank negative" },
+            { id: "system-positive", type: "positive", label: "SYS+", mandatory: true, description: "System positive to loads/chargers" },
+            { id: "system-negative", type: "negative", label: "SYS-", mandatory: true, description: "System negative to loads/chargers" },
+            { id: "bms-can", type: "data", label: "BMS-Can", mandatory: false, description: "BMS-Can to the lithium batteries" },
+            { id: "ve-can", type: "data", label: "VE.Can", mandatory: false, description: "VE.Can to Cerbo GX" },
+            { id: "allow-to-charge", type: "data", label: "ATC", mandatory: false, description: "Allow-to-charge signal to chargers" }
+        ],
+        wiringRules: [
+            "Only for Victron lithium batteries with BMS-Can (Smart Lithium / NG).",
+            "Battery side and system side must not be swapped - the contactor disconnects the system side.",
+            "The integrated shunt monitors all system current, so no separate SmartShunt is needed.",
+            "The battery cable still needs its own fuse."
+        ],
+        usageNotes: "Available in 500A and 1000A. Combines BMS, contactor, shunt and pre-alarm in one Lynx module."
     },
     "battery-protect": {
         type: "battery-protect",
@@ -331,19 +409,57 @@ export const DEVICE_DEFINITIONS: Record<string, DeviceDefinition> = {
     },
     fuse: {
         type: "fuse",
-        name: "Class T Fuse",
-        description: "High-interrupt Class T fuse for battery and inverter protection. Essential for high-current DC systems.",
+        name: "Fuse",
+        description: "DC fuse. The fuseType property selects the family: class-t, mrbf, anl, mega, midi or blade.",
         category: "distribution",
         terminals: [
             { id: "in", type: "positive", label: "IN", mandatory: true, description: "Line side (battery)" },
             { id: "out", type: "positive", label: "OUT", mandatory: true, description: "Load side (inverter/busbar)" }
         ],
         wiringRules: [
-            "Must be placed as close as possible to the battery positive terminal.",
-            "Size based on the inverter's maximum DC current draw plus 25% safety margin.",
-            "Class T fuses provide high-interrupt capacity (up to 20,000A) for lithium battery protection."
+            "The main battery fuse must be placed as close as possible to the battery positive terminal.",
+            "Size based on the downstream device's maximum current plus 25% safety margin.",
+            "Battery main on a lithium bank: class-t (20,000A interrupt) or mrbf (10,000A).",
+            "Branch circuits: blade up to 30A, midi up to 150A, mega or anl for larger charger and inverter feeds.",
+            "Do NOT put a 100A+ Class T fuse on a small circuit - use the family that matches the current."
         ],
-        usageNotes: "Required for lithium battery systems. Protects against catastrophic short circuits."
+        usageNotes: "Every battery positive needs protection. Pick the fuse family that matches the circuit size."
+    },
+    "dc-breaker": {
+        type: "dc-breaker",
+        name: "DC Circuit Breaker",
+        description: "Resettable DC breaker for branch circuits. Also works as a disconnect switch.",
+        category: "distribution",
+        terminals: [
+            { id: "in", type: "positive", label: "IN", mandatory: true, description: "Line side (battery/busbar)" },
+            { id: "out", type: "positive", label: "OUT", mandatory: true, description: "Load side (panel/device)" }
+        ],
+        wiringRules: [
+            "Use for a DC panel feed, an MPPT, a windlass or any circuit the user wants to switch off.",
+            "Set amps to the circuit rating (5-300A).",
+            "Do NOT use as the main battery fuse on a lithium bank - a breaker cannot interrupt a lithium short circuit. Use class-t or mrbf there."
+        ],
+        usageNotes: "Resettable protection plus disconnect in one device."
+    },
+    "ac-breaker": {
+        type: "ac-breaker",
+        name: "AC Circuit Breaker",
+        description: "AC breaker for a shore power main or an AC branch circuit.",
+        category: "distribution",
+        terminals: [
+            { id: "in-hot", type: "ac-in", label: "L IN", mandatory: true, description: "Line in (from shore/inverter)" },
+            { id: "in-neutral", type: "ac-in", label: "N IN", mandatory: true, description: "Neutral in" },
+            { id: "in-ground", type: "ground", label: "G IN", mandatory: false, description: "Ground in" },
+            { id: "out-hot", type: "ac-out", label: "L OUT", mandatory: true, description: "Line out (to panel/load)" },
+            { id: "out-neutral", type: "ac-out", label: "N OUT", mandatory: true, description: "Neutral out" },
+            { id: "out-ground", type: "ground", label: "G OUT", mandatory: false, description: "Ground out" }
+        ],
+        wiringRules: [
+            "Shore power inlet must go through an AC main breaker before anything else.",
+            "Use 2 poles for a shore power main and for any 240V split-phase circuit.",
+            "Match the rating to the shore inlet (15A, 30A, 50A) or to the branch circuit."
+        ],
+        usageNotes: "Standard AC protection. Place between shore power and the inverter/charger AC input."
     },
     switch: {
         type: "switch",

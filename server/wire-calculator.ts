@@ -1,3 +1,4 @@
+import { getACVoltage, getInverterACVoltage } from "@shared/ac-voltage";
 import type { WireCalculation } from "@shared/schema";
 
 export type InsulationType = "60C" | "75C" | "90C" | "105C";
@@ -254,18 +255,16 @@ export function calculateLoadRequirements(components: any[], systemVoltage: numb
   };
 }
 
-/**
- * Get AC voltage for a component (110V, 120V, 220V, 230V)
- * Defaults to 120V if not specified
- */
-export function getACVoltage(component: any): number {
-  const acVoltage = component?.properties?.acVoltage || component?.properties?.voltage;
-  if (acVoltage && (acVoltage === 110 || acVoltage === 120 || acVoltage === 220 || acVoltage === 230)) {
-    return acVoltage;
-  }
-  // Default to 120V for North America
-  return 120;
-}
+// AC voltage handling lives in shared/ac-voltage.ts so the client UI, the
+// server validator, and this calculator all agree on split-phase behaviour.
+export {
+  SUPPORTED_AC_VOLTAGES,
+  getACVoltage,
+  getInverterACVoltage,
+  getSupportedACVoltages,
+  isSplitPhase,
+  type ACOutputConfig,
+} from "@shared/ac-voltage";
 
 /**
  * Calculate inverter DC input power and current from connected AC loads
@@ -307,7 +306,9 @@ export function calculateInverterDCInput(
   // Trace from inverter AC output terminals to AC loads
   const inverterACOutputTerminals = ["ac-out-hot", "ac-out-neutral"];
   let totalACWatts = 0;
-  let acVoltage = 120;
+  // Start from the inverter's own AC output setting; a connected load that
+  // states a different voltage overrides it below.
+  let acVoltage = getInverterACVoltage(inverter);
 
   // Helper to find AC loads connected through AC panels
   const findACLoads = (componentId: string, visited: Set<string> = new Set()): { watts: number; voltage: number } => {

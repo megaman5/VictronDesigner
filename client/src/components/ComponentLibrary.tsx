@@ -29,6 +29,10 @@ const victronComponents: Component[] = [
   { id: "cerbo", name: "Cerbo GX", icon: <Cpu className="h-5 w-5" />, category: "victron" },
   { id: "smartshunt", name: "SmartShunt", icon: <Gauge className="h-5 w-5" />, category: "victron" },
   { id: "battery-protect", name: "Battery Protect", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-power-in", name: "Lynx Power In", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-distributor", name: "Lynx Distributor", icon: <Cable className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-shunt", name: "Lynx Shunt VE.Can", icon: <Gauge className="h-5 w-5" />, category: "victron" },
+  { id: "lynx-smart-bms", name: "Lynx Smart BMS", icon: <Cpu className="h-5 w-5" />, category: "victron" },
 ];
 
 const genericComponents: Component[] = [
@@ -43,7 +47,9 @@ const genericComponents: Component[] = [
 ];
 
 const safetyComponents: Component[] = [
-  { id: "fuse", name: "Class T Fuse", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "fuse", name: "Fuse (Class T, MEGA, blade...)", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "dc-breaker", name: "DC Circuit Breaker", icon: <Cable className="h-5 w-5" />, category: "safety" },
+  { id: "ac-breaker", name: "AC Circuit Breaker", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "switch", name: "Battery Switch", icon: <Cable className="h-5 w-5" />, category: "safety" },
   { id: "ac-panel", name: "AC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
   { id: "dc-panel", name: "DC Panel", icon: <Gauge className="h-5 w-5" />, category: "safety" },
