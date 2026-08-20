@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,6 +12,7 @@ import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
 import SettingsAdmin from "@/pages/SettingsAdmin";
 import NotFound from "@/pages/not-found";
+import { KofiWidget } from "@/components/KofiWidget";
 
 function Router() {
   return (
@@ -23,6 +24,12 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+// Tip button belongs on the designer, not on the admin tooling.
+function SupportWidget() {
+  const [location] = useLocation();
+  return location === "/" ? <KofiWidget /> : null;
 }
 
 function App() {
@@ -38,6 +45,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
+          <SupportWidget />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
