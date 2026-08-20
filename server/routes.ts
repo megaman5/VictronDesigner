@@ -5,6 +5,7 @@ import { feedbackStorage } from "./feedback-storage";
 import { userDesignsStorage } from "./user-designs-storage";
 import { observabilityStorage } from "./observability-storage";
 import { appSettingsStorage, DEFAULT_AI_MODEL, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLE_VALUES } from "./app-settings-storage";
+import { normalizeAIDesign } from "./ai-design-normalizer";
 import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
@@ -520,6 +521,21 @@ JSON RESPONSE FORMAT:
         console.log("Sample wire:", JSON.stringify(response.wires[0], null, 2));
       }
 
+      // Repair invented terminal ids and size the wires (same pass the
+      // iterative endpoints use) so single-shot output is usable too.
+      if (Array.isArray(response.components)) {
+        const wiresWithIds = (response.wires || []).map((wire: any, index: number) => ({
+          ...wire,
+          id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
+        }));
+        const normalized = normalizeAIDesign(response.components, wiresWithIds, systemVoltage);
+        if (normalized.repairs.length > 0) {
+          console.log(`[AI] Normalized design: ${normalized.repairs.length} repair(s)`);
+        }
+        response.components = normalized.components;
+        response.wires = normalized.wires;
+      }
+
       // Log to observability
       await observabilityStorage.logAIRequest({
         visitorId,
@@ -995,6 +1011,12 @@ COMPONENT TERMINALS (EXACT NAMES):
 - ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- lynx-power-in: "main-positive", "main-negative", "bus-out-positive", "bus-out-negative", "pos-1".."pos-4", "neg-1".."neg-4"
+- lynx-distributor: "main-positive", "main-negative", "bus-out-positive", "bus-out-negative", "fuse-1".."fuse-4" (fused positive outputs), "neg-1".."neg-4"
+- lynx-shunt: "batt-positive", "batt-negative" (BATTERY side only), "bus-out-positive", "bus-out-negative" (SYSTEM side), "ve-can"
+- lynx-smart-bms: "batt-positive", "batt-negative" (BATTERY side only), "system-positive", "system-negative" (SYSTEM side), "bms-can", "ve-can", "allow-to-charge"
+  * NEVER use "dc-positive"/"dc-negative" on a Lynx module - those terminals do not exist
+  * On lynx-shunt and lynx-smart-bms the battery side and system side are NOT interchangeable: the battery bank connects to batt-*, everything else to the system side
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
 - dc-breaker: "in", "out"
@@ -1605,6 +1627,12 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- lynx-power-in: "main-positive", "main-negative", "bus-out-positive", "bus-out-negative", "pos-1".."pos-4", "neg-1".."neg-4"
+- lynx-distributor: "main-positive", "main-negative", "bus-out-positive", "bus-out-negative", "fuse-1".."fuse-4" (fused positive outputs), "neg-1".."neg-4"
+- lynx-shunt: "batt-positive", "batt-negative" (BATTERY side only), "bus-out-positive", "bus-out-negative" (SYSTEM side), "ve-can"
+- lynx-smart-bms: "batt-positive", "batt-negative" (BATTERY side only), "system-positive", "system-negative" (SYSTEM side), "bms-can", "ve-can", "allow-to-charge"
+  * NEVER use "dc-positive"/"dc-negative" on a Lynx module - those terminals do not exist
+  * On lynx-shunt and lynx-smart-bms the battery side and system side are NOT interchangeable: the battery bank connects to batt-*, everything else to the system side
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
 - dc-breaker: "in", "out"
@@ -1845,10 +1873,22 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         }
 
         // Validate the design (ensure all wires have unique IDs)
-        const wiresWithIds = (response.wires || []).map((wire: any, index: number) => ({
+        const rawWiresWithIds = (response.wires || []).map((wire: any, index: number) => ({
           ...wire,
           id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
         }));
+
+        // Repair the two things the model reliably gets wrong - invented
+        // terminal ids and guessed wire gauges - before scoring the design.
+        // Both are computable, so spending iterations on them is wasted.
+        const normalized = normalizeAIDesign(response.components, rawWiresWithIds, systemVoltage);
+        if (normalized.repairs.length > 0) {
+          console.log(`[AI] Normalized design: ${normalized.repairs.length} repair(s)`);
+          for (const r of normalized.repairs.slice(0, 10)) console.log(`  ${r.kind}: ${r.detail}`);
+        }
+        response.components = normalized.components;
+        response.wires = normalized.wires;
+        const wiresWithIds = normalized.wires;
         const validation = validateDesign(
           response.components,
           wiresWithIds,
@@ -2215,6 +2255,12 @@ TERMINAL IDs BY COMPONENT (copy these EXACTLY):
 - ac-load: "hot", "neutral", "ground"
 - dc-load: "positive", "negative"
 - busbar-positive: "pos-1", "pos-2", "pos-3", "pos-4", "pos-5", "pos-6"
+- lynx-power-in: "main-positive", "main-negative", "bus-out-positive", "bus-out-negative", "pos-1".."pos-4", "neg-1".."neg-4"
+- lynx-distributor: "main-positive", "main-negative", "bus-out-positive", "bus-out-negative", "fuse-1".."fuse-4" (fused positive outputs), "neg-1".."neg-4"
+- lynx-shunt: "batt-positive", "batt-negative" (BATTERY side only), "bus-out-positive", "bus-out-negative" (SYSTEM side), "ve-can"
+- lynx-smart-bms: "batt-positive", "batt-negative" (BATTERY side only), "system-positive", "system-negative" (SYSTEM side), "bms-can", "ve-can", "allow-to-charge"
+  * NEVER use "dc-positive"/"dc-negative" on a Lynx module - those terminals do not exist
+  * On lynx-shunt and lynx-smart-bms the battery side and system side are NOT interchangeable: the battery bank connects to batt-*, everything else to the system side
 - busbar-negative: "neg-1", "neg-2", "neg-3", "neg-4", "neg-5", "neg-6"
 - fuse: "in", "out"
 - dc-breaker: "in", "out"
@@ -2551,10 +2597,22 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
         }
 
         // Validate the design (ensure all wires have unique IDs)
-        const wiresWithIds = (response.wires || []).map((wire: any, index: number) => ({
+        const rawWiresWithIds = (response.wires || []).map((wire: any, index: number) => ({
           ...wire,
           id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
         }));
+
+        // Repair the two things the model reliably gets wrong - invented
+        // terminal ids and guessed wire gauges - before scoring the design.
+        // Both are computable, so spending iterations on them is wasted.
+        const normalized = normalizeAIDesign(response.components, rawWiresWithIds, systemVoltage);
+        if (normalized.repairs.length > 0) {
+          console.log(`[AI] Normalized design: ${normalized.repairs.length} repair(s)`);
+          for (const r of normalized.repairs.slice(0, 10)) console.log(`  ${r.kind}: ${r.detail}`);
+        }
+        response.components = normalized.components;
+        response.wires = normalized.wires;
+        const wiresWithIds = normalized.wires;
         let validation;
         try {
           validation = validateDesign(
@@ -2646,23 +2704,24 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
                                  toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
                                  toComp?.type === "inverter" || fromComp?.type === "inverter";
                 
-                // For AC wires, use 120V
+                // AC wires are sized at their own AC voltage, which may be
+                // 120V, 230V or 240V split phase - not always 120V.
                 if (isACWire) {
-                  voltage = 120;
+                  voltage = getACVoltage(toComp) || getACVoltage(fromComp);
                 }
                 
                 if (current === 0) {
                   if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
                     const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
                     // AC loads use 120V, DC loads use component voltage or system voltage
-                    const loadVoltage = toComp.type === "ac-load" ? 120 : (toComp.properties?.voltage as number || voltage);
+                    const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
                     if (loadWatts > 0 && loadVoltage > 0) {
                       current = loadWatts / loadVoltage;
                     }
                   } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
                     const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
                     // AC loads use 120V, DC loads use component voltage or system voltage
-                    const loadVoltage = fromComp.type === "ac-load" ? 120 : (fromComp.properties?.voltage as number || voltage);
+                    const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
                     if (loadWatts > 0 && loadVoltage > 0) {
                       current = loadWatts / loadVoltage;
                     }
@@ -2839,23 +2898,24 @@ JSON RESPONSE FORMAT (FOLLOW THIS EXACTLY):
                              toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
                              toComp?.type === "inverter" || fromComp?.type === "inverter";
             
-            // For AC wires, use 120V
+            // AC wires are sized at their own AC voltage, which may be
+            // 120V, 230V or 240V split phase - not always 120V.
             if (isACWire) {
-              voltage = 120;
+              voltage = getACVoltage(toComp) || getACVoltage(fromComp);
             }
             
             if (current === 0) {
               if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
                 const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
                 // AC loads use 120V, DC loads use component voltage or system voltage
-                const loadVoltage = toComp.type === "ac-load" ? 120 : (toComp.properties?.voltage as number || voltage);
+                const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
                 if (loadWatts > 0 && loadVoltage > 0) {
                   current = loadWatts / loadVoltage;
                 }
               } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
                 const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
                 // AC loads use 120V, DC loads use component voltage or system voltage
-                const loadVoltage = fromComp.type === "ac-load" ? 120 : (fromComp.properties?.voltage as number || voltage);
+                const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
                 if (loadWatts > 0 && loadVoltage > 0) {
                   current = loadWatts / loadVoltage;
                 }
