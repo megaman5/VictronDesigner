@@ -134,6 +134,105 @@ Thanks,
 Sean
 VictronDesigner.com`,
   },
+
+  // 240V inverter option + health check falsely reporting shunt not connected
+  "114f2486-c855-42eb-8c4b-df821fa6ff6b": {
+    subject: "Re: your VictronDesigner feedback \u2014 both issues fixed",
+    body: `Hi,
+
+Thanks for the blunt feedback \u2014 both of the things you hit were real bugs, and both are fixed now.
+
+1. The false "connect shunt negative to battery negative" error. You were right: the wires WERE connected. The health check was only looking for that wire drawn in one direction (battery \u2192 shunt). If you drew it shunt \u2192 battery, or ran it through a disconnect switch, or connected it to the second battery in a bank, it reported the connection as missing. It now checks the actual electrical path in both directions, so it should stop nagging you about wiring you have already done.
+
+2. 240V. Every inverter (MultiPlus, Quattro, Phoenix, generic) now has an "AC Output Voltage" setting with three choices: 120V for North America, 230V for Europe/Australia, and 120/240V split phase for the North American split-phase models. AC loads can be set to 240V too, and the tool now warns you if a load's voltage does not match what the inverter can actually supply \u2014 for example a 240V well pump on a 120V-only unit. Shore power can be set to 240V as well.
+
+Both are live now. If you run into anything else that reports a problem that is not really there, please tell me \u2014 that kind of report is the most useful thing I get.
+
+Thanks,
+Sean
+VictronDesigner.com`,
+  },
+
+  // Lynx request
+  "42f33770-2a4c-41a3-ba3b-0168e5f32bc6": {
+    subject: "Re: your VictronDesigner feedback \u2014 Lynx modules are in",
+    body: `Hi,
+
+Thanks for the suggestion \u2014 the Lynx family is now in the component library, under the Victron section:
+
+- Lynx Power In \u2014 the plain 1000A busbar pair, four unfused +/- connection pairs
+- Lynx Distributor \u2014 busbar pair with four MEGA-fused outputs plus negative returns
+- Lynx Shunt VE.Can \u2014 busbar pair with the built-in shunt and main fuse holder
+- Lynx Smart BMS \u2014 BMS with the integrated contactor and shunt, for Victron lithium
+
+They all carry the shared positive/negative busbars, so you can bolt them together the way the real modules stack: wire the OUT+ / OUT- of one module to the BUS+ / BUS- of the next. The Lynx Shunt and Smart BMS both count as the main battery fuse in the design checks, since they have one built in.
+
+Give them a try and let me know if the terminals do not line up with how you actually wire them.
+
+Thanks,
+Sean
+VictronDesigner.com`,
+  },
+
+  // MPPT load terminals
+  "3fde2041-0ee4-4be9-b69a-ab00d1253b73": {
+    subject: "Re: your VictronDesigner feedback \u2014 MPPT load terminals added",
+    body: `Hi,
+
+You were right \u2014 the smaller SmartSolar controllers have LOAD output terminals and the tool did not show them.
+
+Fixed: select an MPPT, then pick the model in the properties panel. Choose 75|10, 75|15, 100|15 or 100|20 and LOAD+ / LOAD- terminals appear on the right side of the controller, ready to wire. The larger 150V and 250V models do not have a load output, so they do not get the terminals \u2014 and the design check will tell you if a wire lands on a load terminal for a model that has not got one.
+
+I also added the 75|15 to the model list while I was in there.
+
+Thanks for the report,
+Sean
+VictronDesigner.com`,
+  },
+
+  // Fuse sizes + AC/DC breakers
+  "5cd25331-025e-4e73-8a7d-29321ca2e66a": {
+    subject: "Re: your VictronDesigner feedback \u2014 more fuse types and breakers",
+    body: `Hi,
+
+Good catch \u2014 demanding a fuse and then only offering a 100A+ Class T was not much help for a small circuit. Both parts of your note are done.
+
+Fuses now have a type. Select a fuse and pick the family, and the rating list changes to the sizes that family is actually sold in:
+- Blade / ATO: 1-40A \u2014 lights, pumps, fans, electronics
+- MIDI / AMI: 30-200A \u2014 MPPT or DC panel feed
+- MEGA / AMG: 40-500A, ANL: 35-750A \u2014 charger and inverter feeds
+- MRBF: 30-300A \u2014 battery terminal fuse
+- Class T: 100-800A \u2014 the lithium battery main
+
+The panel also tells you the interrupt capacity, and suggests the family that suits the current actually flowing through it. On a lithium bank it will still steer you to a Class T or MRBF for the battery main, since the other families cannot break that fault current \u2014 but it will no longer push a 400A Class T at a lighting circuit.
+
+Breakers are in too. There is now a DC Circuit Breaker (5-300A) and an AC Circuit Breaker (5-100A, 1 or 2 pole) in the Safety section \u2014 exactly the shore power main and DC panel feed protection you described. A DC breaker counts as valid protection off the battery, so the "unfused battery cable" error accepts it, and both breakers are checked against the current flowing through them.
+
+Thanks for the detail in your report \u2014 it made this an easy fix to scope.
+
+Sean
+VictronDesigner.com`,
+  },
+
+  // Custom components / community library
+  "6c27020c-d272-41f8-aa58-06c19010c8dc": {
+    subject: "Re: your VictronDesigner feedback \u2014 custom components",
+    body: `Hi,
+
+Thanks for this \u2014 it is the most ambitious request I have had, and I want to be straight with you about where it stands.
+
+The Lynx example you gave is now done the direct way: Lynx Power In, Lynx Distributor, Lynx Shunt VE.Can and Lynx Smart BMS are all in the library as proper components with their real terminals. So that specific gap is closed.
+
+The general request \u2014 defining your own components with your own snap points \u2014 is not built yet. Today "Add Custom Component" gives you a generic box with a fixed set of four terminals, which is not what you are asking for. Being able to lay out your own terminals means changing how the tool resolves terminals for a component, building an editor to place them, and storing your definitions against your account. I have written up the design for it, and one piece of the groundwork is already in (terminals can now vary per component instead of being fixed per type \u2014 that is what made the MPPT load outputs possible). It is realistically a couple of weeks of work, so I am not going to promise a date.
+
+Community components I want to do, but honestly the hard part is not the sharing \u2014 it is that a published component with a mislabelled terminal quietly produces wrong wiring for everyone who uses it. So the plan is: build the personal version first, invite the people who asked for it \u2014 you included \u2014 to build parts, and use that to work out what curation needs to look like before opening it up.
+
+If you are up for being one of the first builders when it lands, say the word and I will come back to you.
+
+Thanks,
+Sean
+VictronDesigner.com`,
+  },
 };
 
 // Returns a tailored draft if one exists for this feedback, otherwise a

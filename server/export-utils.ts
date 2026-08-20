@@ -1,6 +1,7 @@
 import type { Schematic, SchematicComponent, Wire } from "@shared/schema";
 import { validateDesign } from "./design-validator";
 import { calculateInverterDCInput, getACVoltage } from "./wire-calculator";
+import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
 type WireGaugeFormat = "awg" | "metric";
 
@@ -110,6 +111,37 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
       case "dc-load":
         category = "DC Loads";
         description = `DC Load: ${comp.name}`;
+        break;
+      case "fuse": {
+        const spec = FUSE_TYPES[getFuseType(comp)];
+        const rating = comp.properties?.fuseRating || comp.properties?.amps || spec.ratings[0];
+        category = "Circuit Protection";
+        description = `${rating}A ${spec.label} fuse and holder (${spec.interruptCapacity.toLocaleString()}A interrupt)`;
+        break;
+      }
+      case "dc-breaker":
+        category = "Circuit Protection";
+        description = `${comp.properties?.amps || comp.properties?.rating || 50}A DC circuit breaker`;
+        break;
+      case "ac-breaker":
+        category = "Circuit Protection";
+        description = `${comp.properties?.amps || comp.properties?.rating || 30}A ${comp.properties?.poles || 2}-pole AC circuit breaker`;
+        break;
+      case "lynx-power-in":
+        category = "DC Distribution";
+        description = "Victron Lynx Power In (1000A busbar, unfused)";
+        break;
+      case "lynx-distributor":
+        category = "DC Distribution";
+        description = "Victron Lynx Distributor (4x MEGA fused outputs)";
+        break;
+      case "lynx-shunt":
+        category = "DC Distribution";
+        description = "Victron Lynx Shunt VE.Can (1000A busbar with shunt and main fuse)";
+        break;
+      case "lynx-smart-bms":
+        category = "DC Distribution";
+        description = `Victron Lynx Smart BMS ${comp.properties?.amps || 500}A`;
         break;
     }
 

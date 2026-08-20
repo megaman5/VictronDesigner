@@ -1108,7 +1108,7 @@ export default function SchematicDesigner() {
       // that once so the positive and negative sides agree and pass-through parts
       // (fuses, switches, series battery links) aren't left at a stale default or
       // shown as their device rating.
-      const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor"]);
+      const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
       const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
       const isTrunkWire = (wire.polarity === "positive" || wire.polarity === "negative") &&
         isTrunkComp(fromComp?.type) && isTrunkComp(toComp?.type);
@@ -1622,18 +1622,20 @@ export default function SchematicDesigner() {
         'ac-load': { watts: 1000, acVoltage: 120 },
         'solar-panel': { watts: 300, voltage: systemVoltage * 1.5 }, // Default to typical Vmp (1.5x system voltage)
         mppt: { amps: 30, voltage: systemVoltage },
-        multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage },
-        quattro: { watts: 5000, powerRating: 5000, voltage: systemVoltage },
+        multiplus: { watts: 3000, powerRating: 3000, voltage: systemVoltage, acOutputVoltage: '120' },
+        quattro: { watts: 5000, powerRating: 5000, voltage: systemVoltage, acOutputVoltage: '120' },
         argofet: { amps: 100, voltage: systemVoltage },
         'cyrix-ct': { amps: 120, voltage: systemVoltage },
-        inverter: { watts: 2000, voltage: systemVoltage },
-        'phoenix-inverter': { watts: 1200, voltage: systemVoltage },
+        inverter: { watts: 2000, voltage: systemVoltage, acOutputVoltage: '120' },
+        'phoenix-inverter': { watts: 1200, voltage: systemVoltage, acOutputVoltage: '120' },
         'blue-smart-charger': { amps: 15, voltage: systemVoltage },
         'orion-dc-dc': { amps: 30, voltage: systemVoltage, inputVoltage: systemVoltage, outputVoltage: systemVoltage === 12 ? 24 : 12 },
         'battery-balancer': { voltage: 24 },
         alternator: { amps: 100, current: 100, voltage: systemVoltage },
         'battery-protect': { amps: 100, voltage: systemVoltage },
-        fuse: { fuseRating: 400, amps: 400 },
+        fuse: { fuseType: 'class-t', fuseRating: 400, amps: 400 },
+        'dc-breaker': { amps: 50, rating: 50, voltage: systemVoltage },
+        'ac-breaker': { amps: 30, rating: 30, poles: 2, acVoltage: 120 },
         switch: { voltage: systemVoltage },
         'busbar-positive': { voltage: systemVoltage },
         'busbar-negative': { voltage: systemVoltage },
@@ -1641,6 +1643,10 @@ export default function SchematicDesigner() {
         smartshunt: { voltage: systemVoltage },
         'shore-power': { voltage: 120, maxAmps: 30 },
         'transfer-switch': { switchType: 'manual', priority: 'source1' },
+        'lynx-power-in': { voltage: systemVoltage, maxCurrent: 1000 },
+        'lynx-distributor': { voltage: systemVoltage, maxCurrent: 1000, fuseRating: 125 },
+        'lynx-shunt': { voltage: systemVoltage, maxCurrent: 1000, fuseRating: 400 },
+        'lynx-smart-bms': { voltage: systemVoltage, amps: 500, maxCurrent: 500 },
       };
       return defaults[type] || { voltage: systemVoltage };
     };
