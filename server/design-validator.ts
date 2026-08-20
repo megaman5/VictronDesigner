@@ -1,6 +1,15 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
-import { TERMINAL_CONFIGS } from "../client/src/lib/terminal-config";
+import { TERMINAL_CONFIGS, getComponentTerminals } from "../client/src/lib/terminal-config";
 import { getWireAmpacity, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
+import { getInverterACVoltage, getSupportedACVoltages, isSplitPhase } from "@shared/ac-voltage";
+import {
+  DC_PROTECTION_TYPES,
+  DC_BREAKER_RATINGS,
+  FUSE_TYPES,
+  getFuseType,
+  smallestRatingFor,
+  suggestFuseType,
+} from "@shared/protection-devices";
 import { findBatteryBanks, isSeriesLink, type BatteryBank } from "@shared/battery-bank";
 
 // Helper function to check if two wires are different (handles null IDs)
@@ -126,6 +135,78 @@ export class DesignValidator {
 
     // Rule 11: Series battery bank best practices
     this.validateBatteryBanks();
+
+    // Rule 12: AC loads must match their source's AC output voltage
+    this.validateACVoltageCompatibility();
+  }
+
+  /**
+   * AC loads must match the AC output of whatever feeds them. A 240V well pump
+   * on a 120V-only MultiPlus will not run; a 120V outlet on a 230V unit is a
+   * safety problem. Split-phase (120/240V) sources feed both.
+   */
+  private validateACVoltageCompatibility(): void {
+    const acLoads = this.components.filter(c => c.type === "ac-load");
+    if (acLoads.length === 0) return;
+
+    const AC_PASS_THROUGH = new Set(["ac-panel", "transfer-switch"]);
+    const SOURCE_TYPES = new Set(["multiplus", "quattro", "phoenix-inverter", "inverter", "shore-power"]);
+
+    for (const load of acLoads) {
+      const loadVoltage = getACVoltage(load);
+      const source = this.findACSource(load.id, SOURCE_TYPES, AC_PASS_THROUGH);
+      if (!source) continue; // Unpowered loads are reported by other rules
+
+      const supported = getSupportedACVoltages(source);
+      if (supported.includes(loadVoltage)) continue;
+
+      const sourceVoltage = isSplitPhase(source)
+        ? "120/240V split phase"
+        : `${getInverterACVoltage(source)}V`;
+
+      this.issues.push({
+        severity: "error",
+        category: "electrical",
+        message: `${load.name || "AC load"} is ${loadVoltage}V but ${source.name || source.type} outputs ${sourceVoltage}`,
+        componentIds: [load.id, source.id],
+        suggestion: isSplitPhase(source)
+          ? `Set the load to 120V or 240V to match the split-phase output`
+          : `Set the load to ${getInverterACVoltage(source)}V, or change the inverter's AC output voltage (120/240V split-phase models can feed both)`,
+      });
+    }
+  }
+
+  /** Walk the AC (hot/neutral/ground) path from a load back to its source. */
+  private findACSource(
+    loadId: string,
+    sourceTypes: Set<string>,
+    passThrough: Set<string>
+  ): SchematicComponent | null {
+    const queue = [loadId];
+    const visited = new Set<string>([loadId]);
+
+    while (queue.length > 0) {
+      const compId = queue.shift()!;
+
+      for (const wire of this.wires) {
+        if (wire.polarity !== "hot" && wire.polarity !== "neutral" && wire.polarity !== "ground") continue;
+
+        let nextId: string | undefined;
+        if (wire.fromComponentId === compId) nextId = wire.toComponentId;
+        else if (wire.toComponentId === compId) nextId = wire.fromComponentId;
+        if (!nextId || visited.has(nextId)) continue;
+
+        const next = this.components.find(c => c.id === nextId);
+        if (!next) continue;
+
+        if (sourceTypes.has(next.type)) return next;
+
+        visited.add(nextId);
+        if (passThrough.has(next.type)) queue.push(nextId);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -215,10 +296,35 @@ export class DesignValidator {
         const otherCompId = wire.fromComponentId === battery.id ? wire.toComponentId : wire.fromComponentId;
         const otherComp = this.components.find(c => c.id === otherCompId);
         
-        // Should connect to a Fuse, or a Lynx Distributor (which has fuses)
-        if (otherComp?.type === "fuse" || otherComp?.type === "lynx-distributor") {
+        // Any overcurrent protection counts: a fuse of any family, a DC
+        // breaker, or a Lynx module with a built-in fuse holder.
+        if (otherComp && DC_PROTECTION_TYPES.has(otherComp.type)) {
           hasImmediateFuse = true;
           fusedWireId = wire.id;
+
+          // A lithium bank can deliver thousands of amps into a dead short.
+          // Breakers and low-AIC fuse families cannot safely break that.
+          const chemistry = String(battery.properties?.batteryType || battery.properties?.chemistry || "").toLowerCase();
+          const isLithium = chemistry.includes("lifepo") || chemistry.includes("lithium");
+          if (isLithium) {
+            if (otherComp.type === "dc-breaker") {
+              this.issues.push({
+                severity: "warning",
+                category: "electrical",
+                message: "Lithium battery main protected by a circuit breaker",
+                componentIds: [battery.id, otherComp.id],
+                suggestion: "Use a Class T or MRBF fuse on the battery main - most DC breakers cannot interrupt a lithium short circuit",
+              });
+            } else if (otherComp.type === "fuse" && !FUSE_TYPES[getFuseType(otherComp)].suitableForLithiumMain) {
+              this.issues.push({
+                severity: "warning",
+                category: "electrical",
+                message: `Lithium battery main uses a ${FUSE_TYPES[getFuseType(otherComp)].label} fuse (${FUSE_TYPES[getFuseType(otherComp)].interruptCapacity.toLocaleString()}A interrupt)`,
+                componentIds: [battery.id, otherComp.id],
+                suggestion: "Use a Class T (20,000A) or MRBF (10,000A) fuse for the main battery connection on a lithium bank",
+              });
+            }
+          }
           
           // Check distance/length logic if available (ABYC requires within 7 inches/175mm if not sheathed)
           // We'll just warn if it looks "long" in our logical canvas (e.g. > 10ft)
@@ -236,12 +342,24 @@ export class DesignValidator {
       }
 
       if (!hasImmediateFuse && posWires.length > 0) {
+        // Point at a real part: the family and rating that suit this circuit,
+        // rather than implying every system needs a 400A Class T.
+        const mainCurrent = Math.max(
+          0,
+          ...posWires.map(w => this.calculateFuseCurrent(battery.id) || 0)
+        );
+        const suggestedType = suggestFuseType(mainCurrent, true);
+        const suggestedRating = smallestRatingFor(suggestedType, mainCurrent * 1.25);
+        const partHint = suggestedRating
+          ? ` A ${suggestedRating}A ${FUSE_TYPES[suggestedType].label} fuse suits this circuit.`
+          : "";
+
         this.issues.push({
           severity: "error",
           category: "electrical",
-          message: "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse.",
+          message: "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse or breaker.",
           componentIds: [battery.id],
-          suggestion: "Add a main fuse immediately after the battery positive terminal."
+          suggestion: `Add overcurrent protection immediately after the battery positive terminal.${partHint}`
         });
       }
 
@@ -297,58 +415,118 @@ export class DesignValidator {
   }
 
   private validateSmartShuntPlacement(): void {
-    const smartShunt = this.components.find(c => c.type === "smartshunt");
-    if (!smartShunt) return; // No SmartShunt, no rule to check
+    const smartShunts = this.components.filter(c => c.type === "smartshunt");
+    if (smartShunts.length === 0) return; // No SmartShunt, no rule to check
 
-    const battery = this.components.find(c => c.type === "battery");
-    if (!battery) {
+    const batteries = this.components.filter(c => c.type === "battery");
+    if (batteries.length === 0) {
       this.issues.push({
         severity: "error",
         category: "electrical",
         message: "SmartShunt present but no battery found",
-        componentIds: [smartShunt.id],
+        componentIds: [smartShunts[0].id],
         suggestion: "Add a battery or remove the SmartShunt",
       });
       return;
     }
 
-    // Check that battery negative connects to SmartShunt "negative" terminal
-    const batteryToShunt = this.wires.find(
-      w => w.fromComponentId === battery.id &&
-           w.toComponentId === smartShunt.id &&
-           w.fromTerminal === "negative" &&
-           w.toTerminal === "negative"
-    );
+    for (const smartShunt of smartShunts) {
+      // A shunt is correctly placed when its battery-side "negative" terminal
+      // reaches a battery negative. The wire may be drawn in EITHER direction,
+      // and may pass through negative-path hardware (disconnect switch, class-T
+      // fuse, negative busbar used as a bank collector) on the way.
+      const reachedBattery = this.findBatteryOnNegativePath(smartShunt.id, "negative", batteries);
 
-    if (!batteryToShunt) {
-      this.issues.push({
-        severity: "error",
-        category: "electrical",
-        message: "SmartShunt not properly connected in negative path from battery",
-        componentIds: [battery.id, smartShunt.id],
-        suggestion: "Connect battery negative to SmartShunt 'negative' terminal",
-      });
-    }
+      if (!reachedBattery) {
+        this.issues.push({
+          severity: "error",
+          category: "electrical",
+          message: "SmartShunt not properly connected in negative path from battery",
+          componentIds: [batteries[0].id, smartShunt.id],
+          suggestion: "Connect battery negative to SmartShunt 'negative' terminal",
+        });
+      }
 
-    // Check that all loads connect to system-minus (not directly to battery negative)
-    const loads = this.components.filter(c => c.type === "dc-load" || c.type === "multiplus" || c.type === "quattro");
-    const loadsConnectedDirectly = loads.filter(load => {
-      return this.wires.some(
-        w => w.fromComponentId === battery.id &&
-             w.toComponentId === load.id &&
-             w.polarity === "negative"
+      // Check that all loads connect to system-minus (not directly to battery negative)
+      const loads = this.components.filter(c => c.type === "dc-load" || c.type === "multiplus" || c.type === "quattro");
+      const loadsConnectedDirectly = loads.filter(load =>
+        this.wires.some(w =>
+          w.polarity === "negative" &&
+          batteries.some(b =>
+            (w.fromComponentId === b.id && w.toComponentId === load.id) ||
+            (w.toComponentId === b.id && w.fromComponentId === load.id)
+          )
+        )
       );
-    });
 
-    if (loadsConnectedDirectly.length > 0) {
-      this.issues.push({
-        severity: "warning",
-        category: "electrical",
-        message: `${loadsConnectedDirectly.length} load(s) connected directly to battery negative, bypassing SmartShunt`,
-        componentIds: loadsConnectedDirectly.map(l => l.id),
-        suggestion: "Connect loads to SmartShunt 'system-minus' terminal for accurate current monitoring",
-      });
+      if (loadsConnectedDirectly.length > 0) {
+        this.issues.push({
+          severity: "warning",
+          category: "electrical",
+          message: `${loadsConnectedDirectly.length} load(s) connected directly to battery negative, bypassing SmartShunt`,
+          componentIds: loadsConnectedDirectly.map(l => l.id),
+          suggestion: "Connect loads to SmartShunt 'system-minus' terminal for accurate current monitoring",
+        });
+      }
     }
+  }
+
+  /**
+   * Walk the negative path outward from a component terminal looking for a
+   * battery negative. Pass-through hardware (switches, fuses, negative
+   * busbars) is traversed; anything else ends that branch.
+   */
+  private findBatteryOnNegativePath(
+    startCompId: string,
+    startTerminal: string,
+    batteries: SchematicComponent[]
+  ): SchematicComponent | null {
+    const PASS_THROUGH = new Set(["switch", "fuse", "busbar-negative", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
+    const batteryIds = new Set(batteries.map(b => b.id));
+
+    // Queue of (componentId, terminalId | null). A null terminal means "entered
+    // this pass-through device, continue out of any of its other terminals".
+    const queue: Array<{ compId: string; terminal: string | null }> = [
+      { compId: startCompId, terminal: startTerminal },
+    ];
+    const visited = new Set<string>([`${startCompId}:${startTerminal}`]);
+
+    while (queue.length > 0) {
+      const { compId, terminal } = queue.shift()!;
+
+      for (const wire of this.wires) {
+        let nextCompId: string | undefined;
+        let nextTerminal: string | undefined;
+
+        if (wire.fromComponentId === compId && (terminal === null || wire.fromTerminal === terminal)) {
+          nextCompId = wire.toComponentId;
+          nextTerminal = wire.toTerminal ?? undefined;
+        } else if (wire.toComponentId === compId && (terminal === null || wire.toTerminal === terminal)) {
+          nextCompId = wire.fromComponentId;
+          nextTerminal = wire.fromTerminal ?? undefined;
+        }
+
+        if (!nextCompId) continue;
+
+        if (batteryIds.has(nextCompId)) {
+          // Only the battery's negative post counts as being in the negative path.
+          if (!nextTerminal || nextTerminal === "negative") {
+            return batteries.find(b => b.id === nextCompId) ?? null;
+          }
+          continue;
+        }
+
+        const nextComp = this.components.find(c => c.id === nextCompId);
+        if (!nextComp || !PASS_THROUGH.has(nextComp.type)) continue;
+
+        const key = `${nextCompId}:*`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        queue.push({ compId: nextCompId, terminal: null });
+      }
+    }
+
+    return null;
   }
 
   private validateBusBarPolarity(): void {
@@ -822,42 +1000,52 @@ export class DesignValidator {
    * Validate that fuse ratings exceed current through them
    */
   private validateFuseRatings(): void {
-    const fuses = this.components.filter(c => c.type === 'fuse');
-    
-    fuses.forEach(fuse => {
-      const fuseRating = fuse.properties?.fuseRating || fuse.properties?.amps || 0;
-      
-      if (fuseRating === 0) {
+    const devices = this.components.filter(c => c.type === 'fuse' || c.type === 'dc-breaker');
+
+    devices.forEach(device => {
+      const isBreaker = device.type === 'dc-breaker';
+      const noun = isBreaker ? 'Breaker' : 'Fuse';
+      const rating = isBreaker
+        ? (device.properties?.amps || device.properties?.rating || 0)
+        : (device.properties?.fuseRating || device.properties?.amps || 0);
+
+      if (rating === 0) {
         this.issues.push({
           severity: 'warning',
           category: 'electrical',
-          message: `Fuse "${fuse.name}" has no rating specified`,
-          componentIds: [fuse.id],
-          suggestion: 'Set fuse rating in component properties',
+          message: `${noun} "${device.name}" has no rating specified`,
+          componentIds: [device.id],
+          suggestion: `Set the ${noun.toLowerCase()} rating in component properties`,
         });
         return;
       }
-      
-      const currentThroughFuse = this.calculateFuseCurrent(fuse.id);
-      const utilizationPercent = fuseRating > 0 ? (currentThroughFuse / fuseRating) * 100 : 0;
-      
-      if (currentThroughFuse > fuseRating) {
-        // Current exceeds rating - fuse will blow (ERROR)
+
+      const currentThrough = this.calculateFuseCurrent(device.id);
+      const utilizationPercent = rating > 0 ? (currentThrough / rating) * 100 : 0;
+
+      // Suggest a size the part is actually sold in rather than rounding to 50A
+      const nextSize = isBreaker
+        ? DC_BREAKER_RATINGS.find(r => r >= currentThrough)
+        : smallestRatingFor(getFuseType(device), currentThrough);
+      const sizeHint = nextSize ? `${nextSize}A` : `${Math.ceil(currentThrough / 50) * 50}A`;
+
+      if (currentThrough > rating) {
         this.issues.push({
           severity: 'error',
           category: 'electrical',
-          message: `Fuse "${fuse.name}" (${fuseRating}A) is undersized: ${currentThroughFuse.toFixed(1)}A exceeds rating (${utilizationPercent.toFixed(1)}% utilization)`,
-          componentIds: [fuse.id],
-          suggestion: `Increase fuse rating to at least ${Math.ceil(currentThroughFuse / 50) * 50}A (next standard size above ${currentThroughFuse.toFixed(1)}A)`,
+          message: `${noun} "${device.name}" (${rating}A) is undersized: ${currentThrough.toFixed(1)}A exceeds rating (${utilizationPercent.toFixed(1)}% utilization)`,
+          componentIds: [device.id],
+          suggestion: nextSize
+            ? `Increase the rating to ${sizeHint}`
+            : `${currentThrough.toFixed(1)}A is above the largest size in this family - use a larger fuse type`,
         });
       } else if (utilizationPercent > 80) {
-        // Near limit - warning
         this.issues.push({
           severity: 'warning',
           category: 'electrical',
-          message: `Fuse "${fuse.name}" (${fuseRating}A) is near capacity: ${currentThroughFuse.toFixed(1)}A (${utilizationPercent.toFixed(1)}% utilization)`,
-          componentIds: [fuse.id],
-          suggestion: `Consider increasing fuse rating to ${Math.ceil(currentThroughFuse / 50) * 50}A for safety margin`,
+          message: `${noun} "${device.name}" (${rating}A) is near capacity: ${currentThrough.toFixed(1)}A (${utilizationPercent.toFixed(1)}% utilization)`,
+          componentIds: [device.id],
+          suggestion: `Consider increasing the rating to ${sizeHint} for safety margin`,
         });
       }
     });
@@ -997,7 +1185,7 @@ export class DesignValidator {
       if (current === 0 && (wire.polarity === "positive" || wire.polarity === "negative")) {
         const fromCompT = this.components.find(c => c.id === wire.fromComponentId);
         const toCompT = this.components.find(c => c.id === wire.toComponentId);
-        const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor"]);
+        const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
         const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
         if (isTrunkComp(fromCompT?.type) && isTrunkComp(toCompT?.type)) {
           let loadA = 0;
@@ -2375,9 +2563,14 @@ export class DesignValidator {
         return;
       }
 
-      // Check if terminals exist
-      const fromConfig = TERMINAL_CONFIGS[fromComp.type];
-      const toConfig = TERMINAL_CONFIGS[toComp.type];
+      // Check if terminals exist. Terminals can vary per instance (e.g. only
+      // some MPPT models have LOAD output), so resolve against the component.
+      const fromConfig = TERMINAL_CONFIGS[fromComp.type]
+        ? { terminals: getComponentTerminals(fromComp.type, fromComp.properties) }
+        : undefined;
+      const toConfig = TERMINAL_CONFIGS[toComp.type]
+        ? { terminals: getComponentTerminals(toComp.type, toComp.properties) }
+        : undefined;
 
       if (fromConfig) {
         const fromTerminal = fromConfig.terminals.find(t => t.id === wire.fromTerminal);
