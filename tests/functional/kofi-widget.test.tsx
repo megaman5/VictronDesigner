@@ -6,6 +6,7 @@ const SRC = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
 
 describe('Ko-fi widget', () => {
   beforeEach(() => {
+    document.head.querySelectorAll('#kofi-widget-position').forEach(n => n.remove());
     document.body.innerHTML = '';
     document.querySelectorAll(`script[src="${SRC}"]`).forEach(s => s.remove());
     delete (window as any).kofiWidgetOverlay;
@@ -41,5 +42,22 @@ describe('Ko-fi widget', () => {
   it('renders nothing itself', () => {
     const { container } = render(<KofiWidget />);
     expect(container.firstChild).toBeNull();
+  });
+  it('pins the button to the lower right', () => {
+    render(<KofiWidget />);
+    const style = document.getElementById('kofi-widget-position');
+    expect(style).not.toBeNull();
+    // Ko-fi's own stylesheet sets left: 16px; we must override it, and the
+    // widget's position config key is dead so CSS is the only lever.
+    expect(style!.textContent).toContain('right: 24px !important');
+    expect(style!.textContent).toContain('left: auto !important');
+    expect(style!.textContent).toContain('.floatingchat-container-wrap');
+    expect(style!.textContent).toContain('.floatingchat-container-wrap-mobi');
+  });
+
+  it('injects the position override only once', () => {
+    render(<KofiWidget />);
+    render(<KofiWidget />);
+    expect(document.querySelectorAll('#kofi-widget-position')).toHaveLength(1);
   });
 });

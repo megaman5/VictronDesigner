@@ -14,12 +14,43 @@ export interface ModelPrice {
   outputPerMTok: number;
   /** Cached input reads, where the provider prices them separately. */
   cachedInputPerMTok?: number;
+  /**
+   * Vendor-specific long-prompt surcharge. Only set where the vendor actually
+   * has one - OpenAI charges more past 272k input tokens, Anthropic and Google
+   * do not use that rule, so applying it to everything would over-bill them.
+   */
+  longContext?: {
+    thresholdTokens: number;
+    inputMultiplier: number;
+    outputMultiplier: number;
+  };
 }
 
-const ASOF = "2026-06-24";
+/** OpenAI's surcharge past 272k input tokens: 2x input, 1.5x output. */
+const OPENAI_LONG_CONTEXT = {
+  thresholdTokens: 272_000,
+  inputMultiplier: 2,
+  outputMultiplier: 1.5,
+} as const;
 
+const ASOF = "2026-08-20";
+
+/**
+ * Sources:
+ * - Anthropic: first-party API rates (claude-api reference, 2026-06-24)
+ * - OpenAI: openai.com GPT-5.6 announcement + corroborating trade coverage,
+ *   after the 2026-07-30 cuts (Terra -20%, Luna -80%)
+ * - Google/OpenRouter: OpenRouter's /api/v1/models pricing feed
+ *
+ * NOTE: OpenRouter's feed lists gpt-5.6-sol at $2.50/$15.00, which contradicts
+ * two independent sources giving $5.00/$30.00. We use the higher first-party
+ * figure - under-estimating spend is the worse failure for a budget cap.
+ *
+ * Cached input is ~10% of the input rate across all three vendors, which is
+ * what estimateCostUsd assumes when a model has no explicit cached rate.
+ */
 export const MODEL_PRICING: Record<string, ModelPrice> = {
-  // Anthropic (first-party API rates)
+  // --- Anthropic ---
   "claude-fable-5": { inputPerMTok: 10, outputPerMTok: 50 },
   "claude-opus-5": { inputPerMTok: 5, outputPerMTok: 25 },
   "claude-opus-4-8": { inputPerMTok: 5, outputPerMTok: 25 },
@@ -28,6 +59,39 @@ export const MODEL_PRICING: Record<string, ModelPrice> = {
   "claude-sonnet-5": { inputPerMTok: 3, outputPerMTok: 15 },
   "claude-sonnet-4-6": { inputPerMTok: 3, outputPerMTok: 15 },
   "claude-haiku-4-5": { inputPerMTok: 1, outputPerMTok: 5 },
+
+  // --- OpenAI GPT-5.6 (rates as of the 2026-07-30 cuts) ---
+  "gpt-5.6-sol": { inputPerMTok: 5, outputPerMTok: 30, cachedInputPerMTok: 0.5 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.6-terra": { inputPerMTok: 2, outputPerMTok: 12, cachedInputPerMTok: 0.2 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.6-luna": { inputPerMTok: 0.2, outputPerMTok: 1.2, cachedInputPerMTok: 0.02 , longContext: OPENAI_LONG_CONTEXT },
+
+  // --- OpenAI GPT-5.x ---
+  "gpt-5.5": { inputPerMTok: 5, outputPerMTok: 30 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.5-pro": { inputPerMTok: 30, outputPerMTok: 180 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.4": { inputPerMTok: 2.5, outputPerMTok: 15, cachedInputPerMTok: 0.25 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.4-mini": { inputPerMTok: 0.75, outputPerMTok: 4.5 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.4-nano": { inputPerMTok: 0.2, outputPerMTok: 1.25 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.4-pro": { inputPerMTok: 30, outputPerMTok: 180 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.3-codex": { inputPerMTok: 1.75, outputPerMTok: 14 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.2": { inputPerMTok: 1.75, outputPerMTok: 14 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.2-pro": { inputPerMTok: 21, outputPerMTok: 168 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5.1": { inputPerMTok: 1.25, outputPerMTok: 10 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5": { inputPerMTok: 1.25, outputPerMTok: 10 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5-mini": { inputPerMTok: 0.25, outputPerMTok: 2 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5-nano": { inputPerMTok: 0.05, outputPerMTok: 0.4 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-5-pro": { inputPerMTok: 15, outputPerMTok: 120 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-4.1": { inputPerMTok: 2, outputPerMTok: 8 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-4.1-mini": { inputPerMTok: 0.4, outputPerMTok: 1.6 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-4o": { inputPerMTok: 2.5, outputPerMTok: 10 , longContext: OPENAI_LONG_CONTEXT },
+  "gpt-4o-mini": { inputPerMTok: 0.15, outputPerMTok: 0.6 , longContext: OPENAI_LONG_CONTEXT },
+
+  // --- Google Gemini ---
+  "gemini-3.1-pro-preview": { inputPerMTok: 2, outputPerMTok: 12 },
+  "gemini-3.1-flash-lite": { inputPerMTok: 0.25, outputPerMTok: 1.5 },
+  "gemini-3-flash-preview": { inputPerMTok: 0.5, outputPerMTok: 3 },
+  "gemini-2.5-pro": { inputPerMTok: 1.25, outputPerMTok: 10 },
+  "gemini-2.5-flash": { inputPerMTok: 0.3, outputPerMTok: 2.5 },
+  "gemini-2.5-flash-lite": { inputPerMTok: 0.1, outputPerMTok: 0.4 },
 };
 
 export const PRICING_AS_OF = ASOF;
@@ -48,10 +112,15 @@ export function estimateCostUsd(
 
   const cachedRate = price.cachedInputPerMTok ?? price.inputPerMTok * 0.1;
 
+  const lc = price.longContext;
+  const overThreshold = lc !== undefined && usage.inputTokens > lc.thresholdTokens;
+  const inMul = overThreshold ? lc!.inputMultiplier : 1;
+  const outMul = overThreshold ? lc!.outputMultiplier : 1;
+
   return (
-    (uncachedInput / 1_000_000) * price.inputPerMTok +
-    (cached / 1_000_000) * cachedRate +
-    (usage.outputTokens / 1_000_000) * price.outputPerMTok
+    (uncachedInput / 1_000_000) * price.inputPerMTok * inMul +
+    (cached / 1_000_000) * cachedRate * inMul +
+    (usage.outputTokens / 1_000_000) * price.outputPerMTok * outMul
   );
 }
 

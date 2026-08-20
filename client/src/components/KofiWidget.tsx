@@ -7,6 +7,32 @@ const KOFI_USERNAME = "megaman5";
 // per page load - React re-mounts would otherwise stack duplicate buttons.
 let drawn = false;
 
+const POSITION_STYLE_ID = "kofi-widget-position";
+
+/**
+ * Ko-fi pins the button bottom-LEFT from its own remote stylesheet
+ * (floating-chat-wrapper.css: `position: fixed; bottom: 16px; left: 16px`),
+ * and the widget's `floating-chat.core.position.*` config key is dead - it is
+ * declared in the script's defaults but never read. So the only reliable way
+ * to move it is to override those two classes here.
+ *
+ * The wrap already carries `max-width: 180px`, so flipping the anchor is
+ * enough; the popup sits `position: relative` inside the wrap and follows it.
+ */
+function injectPositionOverride() {
+  if (document.getElementById(POSITION_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = POSITION_STYLE_ID;
+  style.textContent = `
+    .floatingchat-container-wrap,
+    .floatingchat-container-wrap-mobi {
+      left: auto !important;
+      right: 24px !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 declare global {
   interface Window {
     kofiWidgetOverlay?: {
@@ -35,6 +61,8 @@ function draw() {
  */
 export function KofiWidget() {
   useEffect(() => {
+    // Inject before the script draws, so the button never flashes bottom-left
+    injectPositionOverride();
     if (drawn) return;
 
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_SRC}"]`);

@@ -153,9 +153,17 @@ describe('Benchmark runner', () => {
 
   it('reports null cost for an unpriced model instead of zero', async () => {
     stubProvider(VALID_DESIGN);
-    const summary = await runBenchmark({ suiteId: 'core-designs', model: 'gpt-5.4' });
+    // A model with no price entry must report unknown, never a misleading 0
+    const summary = await runBenchmark({ suiteId: 'core-designs', model: 'some-unlisted-model' });
     expect(summary.results[0].costUsd).toBeNull();
     expect(summary.stats.totalCostUsd).toBeNull();
+  });
+
+  it('reports a real cost for a priced model', async () => {
+    stubProvider(VALID_DESIGN, { inputTokens: 10_000, outputTokens: 10_000 });
+    const summary = await runBenchmark({ suiteId: 'core-designs', model: 'gpt-5.6-luna' });
+    expect(summary.results[0].costUsd).toBeGreaterThan(0);
+    expect(summary.stats.totalCostUsd).toBeGreaterThan(0);
   });
 
   it('counts normalizer repairs so prompt quality is visible', async () => {
