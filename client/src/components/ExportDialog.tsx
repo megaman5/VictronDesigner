@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { SchematicComponent, Wire } from "@shared/schema";
-import { TERMINAL_CONFIGS } from "@/lib/terminal-config";
-import type { WireGaugeFormat } from "@/lib/wire-calculator";
+import { getComponentDimensions } from "@/lib/terminal-config";
+import type { WireGaugeFormat, LengthUnit } from "@/lib/wire-calculator";
 
 interface ExportDialogProps {
   open: boolean;
@@ -23,16 +23,18 @@ interface ExportDialogProps {
   systemVoltage: number;
   designName?: string;
   wireGaugeFormat?: WireGaugeFormat;
+  lengthUnit?: LengthUnit;
 }
 
-export function ExportDialog({ 
-  open, 
-  onOpenChange, 
-  components, 
-  wires, 
+export function ExportDialog({
+  open,
+  onOpenChange,
+  components,
+  wires,
   systemVoltage,
   designName = "Design",
-  wireGaugeFormat = "awg"
+  wireGaugeFormat = "awg",
+  lengthUnit = "ft"
 }: ExportDialogProps) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export function ExportDialog({
       const response = await fetch("/api/export/shopping-list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat }),
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat, lengthUnit }),
       });
 
       if (!response.ok) throw new Error("Export failed");
@@ -100,7 +102,7 @@ export function ExportDialog({
       const response = await fetch("/api/export/wire-labels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat }),
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat, lengthUnit }),
       });
 
       if (!response.ok) throw new Error("Export failed");
@@ -143,10 +145,8 @@ export function ExportDialog({
       let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
       
       components.forEach(comp => {
-        const config = TERMINAL_CONFIGS[comp.type];
-        const width = config?.width || 140;
-        const height = config?.height || 100;
-        
+        const { width, height } = getComponentDimensions(comp.type, comp.properties);
+
         if (comp.x < minX) minX = comp.x;
         if (comp.y < minY) minY = comp.y;
         if (comp.x + width > maxX) maxX = comp.x + width;
@@ -534,7 +534,7 @@ export function ExportDialog({
       const response = await fetch("/api/export/system-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat }),
+        body: JSON.stringify({ components, wires, systemVoltage, name: designName, wireGaugeFormat, lengthUnit }),
       });
 
       if (!response.ok) throw new Error("Export failed");

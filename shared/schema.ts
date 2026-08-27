@@ -53,6 +53,37 @@ export const feedback = pgTable("feedback", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+/**
+ * User-defined component types ("Phase 1" of custom components — personal,
+ * private definitions only; see docs/custom-components-design.md).
+ *
+ * Placed instances snapshot their terminal list and dimensions into the
+ * SchematicComponent's `properties` at drop time, so a saved schematic keeps
+ * rendering correctly even if this definition is later edited or deleted.
+ * `ownerId` holds AuthUser.id (the Google account id used across the app,
+ * see server/auth.ts) rather than the users.id primary key, matching the
+ * userDesigns table's convention — the two are different value spaces.
+ */
+export const customComponents = pgTable("custom_components", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ownerId: varchar("owner_id").notNull(),
+  name: text("name").notNull(),
+  subtitle: text("subtitle"),
+  category: text("category").notNull().default("custom"),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  terminals: jsonb("terminals").notNull(), // Terminal[] (see client/src/lib/terminal-config.ts)
+  appearance: jsonb("appearance"), // body colour, label placement, optional bars
+  // "private" is the only visibility phase 1 builds UI for; the column exists
+  // so phase 2 (community sharing) doesn't need a migration.
+  visibility: text("visibility").notNull().default("private"), // private | unlisted | public
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  ownerIdIdx: index("custom_components_owner_id_idx").on(table.ownerId),
+}));
+
 export const appSettings = pgTable("app_settings", {
   key: varchar("key").primaryKey(),
   value: text("value").notNull(),
@@ -288,6 +319,20 @@ export const insertErrorLogSchema = createInsertSchema(errorLogs).omit({
   createdAt: true,
 });
 
+// Custom component definitions
+export const insertCustomComponentSchema = createInsertSchema(customComponents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateCustomComponentSchema = createInsertSchema(customComponents).omit({
+  id: true,
+  ownerId: true,
+  createdAt: true,
+  updatedAt: true,
+}).partial();
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Schematic = typeof schematics.$inferSelect;
@@ -305,6 +350,9 @@ export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type ErrorLog = typeof errorLogs.$inferSelect;
 export type InsertErrorLog = z.infer<typeof insertErrorLogSchema>;
+export type CustomComponentDefinition = typeof customComponents.$inferSelect;
+export type InsertCustomComponentDefinition = z.infer<typeof insertCustomComponentSchema>;
+export type UpdateCustomComponentDefinition = z.infer<typeof updateCustomComponentSchema>;
 
 // Component and wire types for the schematic
 export interface SchematicComponent {

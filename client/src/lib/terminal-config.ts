@@ -478,11 +478,25 @@ export function mpptHasLoadOutput(properties?: Record<string, any> | null): bool
  * Terminals for a component instance. Most components have a fixed terminal
  * set keyed by type, but some (MPPT LOAD output) vary by the selected model,
  * so pass the component's properties when they are available.
+ *
+ * "custom" components (see docs/custom-components-design.md) snapshot their
+ * own terminal list into `properties.terminals` when placed on the canvas -
+ * when present, that snapshot is authoritative and takes over from the fixed
+ * 4-terminal fallback in TERMINAL_CONFIGS.custom.
  */
 export function getComponentTerminals(
   componentType: string,
   properties?: Record<string, any> | null
 ): Terminal[] {
+  if (
+    componentType === "custom" &&
+    properties &&
+    Array.isArray(properties.terminals) &&
+    properties.terminals.length > 0
+  ) {
+    return properties.terminals as Terminal[];
+  }
+
   const config = TERMINAL_CONFIGS[componentType];
   if (!config) return [];
 
@@ -491,6 +505,30 @@ export function getComponentTerminals(
   }
 
   return config.terminals;
+}
+
+/**
+ * Rendered width/height for a component instance. Custom components snapshot
+ * their own dimensions into `properties.width`/`properties.height` at
+ * placement time, just like their terminal list - everything else uses the
+ * fixed per-type size in TERMINAL_CONFIGS. Falls back to a generic 120x100
+ * box for unknown types, matching the fallback used elsewhere in the app.
+ */
+export function getComponentDimensions(
+  componentType: string,
+  properties?: Record<string, any> | null
+): { width: number; height: number } {
+  if (
+    componentType === "custom" &&
+    properties &&
+    typeof properties.width === "number" &&
+    typeof properties.height === "number"
+  ) {
+    return { width: properties.width, height: properties.height };
+  }
+
+  const config = TERMINAL_CONFIGS[componentType];
+  return config ? { width: config.width, height: config.height } : { width: 120, height: 100 };
 }
 
 // Helper function to get terminal absolute position on canvas

@@ -65,6 +65,30 @@ export function formatWireGauge(gauge: string | undefined, format: WireGaugeForm
   return `${normalizedGauge} AWG`;
 }
 
+// Wire length is stored internally in feet everywhere (schema, wire routing,
+// server-side ABYC/NEC calculations). LengthUnit only controls display/entry.
+export type LengthUnit = "ft" | "m";
+
+const FEET_PER_METER = 3.28084;
+
+export function feetToDisplayLength(feet: number, unit: LengthUnit): number {
+  return unit === "m" ? feet / FEET_PER_METER : feet;
+}
+
+export function displayLengthToFeet(value: number, unit: LengthUnit): number {
+  return unit === "m" ? value * FEET_PER_METER : value;
+}
+
+export function formatWireLength(feet: number | null | undefined, unit: LengthUnit = "ft"): string {
+  if (feet == null) return "";
+  const value = feetToDisplayLength(feet, unit);
+  return `${value.toFixed(1)}${unit}`;
+}
+
+export function lengthUnitLabel(unit: LengthUnit): string {
+  return unit === "m" ? "m" : "ft";
+}
+
 // ABYC ampacity ratings assume 30°C ambient. For hotter locations apply
 // the standard correction sqrt((Trated - Tambient) / (Trated - 30)).
 // This reproduces the published ABYC/NEC correction tables — e.g. for

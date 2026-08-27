@@ -1,5 +1,5 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
-import { TERMINAL_CONFIGS } from "./terminal-config";
+import { TERMINAL_CONFIGS, getComponentDimensions } from "./terminal-config";
 
 export interface TerminalOverride {
   from?: string;
@@ -28,8 +28,7 @@ export function computeBusbarTerminalOverrides(
 
   const compById = new Map(components.map((c) => [c.id, c]));
   const centerX = (c: SchematicComponent): number => {
-    const cfg = TERMINAL_CONFIGS[c.type];
-    return c.x + (cfg?.width || 120) / 2;
+    return c.x + getComponentDimensions(c.type, c.properties).width / 2;
   };
 
   for (const bus of busbars) {
