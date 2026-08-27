@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
-import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, getComponentTerminals, TERMINAL_CONFIGS } from "@/lib/terminal-config";
+import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, getComponentTerminals, getComponentDimensions } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, GRID_SIZE, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
 import { computeBusbarTerminalOverrides } from "@/lib/busbar-ordering";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { formatWireGauge, type WireGaugeFormat } from "@/lib/wire-calculator";
+import { formatWireGauge, formatWireLength, type WireGaugeFormat, type LengthUnit } from "@/lib/wire-calculator";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 
 export interface WireConnectionData {
@@ -42,6 +42,7 @@ interface SchematicCanvasProps {
   wireStartComponent?: string | null;
   showWireLabels?: boolean;
   wireGaugeFormat?: WireGaugeFormat;
+  lengthUnit?: LengthUnit;
   viewMode?: 'standard' | 'load';
   wireCalculations?: Record<string, any>;
   onCopy?: (componentIds: string[]) => void;
@@ -71,6 +72,7 @@ export function SchematicCanvas({
   wireStartComponent = null,
   showWireLabels = true,
   wireGaugeFormat = "awg",
+  lengthUnit = "ft",
   viewMode = 'standard',
   wireCalculations = {},
   onCopy,
@@ -158,13 +160,11 @@ export function SchematicCanvas({
     let maxY = 0;
 
     components.forEach(comp => {
-      const config = TERMINAL_CONFIGS[comp.type];
-      if (config) {
-        const compRight = comp.x + config.width + 100;
-        const compBottom = comp.y + config.height + 100;
-        if (compRight > maxX) maxX = compRight;
-        if (compBottom > maxY) maxY = compBottom;
-      }
+      const dims = getComponentDimensions(comp.type, comp.properties);
+      const compRight = comp.x + dims.width + 100;
+      const compBottom = comp.y + dims.height + 100;
+      if (compRight > maxX) maxX = compRight;
+      if (compBottom > maxY) maxY = compBottom;
     });
 
     return { maxX, maxY };
@@ -650,7 +650,9 @@ export function SchematicCanvas({
       };
 
       const selected = components.filter(comp => {
-        const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
+        const dims = comp.type === "custom"
+          ? getComponentDimensions(comp.type, comp.properties)
+          : (componentDimensions[comp.type] || { width: 120, height: 100 });
         const compLeft = comp.x;
         const compRight = comp.x + dims.width;
         const compTop = comp.y;
@@ -1228,7 +1230,9 @@ export function SchematicCanvas({
               if (comp.type === 'busbar-positive' || comp.type === 'busbar-negative') {
                 return { x: comp.x + 10, y: comp.y + 24, width: 180, height: 12 };
               }
-              const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
+              const dims = comp.type === "custom"
+                ? getComponentDimensions(comp.type, comp.properties)
+                : (componentDimensions[comp.type] || { width: 120, height: 100 });
               return {
                 x: comp.x,
                 y: comp.y,
@@ -1315,7 +1319,7 @@ export function SchematicCanvas({
               const polaritySymbol = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
               return {
                 primary: `${polaritySymbol} ${formatWireGauge(wire.gauge, wireGaugeFormat) || "N/A"}`,
-                secondary: wire.length && wire.length > 0 ? `• ${wire.length.toFixed(1)}ft` : '',
+                secondary: wire.length && wire.length > 0 ? `• ${formatWireLength(wire.length, lengthUnit)}` : '',
               };
             };
 
@@ -1347,9 +1351,9 @@ export function SchematicCanvas({
 
               if (!fromPos) {
                 if (draggedComponentId === fromComp.id && dragPreviewPos) {
-                  const config = TERMINAL_CONFIGS[fromComp.type];
-                  const centerX = dragPreviewPos.x + (config?.width || 120) / 2;
-                  const centerY = dragPreviewPos.y + (config?.height || 100) / 2;
+                  const fromDims = getComponentDimensions(fromComp.type, fromComp.properties);
+                  const centerX = dragPreviewPos.x + fromDims.width / 2;
+                  const centerY = dragPreviewPos.y + fromDims.height / 2;
                   fromPos = { x: centerX, y: centerY };
                 } else {
                   const from = getComponentPosition(wire.fromComponentId);
@@ -1358,9 +1362,9 @@ export function SchematicCanvas({
               }
               if (!toPos) {
                 if (draggedComponentId === toComp.id && dragPreviewPos) {
-                  const config = TERMINAL_CONFIGS[toComp.type];
-                  const centerX = dragPreviewPos.x + (config?.width || 120) / 2;
-                  const centerY = dragPreviewPos.y + (config?.height || 100) / 2;
+                  const toDims = getComponentDimensions(toComp.type, toComp.properties);
+                  const centerX = dragPreviewPos.x + toDims.width / 2;
+                  const centerY = dragPreviewPos.y + toDims.height / 2;
                   toPos = { x: centerX, y: centerY };
                 } else {
                   const to = getComponentPosition(wire.toComponentId);
@@ -1384,8 +1388,8 @@ export function SchematicCanvas({
               // components ABOVE the bar don't shoot down and loop all the way
               // back up (the cause of long overshooting runs).
               const isBusbar = (t: string) => t === "busbar-positive" || t === "busbar-negative";
-              const fromCenterY = fromCompY + (componentDimensions[fromComp.type]?.height || 100) / 2;
-              const toCenterY = toCompY + (componentDimensions[toComp.type]?.height || 100) / 2;
+              const fromCenterY = fromCompY + getComponentDimensions(fromComp.type, fromComp.properties).height / 2;
+              const toCenterY = toCompY + getComponentDimensions(toComp.type, toComp.properties).height / 2;
               if (isBusbar(fromComp.type)) {
                 fromOrientation = toCenterY < fromCenterY ? "top" : "bottom";
               }
@@ -1977,7 +1981,9 @@ export function SchematicCanvas({
               if (comp.type === 'busbar-positive' || comp.type === 'busbar-negative') {
                 return { x: comp.x + 10, y: comp.y + 24, width: 180, height: 12 };
               }
-              const dims = componentDimensions[comp.type] || { width: 120, height: 100 };
+              const dims = comp.type === "custom"
+                ? getComponentDimensions(comp.type, comp.properties)
+                : (componentDimensions[comp.type] || { width: 120, height: 100 });
               return {
                 x: comp.x,
                 y: comp.y,

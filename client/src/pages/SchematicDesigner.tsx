@@ -12,6 +12,8 @@ import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { SaveDesignDialog } from "@/components/SaveDesignDialog";
 import { OpenDesignDialog } from "@/components/OpenDesignDialog";
 import { CustomComponentDialog } from "@/components/CustomComponentDialog";
+import { CustomComponentEditor } from "@/components/CustomComponentEditor";
+import { toPlacedProperties, type CustomComponentDefinition } from "@/lib/custom-components";
 import { DisclaimerDialog } from "@/components/DisclaimerDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -28,7 +30,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { trackAction } from "@/lib/tracking";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
-import { calculateWireSize, type WireGaugeFormat } from "@/lib/wire-calculator";
+import { calculateWireSize, type WireGaugeFormat, type LengthUnit } from "@/lib/wire-calculator";
 import { type WireRoutingStyle, type WireRoutingOptions, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES, normalizeRoutingOptions } from "@/lib/wire-routing";
 
 const WIRE_ROUTING_OPTIONS_KEY = "wireRoutingOptions";
@@ -126,6 +128,10 @@ export default function SchematicDesigner() {
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   const [showEstimates, setShowEstimates] = useState(false);
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const [customComponentEditorOpen, setCustomComponentEditorOpen] = useState(false);
+  const [editingCustomDefinition, setEditingCustomDefinition] = useState<CustomComponentDefinition | null>(null);
+  const [draggedCustomDefinition, setDraggedCustomDefinition] = useState<CustomComponentDefinition | null>(null);
+  const [deleteCustomTarget, setDeleteCustomTarget] = useState<CustomComponentDefinition | null>(null);
 
   // User auth state
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -158,6 +164,7 @@ export default function SchematicDesigner() {
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
   const [wireGaugeFormat, setWireGaugeFormat] = useState<WireGaugeFormat>("awg");
+  const [lengthUnit, setLengthUnit] = useState<LengthUnit>("ft");
   const validRoutingStyles = WIRE_ROUTING_STYLES.map((s) => s.value);
   const [wireRoutingOptions, setWireRoutingOptionsState] = useState<WireRoutingOptions>(() => {
     try {
@@ -636,6 +643,23 @@ export default function SchematicDesigner() {
       toast({
         title: "Error",
         description: error.message || "Failed to save schematic",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCustomComponentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/custom-components/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/custom-components"] });
+      toast({ title: "Custom component deleted" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Delete failed",
+        description: error.message || "Failed to delete custom component",
         variant: "destructive",
       });
     },
@@ -1612,6 +1636,26 @@ export default function SchematicDesigner() {
   };
 
   const handleComponentDrop = (x: number, y: number) => {
+    if (draggedCustomDefinition) {
+      // Snapshot the definition's terminals/dimensions into the instance's
+      // properties so the placed part keeps working even if the definition
+      // is later edited or deleted (see docs/custom-components-design.md).
+      const snap = (v: number) => Math.round(v / 20) * 20;
+      const definition = draggedCustomDefinition;
+      const newComponent: SchematicComponent = {
+        id: `comp-${Date.now()}`,
+        type: "custom",
+        name: definition.name,
+        x: snap(x),
+        y: snap(y),
+        properties: toPlacedProperties(definition, systemVoltage),
+      };
+      setComponents(prev => [...prev, newComponent]);
+      setSelectedComponent(newComponent);
+      setDraggedCustomDefinition(null);
+      return;
+    }
+
     if (!draggedComponentType) return;
 
     // Get default properties based on component type
@@ -2085,6 +2129,8 @@ export default function SchematicDesigner() {
         onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
         wireGaugeFormat={wireGaugeFormat}
         onWireGaugeFormatChange={setWireGaugeFormat}
+        lengthUnit={lengthUnit}
+        onLengthUnitChange={setLengthUnit}
         viewMode={viewMode}
         onToggleViewMode={() => setViewMode(viewMode === 'standard' ? 'load' : 'standard')}
         loadMode={loadMode}
@@ -2104,6 +2150,17 @@ export default function SchematicDesigner() {
         <ComponentLibrary
           onDragStart={(comp) => setDraggedComponentType(comp.id)}
           onAddCustom={() => setCustomDialogOpen(true)}
+          isAuthenticated={!!user}
+          onDragStartCustomDefinition={(def) => setDraggedCustomDefinition(def)}
+          onCreateCustomDefinition={() => {
+            setEditingCustomDefinition(null);
+            setCustomComponentEditorOpen(true);
+          }}
+          onEditCustomDefinition={(def) => {
+            setEditingCustomDefinition(def);
+            setCustomComponentEditorOpen(true);
+          }}
+          onDeleteCustomDefinition={(def) => setDeleteCustomTarget(def)}
         />
 
         <SchematicCanvas
@@ -2125,6 +2182,7 @@ export default function SchematicDesigner() {
           wireStartComponent={wireStartComponent}
           showWireLabels={showWireLabels}
           wireGaugeFormat={wireGaugeFormat}
+          lengthUnit={lengthUnit}
           viewMode={viewMode}
           wireCalculations={wireCalculations}
           onCopy={handleCopy}
@@ -2163,6 +2221,7 @@ export default function SchematicDesigner() {
           validationResult={validationResult}
           wires={wires}
           components={components}
+          lengthUnit={lengthUnit}
           onUpdateWire={handleWireUpdate}
           onWireSelect={handleWireSelect}
           onComponentSelect={handleComponentSelect}
@@ -2221,6 +2280,7 @@ export default function SchematicDesigner() {
         systemVoltage={systemVoltage}
         designName={currentDesignName || "Design"}
         wireGaugeFormat={wireGaugeFormat}
+        lengthUnit={lengthUnit}
       />
 
       <FeedbackDialog
@@ -2253,6 +2313,37 @@ export default function SchematicDesigner() {
         onOpenChange={setCustomDialogOpen}
         onAdd={handleAddCustomComponent}
       />
+
+      <CustomComponentEditor
+        open={customComponentEditorOpen}
+        onOpenChange={setCustomComponentEditorOpen}
+        definition={editingCustomDefinition}
+      />
+
+      <AlertDialog open={!!deleteCustomTarget} onOpenChange={(open) => !open && setDeleteCustomTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteCustomTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the definition from your My Components library. Copies already
+              placed on the canvas keep working - they snapshot their own terminals - but
+              you won't be able to place new copies of this part.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteCustomTarget) deleteCustomComponentMutation.mutate(deleteCustomTarget.id);
+                setDeleteCustomTarget(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Iteration Progress Overlay */}
       {iterationProgress && (

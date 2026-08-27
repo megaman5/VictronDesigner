@@ -1,5 +1,5 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
-import { TERMINAL_CONFIGS, getComponentTerminals } from "../client/src/lib/terminal-config";
+import { TERMINAL_CONFIGS, getComponentTerminals, getComponentDimensions } from "../client/src/lib/terminal-config";
 import { getWireAmpacity, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
 import { getInverterACVoltage, getSupportedACVoltages, isSplitPhase } from "@shared/ac-voltage";
 import {
@@ -849,7 +849,12 @@ export class DesignValidator {
       
       // Skip shore power - it's AC, not DC
       if (comp.type === "shore-power") return;
-      
+
+      // Skip custom components - they have no declared electrical behavior
+      // (could be AC, DC, or something else entirely), so a generic DC
+      // system-voltage check would be a false positive.
+      if (comp.type === "custom") return;
+
       const compVoltage = comp.properties?.voltage as number | undefined;
       
       // Skip components that don't have voltage
@@ -886,6 +891,10 @@ export class DesignValidator {
       // Skip if either component is an AC load, AC panel, or shore power (all AC)
       if (fromComp.type === "ac-load" || fromComp.type === "ac-panel" || fromComp.type === "shore-power" ||
           toComp.type === "ac-load" || toComp.type === "ac-panel" || toComp.type === "shore-power") return;
+
+      // Skip custom components - no declared electrical behavior to check
+      // system-voltage compatibility against (see comment above).
+      if (fromComp.type === "custom" || toComp.type === "custom") return;
 
       // Skip PV wires (pv-positive/pv-negative) - solar panels use PV voltage (Vmp), not DC system voltage
       // PV voltage is converted by MPPT controller to system voltage
@@ -2467,49 +2476,46 @@ export class DesignValidator {
 
     // Check canvas boundaries
     this.components.forEach(comp => {
-      const config = TERMINAL_CONFIGS[comp.type];
-      if (config) {
-        if (comp.x < 50 || comp.y < 50) {
-          this.issues.push({
-            severity: "warning",
-            category: "layout",
-            message: `Component "${comp.name}" too close to canvas edge`,
-            componentIds: [comp.id],
-            suggestion: "Move component at least 50px from edges",
-          });
-        }
+      const dims = getComponentDimensions(comp.type, comp.properties);
 
-        if (comp.x + config.width > 1950 || comp.y + config.height > 1450) {
-          this.issues.push({
-            severity: "warning",
-            category: "layout",
-            message: `Component "${comp.name}" near or beyond canvas boundary`,
-            componentIds: [comp.id],
-            suggestion: "Keep components within 2000×1500px canvas",
-          });
-        }
+      if (comp.x < 50 || comp.y < 50) {
+        this.issues.push({
+          severity: "warning",
+          category: "layout",
+          message: `Component "${comp.name}" too close to canvas edge`,
+          componentIds: [comp.id],
+          suggestion: "Move component at least 50px from edges",
+        });
+      }
+
+      if (comp.x + dims.width > 1950 || comp.y + dims.height > 1450) {
+        this.issues.push({
+          severity: "warning",
+          category: "layout",
+          message: `Component "${comp.name}" near or beyond canvas boundary`,
+          componentIds: [comp.id],
+          suggestion: "Keep components within 2000×1500px canvas",
+        });
       }
     });
   }
 
   private componentsOverlap(comp1: SchematicComponent, comp2: SchematicComponent): boolean {
-    const config1 = TERMINAL_CONFIGS[comp1.type];
-    const config2 = TERMINAL_CONFIGS[comp2.type];
-
-    if (!config1 || !config2) return false;
+    const dims1 = getComponentDimensions(comp1.type, comp1.properties);
+    const dims2 = getComponentDimensions(comp2.type, comp2.properties);
 
     const rect1 = {
       left: comp1.x,
-      right: comp1.x + config1.width,
+      right: comp1.x + dims1.width,
       top: comp1.y,
-      bottom: comp1.y + config1.height,
+      bottom: comp1.y + dims1.height,
     };
 
     const rect2 = {
       left: comp2.x,
-      right: comp2.x + config2.width,
+      right: comp2.x + dims2.width,
       top: comp2.y,
-      bottom: comp2.y + config2.height,
+      bottom: comp2.y + dims2.height,
     };
 
     return !(rect1.right < rect2.left ||

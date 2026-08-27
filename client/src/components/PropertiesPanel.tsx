@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2 } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
 import { findBatteryBanks, getBankForBattery } from "@shared/battery-bank";
-import { formatWireGauge } from "@/lib/wire-calculator";
+import { formatWireGauge, formatWireLength, feetToDisplayLength, displayLengthToFeet, lengthUnitLabel, type LengthUnit } from "@/lib/wire-calculator";
 import { mpptHasLoadOutput } from "@/lib/terminal-config";
 import { FUSE_TYPES, getFuseType, smallestRatingFor, suggestFuseType, DC_BREAKER_RATINGS, AC_BREAKER_RATINGS, type FuseType } from "@shared/protection-devices";
 import { AC_OUTPUT_OPTIONS, getInverterACVoltage, type ACOutputConfig } from "@shared/ac-voltage";
@@ -49,6 +49,7 @@ interface PropertiesPanelProps {
   wires?: Wire[];
   components?: SchematicComponent[];
   systemVoltage?: number;
+  lengthUnit?: LengthUnit;
   onEditWire?: (wire: any) => void;
   onUpdateComponent?: (id: string, updates: any) => void;
   onUpdateWire?: (wireId: string, updates: Partial<Wire>) => void;
@@ -548,7 +549,7 @@ function calculateInverterDCInput(
   return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
 }
 
-export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], systemVoltage = 12, onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires, onDeleteComponent, onDeleteWire }: PropertiesPanelProps) {
+export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], systemVoltage = 12, lengthUnit = "ft", onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires, onDeleteComponent, onDeleteWire }: PropertiesPanelProps) {
   // State for controlled inputs with auto-calculation
   const [voltage, setVoltage] = useState<number>(12);
   const [current, setCurrent] = useState<number>(0);
@@ -632,10 +633,10 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
       const gaugeValue = selectedWire.gauge ? selectedWire.gauge.replace(" AWG", "") : "10";
       setWireGauge(gaugeValue);
       setWirePolarity(selectedWire.polarity || "positive");
-      setWireLength(selectedWire.length?.toString() || "0");
+      setWireLength(feetToDisplayLength(selectedWire.length || 0, lengthUnit).toFixed(2));
       setWireMaterial((selectedWire as any).conductorMaterial || "copper");
     }
-  }, [selectedWire?.id, selectedWire?.gauge, selectedWire?.polarity, selectedWire?.length]);
+  }, [selectedWire?.id, selectedWire?.gauge, selectedWire?.polarity, selectedWire?.length, lengthUnit]);
 
   // Handle voltage change - recalculate current if watts is set
   const handleVoltageChange = (newVoltage: number) => {
@@ -745,9 +746,9 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
 
   const handleWireLengthChange = (value: string) => {
     if (!selectedWire || !onUpdateWire) return;
-    const length = parseFloat(value) || 0;
+    const displayValue = parseFloat(value) || 0;
     setWireLength(value);
-    onUpdateWire(selectedWire.id, { length });
+    onUpdateWire(selectedWire.id, { length: displayLengthToFeet(displayValue, lengthUnit) });
     triggerSaveFeedback();
   };
 
@@ -955,7 +956,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Length (ft)</Label>
+                    <Label>Length ({lengthUnitLabel(lengthUnit)})</Label>
                     <Input
                       type="number"
                       value={wireLength}
@@ -2423,7 +2424,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                                   {selectedComponent.name} → {otherComponentName}
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1">
-                                  {wire.polarity} • {wire.length.toFixed(1)}ft
+                                  {wire.polarity} • {formatWireLength(wire.length, lengthUnit)}
                                 </div>
                               </div>
                               {wire.gauge && (
@@ -2665,7 +2666,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Length</span>
                         <span className="font-mono font-medium">
-                          {calc.length != null ? calc.length.toFixed(1) : '—'}ft
+                          {calc.length != null ? formatWireLength(calc.length, lengthUnit) : '—'}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">

@@ -8,7 +8,8 @@ import { appSettingsStorage, DEFAULT_AI_MODEL, DEFAULT_WIRE_ROUTING_STYLE, WIRE_
 import { normalizeAIDesign } from "./ai-design-normalizer";
 import { registerAIRoutes } from "./ai/routes";
 import { systemDesignSkill, wireComponentsSkill } from "./ai/skills";
-import { insertSchematicSchema, updateSchematicSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
+import { insertSchematicSchema, updateSchematicSchema, insertCustomComponentSchema, updateCustomComponentSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
+import { customComponentsStorage } from "./custom-components-storage";
 import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
 import { calculateRuntimeEstimates } from "./runtime-calculator";
@@ -2093,9 +2094,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
   // Export endpoints - POST versions for current design (no save required)
   app.post("/api/export/shopping-list", async (req, res) => {
     try {
-      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg" } = req.body;
+      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg", lengthUnit = "ft" } = req.body;
       const schematic = { components, wires, systemVoltage, name };
-      const items = generateShoppingList(schematic as any, wireGaugeFormat);
+      const items = generateShoppingList(schematic as any, wireGaugeFormat, lengthUnit);
       res.json(items);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2104,9 +2105,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
   app.post("/api/export/wire-labels", async (req, res) => {
     try {
-      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg" } = req.body;
+      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg", lengthUnit = "ft" } = req.body;
       const schematic = { components, wires, systemVoltage, name };
-      const labels = generateWireLabels(schematic as any, wireGaugeFormat);
+      const labels = generateWireLabels(schematic as any, wireGaugeFormat, lengthUnit);
       res.json(labels);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2115,9 +2116,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
   app.post("/api/export/system-report", async (req, res) => {
     try {
-      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg" } = req.body;
+      const { components, wires, systemVoltage = 12, name = "Design", wireGaugeFormat = "awg", lengthUnit = "ft" } = req.body;
       const schematic = { components, wires, systemVoltage, name };
-      const report = generateSystemReport(schematic as any, wireGaugeFormat);
+      const report = generateSystemReport(schematic as any, wireGaugeFormat, lengthUnit);
       res.setHeader("Content-Type", "text/plain");
       res.setHeader("Content-Disposition", `attachment; filename="${name}-report.txt"`);
       res.send(report);
@@ -2264,6 +2265,79 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
       const deleted = await userDesignsStorage.delete(user.id, req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Design not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Custom component definitions (Phase 1: personal, private only).
+  // Owner-scoped throughout - a user can only read/edit/delete their own.
+  app.get("/api/custom-components", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const items = await customComponentsStorage.getAllForOwner(user.id);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/custom-components/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const item = await customComponentsStorage.getById(user.id, req.params.id);
+      if (!item) {
+        return res.status(404).json({ error: "Custom component not found" });
+      }
+      res.json(item);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/custom-components", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const data = insertCustomComponentSchema.omit({ ownerId: true }).parse(req.body);
+
+      if (!Array.isArray(data.terminals) || data.terminals.length === 0) {
+        return res.status(400).json({ error: "At least one terminal is required" });
+      }
+
+      const item = await customComponentsStorage.create(user.id, data);
+      res.json(item);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/custom-components/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const data = updateCustomComponentSchema.parse(req.body);
+
+      if (data.terminals !== undefined && (!Array.isArray(data.terminals) || data.terminals.length === 0)) {
+        return res.status(400).json({ error: "At least one terminal is required" });
+      }
+
+      const item = await customComponentsStorage.update(user.id, req.params.id, data);
+      if (!item) {
+        return res.status(404).json({ error: "Custom component not found" });
+      }
+      res.json(item);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/custom-components/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AuthUser;
+      const success = await customComponentsStorage.delete(user.id, req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Custom component not found" });
       }
       res.json({ success: true });
     } catch (error: any) {

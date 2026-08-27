@@ -1,4 +1,4 @@
-import { TERMINAL_CONFIGS, Terminal, getComponentTerminals, mpptHasLoadOutput } from "@/lib/terminal-config";
+import { Terminal, getComponentTerminals, getComponentDimensions, mpptHasLoadOutput } from "@/lib/terminal-config";
 import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
 interface ComponentProperties {
@@ -34,9 +34,11 @@ export function SchematicComponent({
   highlightedTerminals = [],
   viewMode = 'standard'
 }: SchematicComponentProps) {
-  const config = TERMINAL_CONFIGS[type];
-  // Terminals can vary per instance (e.g. MPPT models with a LOAD output)
+  // Terminals can vary per instance (e.g. MPPT models with a LOAD output, or
+  // a custom component's own snapshotted terminal list)
   const terminals = getComponentTerminals(type, properties);
+  // Custom components snapshot their own width/height too
+  const dims = getComponentDimensions(type, properties);
 
   const getLoadLabel = () => {
      if (!properties) return null;
@@ -1046,16 +1048,47 @@ export function SchematicComponent({
       }
 
       case "custom": {
-        const subtitle = (properties.subtitle as string) || "Custom Component";
+        const subtitle = (properties.subtitle as string) || "";
+        // Definitions built with the Custom Component Editor snapshot their
+        // own terminal list + dimensions into properties at placement time
+        // (see docs/custom-components-design.md). Older "quick add" custom
+        // parts (no snapshot) keep the original fixed 4-terminal IN/OUT box.
+        const hasSnapshot = Array.isArray(properties.terminals) && properties.terminals.length > 0;
+
+        if (!hasSnapshot) {
+          return (
+            <svg width="160" height="120" viewBox="0 0 160 120">
+              {/* Dashed housing to signal a user-defined component */}
+              <rect x="10" y="15" width="140" height="90" fill="hsl(var(--card))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" strokeDasharray="6 3" rx="8" />
+              <text x="80" y="55" textAnchor="middle" className="fill-foreground text-sm font-semibold">{name || "Custom"}</text>
+              <text x="80" y="72" textAnchor="middle" className="fill-muted-foreground text-[9px]">{subtitle || "Custom Component"}</text>
+              {/* Terminal hints */}
+              <text x="18" y="44" className="fill-muted-foreground text-[7px]">IN</text>
+              <text x="130" y="44" className="fill-muted-foreground text-[7px]">OUT</text>
+            </svg>
+          );
+        }
+
+        const w = dims.width;
+        const h = dims.height;
+        const bodyColor = (properties.appearance as { bodyColor?: string } | undefined)?.bodyColor;
+        const labelY = subtitle ? h / 2 - 6 : h / 2;
+
         return (
-          <svg width="160" height="120" viewBox="0 0 160 120">
-            {/* Dashed housing to signal a user-defined component */}
-            <rect x="10" y="15" width="140" height="90" fill="hsl(var(--card))" stroke="hsl(var(--victron-blue-light))" strokeWidth="2" strokeDasharray="6 3" rx="8" />
-            <text x="80" y="55" textAnchor="middle" className="fill-foreground text-sm font-semibold">{name || "Custom"}</text>
-            <text x="80" y="72" textAnchor="middle" className="fill-muted-foreground text-[9px]">{subtitle}</text>
-            {/* Terminal hints */}
-            <text x="18" y="44" className="fill-muted-foreground text-[7px]">IN</text>
-            <text x="130" y="44" className="fill-muted-foreground text-[7px]">OUT</text>
+          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+            <rect
+              x="4" y="4"
+              width={Math.max(0, w - 8)} height={Math.max(0, h - 8)}
+              fill={bodyColor || "hsl(var(--card))"}
+              stroke="hsl(var(--victron-blue-light))"
+              strokeWidth="2"
+              strokeDasharray="6 3"
+              rx="8"
+            />
+            <text x={w / 2} y={labelY} textAnchor="middle" className="fill-foreground text-sm font-semibold">{name || "Custom"}</text>
+            {subtitle && (
+              <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="fill-muted-foreground text-[9px]">{subtitle}</text>
+            )}
           </svg>
         );
       }
@@ -1095,12 +1128,12 @@ export function SchematicComponent({
         )}
 
         {/* Terminal connection points overlay */}
-        {config && (
+        {terminals.length > 0 && (
           <svg
             className="absolute top-0 left-0 pointer-events-none"
-            width={config.width}
-            height={config.height}
-            viewBox={`0 0 ${config.width} ${config.height}`}
+            width={dims.width}
+            height={dims.height}
+            viewBox={`0 0 ${dims.width} ${dims.height}`}
             style={{ overflow: 'visible', zIndex: 10 }}
           >
             {terminals.map((terminal) => {

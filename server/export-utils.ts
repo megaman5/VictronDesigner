@@ -44,6 +44,19 @@ function formatWireGauge(gauge: string | undefined, format: WireGaugeFormat = "a
   return `${normalizedGauge} AWG`;
 }
 
+// Wire length is stored internally in feet everywhere; LengthUnit only controls display.
+type LengthUnit = "ft" | "m";
+
+const FEET_PER_METER = 3.28084;
+
+function feetToDisplayLength(feet: number, unit: LengthUnit): number {
+  return unit === "m" ? feet / FEET_PER_METER : feet;
+}
+
+function formatWireLength(feet: number, unit: LengthUnit = "ft"): string {
+  return `${feetToDisplayLength(feet, unit).toFixed(1)}${unit}`;
+}
+
 export interface ShoppingListItem {
   category: string;
   item: string;
@@ -52,7 +65,7 @@ export interface ShoppingListItem {
   estimatedPrice?: string;
 }
 
-export function generateShoppingList(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg"): ShoppingListItem[] {
+export function generateShoppingList(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg", lengthUnit: LengthUnit = "ft"): ShoppingListItem[] {
   const components = schematic.components as SchematicComponent[];
   const wires = schematic.wires as Wire[];
   const items: ShoppingListItem[] = [];
@@ -143,6 +156,12 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
         category = "DC Distribution";
         description = `Victron Lynx Smart BMS ${comp.properties?.amps || 500}A`;
         break;
+      case "custom": {
+        category = "Custom Components";
+        const subtitle = comp.properties?.subtitle ? ` — ${comp.properties.subtitle}` : "";
+        description = `${comp.name}${subtitle}`;
+        break;
+      }
     }
 
     if (itemMap.has(key)) {
@@ -166,13 +185,14 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
   });
 
   wiresByGauge.forEach((totalLength, gauge) => {
-    // Round up to nearest 10 feet
-    const roundedLength = Math.ceil(totalLength / 10) * 10;
+    // Round up to a friendly buying quantity: nearest 10ft, or nearest 5m
+    const displayLength = feetToDisplayLength(totalLength, lengthUnit);
+    const roundedLength = lengthUnit === "m" ? Math.ceil(displayLength / 5) * 5 : Math.ceil(displayLength / 10) * 10;
     items.push({
       category: "Wire & Cable",
       item: `${gauge} Marine Wire`,
       quantity: 1,
-      description: `${roundedLength}ft of ${gauge} tinned copper marine wire (add 20% for slack)`,
+      description: `${roundedLength}${lengthUnit} of ${gauge} tinned copper marine wire (add 20% for slack)`,
     });
   });
 
@@ -209,7 +229,7 @@ export function generateShoppingList(schematic: Schematic, wireGaugeFormat: Wire
   return items;
 }
 
-export function generateWireLabels(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg"): string[] {
+export function generateWireLabels(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg", lengthUnit: LengthUnit = "ft"): string[] {
   const wires = schematic.wires as Wire[];
   const components = schematic.components as SchematicComponent[];
   const componentMap = new Map(components.map((c) => [c.id, c]));
@@ -235,7 +255,7 @@ export function generateWireLabels(schematic: Schematic, wireGaugeFormat: WireGa
       const gauge = formatWireGauge(wire.gauge || "10 AWG", wireGaugeFormat);
       
       labels.push(
-        `${wireNumber} | ${fromComp.name} → ${toComp.name} | ${polaritySymbol} ${gauge} | ${wire.length}ft`
+        `${wireNumber} | ${fromComp.name} → ${toComp.name} | ${polaritySymbol} ${gauge} | ${formatWireLength(wire.length, lengthUnit)}`
       );
     }
   });
@@ -275,7 +295,7 @@ export function generateCSV(items: ShoppingListItem[]): string {
   return csvContent;
 }
 
-export function generateSystemReport(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg"): string {
+export function generateSystemReport(schematic: Schematic, wireGaugeFormat: WireGaugeFormat = "awg", lengthUnit: LengthUnit = "ft"): string {
   const components = schematic.components as SchematicComponent[];
   const wires = schematic.wires as Wire[];
   const componentMap = new Map(components.map((c) => [c.id, c]));
@@ -299,6 +319,7 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
   }
   report += `System Voltage: ${schematic.systemVoltage}V DC\n`;
   report += `Wire Gauge Format: ${wireGaugeFormat === "metric" ? "mm²" : "AWG"}\n`;
+  report += `Length Unit: ${lengthUnit === "m" ? "meters" : "feet"}\n`;
   report += `Date: ${new Date().toLocaleDateString()}\n\n`;
 
   report += `COMPONENTS (${components.length})\n`;
@@ -517,7 +538,7 @@ export function generateSystemReport(schematic: Schematic, wireGaugeFormat: Wire
     if (from && to) {
       const polarity = wire.polarity === "positive" ? "+" : wire.polarity === "negative" ? "-" : "~";
       report += `${i + 1}. ${from.name} → ${to.name}\n`;
-      report += `   Polarity: ${polarity} | Gauge: ${formatWireGauge(wire.gauge || "TBD", wireGaugeFormat)} | Length: ${wire.length}ft\n`;
+      report += `   Polarity: ${polarity} | Gauge: ${formatWireGauge(wire.gauge || "TBD", wireGaugeFormat)} | Length: ${formatWireLength(wire.length, lengthUnit)}\n`;
       
       // Calculate wire power
       let wireCurrent = wire.current || 0;

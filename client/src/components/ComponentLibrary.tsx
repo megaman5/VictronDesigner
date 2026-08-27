@@ -1,4 +1,5 @@
-import { Battery, Cable, Gauge, Cpu, Sun, Plus } from "lucide-react";
+import { Battery, Cable, Gauge, Cpu, Sun, Plus, Pencil, Trash2, Puzzle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -8,6 +9,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import type { CustomComponentDefinition } from "@/lib/custom-components";
 
 interface Component {
   id: string;
@@ -60,13 +62,31 @@ const safetyComponents: Component[] = [
 interface ComponentLibraryProps {
   onDragStart?: (component: Component) => void;
   onAddCustom?: () => void;
+  isAuthenticated?: boolean;
+  onDragStartCustomDefinition?: (definition: CustomComponentDefinition) => void;
+  onCreateCustomDefinition?: () => void;
+  onEditCustomDefinition?: (definition: CustomComponentDefinition) => void;
+  onDeleteCustomDefinition?: (definition: CustomComponentDefinition) => void;
 }
 
-export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryProps) {
+export function ComponentLibrary({
+  onDragStart,
+  onAddCustom,
+  isAuthenticated,
+  onDragStartCustomDefinition,
+  onCreateCustomDefinition,
+  onEditCustomDefinition,
+  onDeleteCustomDefinition,
+}: ComponentLibraryProps) {
   const handleDragStart = (component: Component) => {
     console.log("Drag started:", component.name);
     onDragStart?.(component);
   };
+
+  const { data: myComponents = [], isLoading: myComponentsLoading } = useQuery<CustomComponentDefinition[]>({
+    queryKey: ["/api/custom-components"],
+    enabled: !!isAuthenticated,
+  });
 
   return (
     <div className="w-80 shrink-0 border-r bg-card flex flex-col h-full">
@@ -79,7 +99,7 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
 
       <ScrollArea className="flex-1">
         <div className="p-4">
-          <Accordion type="multiple" defaultValue={["victron", "generic", "safety", "custom"]} className="w-full">
+          <Accordion type="multiple" defaultValue={["victron", "generic", "safety", "custom", "my-components"]} className="w-full">
             <AccordionItem value="victron">
               <AccordionTrigger className="text-sm font-medium">
                 Victron Components
@@ -161,6 +181,86 @@ export function ComponentLibrary({ onDragStart, onAddCustom }: ComponentLibraryP
                   <Plus className="h-4 w-4" />
                   Add Custom Component
                 </Button>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="my-components">
+              <AccordionTrigger className="text-sm font-medium">
+                My Components
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={onCreateCustomDefinition}
+                    data-testid="button-create-custom-definition"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create Custom Component
+                  </Button>
+
+                  {!isAuthenticated && (
+                    <p className="text-xs text-muted-foreground">
+                      Sign in to save and reuse your own component definitions.
+                    </p>
+                  )}
+
+                  {isAuthenticated && myComponentsLoading && (
+                    <p className="text-xs text-muted-foreground">Loading...</p>
+                  )}
+
+                  {isAuthenticated && !myComponentsLoading && myComponents.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No custom components yet. Create one to define your own terminals.
+                    </p>
+                  )}
+
+                  {myComponents.map((def) => (
+                    <div
+                      key={def.id}
+                      draggable
+                      onDragStart={() => onDragStartCustomDefinition?.(def)}
+                      className="flex items-center gap-2 p-3 rounded-md border bg-background hover-elevate active-elevate-2 cursor-move select-none"
+                      data-testid={`component-custom-${def.id}`}
+                    >
+                      <div className="text-primary shrink-0">
+                        <Puzzle className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm truncate">{def.name}</div>
+                        {def.subtitle && (
+                          <div className="text-xs text-muted-foreground truncate">{def.subtitle}</div>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditCustomDefinition?.(def);
+                        }}
+                        data-testid={`button-edit-custom-${def.id}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteCustomDefinition?.(def);
+                        }}
+                        data-testid={`button-delete-custom-${def.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>

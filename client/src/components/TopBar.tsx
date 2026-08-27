@@ -25,6 +25,7 @@ interface AuthUser {
 }
 
 type WireGaugeFormat = "awg" | "metric";
+type LengthUnit = "ft" | "m";
 
 interface TopBarProps {
   onAIPrompt?: () => void;
@@ -49,6 +50,8 @@ interface TopBarProps {
   onToggleWireLabels?: () => void;
   wireGaugeFormat?: WireGaugeFormat;
   onWireGaugeFormatChange?: (format: WireGaugeFormat) => void;
+  lengthUnit?: LengthUnit;
+  onLengthUnitChange?: (unit: LengthUnit) => void;
   viewMode?: 'standard' | 'load';
   onToggleViewMode?: () => void;
   loadMode?: 'nominal' | 'expected' | 'max';
@@ -81,6 +84,8 @@ export function TopBar({
   onToggleWireLabels,
   wireGaugeFormat = "awg",
   onWireGaugeFormatChange,
+  lengthUnit = "ft",
+  onLengthUnitChange,
   viewMode = 'standard',
   onToggleViewMode,
   loadMode = 'nominal',
@@ -293,6 +298,16 @@ export function TopBar({
             <SelectContent>
               <SelectItem value="awg">AWG</SelectItem>
               <SelectItem value="metric">mm²</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={lengthUnit} onValueChange={(value) => onLengthUnitChange?.(value as LengthUnit)}>
+            <SelectTrigger className="w-[72px] h-9" data-testid="select-length-unit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ft">ft</SelectItem>
+              <SelectItem value="m">m</SelectItem>
             </SelectContent>
           </Select>
 

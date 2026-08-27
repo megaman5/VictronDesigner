@@ -214,20 +214,34 @@ Sean
 VictronDesigner.com`,
   },
 
-  // Custom components / community library
-  "6c27020c-d272-41f8-aa58-06c19010c8dc": {
-    subject: "Re: your VictronDesigner feedback \u2014 custom components",
+  // Meters unit for wire length
+  "65de0c07-b2cc-40e0-8ec6-8d132dcfc40f": {
+    subject: "Re: your VictronDesigner feedback — length in meters is in",
     body: `Hi,
 
-Thanks for this \u2014 it is the most ambitious request I have had, and I want to be straight with you about where it stands.
+Done — there's a unit selector next to the wire gauge (AWG/mm²) selector in the top bar, right by the Labels button, with ft/m options. Switch it to "m" and wire lengths switch to meters everywhere: the length field in the properties panel, the on-canvas wire labels, the connected-wires list, and the shopping list, wire labels and system report exports.
 
-The Lynx example you gave is now done the direct way: Lynx Power In, Lynx Distributor, Lynx Shunt VE.Can and Lynx Smart BMS are all in the library as proper components with their real terminals. So that specific gap is closed.
+Everything is still stored and calculated internally in feet (that's what keeps the ABYC/NEC sizing math correct), so switching units is purely a display/entry convenience — you can flip back and forth without anything changing under the hood.
 
-The general request \u2014 defining your own components with your own snap points \u2014 is not built yet. Today "Add Custom Component" gives you a generic box with a fixed set of four terminals, which is not what you are asking for. Being able to lay out your own terminals means changing how the tool resolves terminals for a component, building an editor to place them, and storing your definitions against your account. I have written up the design for it, and one piece of the groundwork is already in (terminals can now vary per component instead of being fixed per type \u2014 that is what made the MPPT load outputs possible). It is realistically a couple of weeks of work, so I am not going to promise a date.
+Thanks for the suggestion,
+Sean
+VictronDesigner.com`,
+  },
 
-Community components I want to do, but honestly the hard part is not the sharing \u2014 it is that a published component with a mislabelled terminal quietly produces wrong wiring for everyone who uses it. So the plan is: build the personal version first, invite the people who asked for it \u2014 you included \u2014 to build parts, and use that to work out what curation needs to look like before opening it up.
+  // Custom components / community library
+  "6c27020c-d272-41f8-aa58-06c19010c8dc": {
+    subject: "Re: your VictronDesigner feedback \u2014 you can now define your own components",
+    body: `Hi,
 
-If you are up for being one of the first builders when it lands, say the word and I will come back to you.
+Thanks for this \u2014 it was the most ambitious request I've had, and the personal version of it is live.
+
+The Lynx example you gave is done the direct way too: Lynx Power In, Lynx Distributor, Lynx Shunt VE.Can and Lynx Smart BMS are all in the library as proper components with their real terminals.
+
+For the general request: sign in, then look for "My Components" in the left library panel. "Create Custom Component" opens an editor where you set a name, subtitle and size, then click near the edge of the body to drop a terminal wherever you need one \u2014 drag it to reposition, and set its id, label, type (positive/negative/AC/ground/etc.) and which side it exits from. Save it and it shows up in My Components, ready to drag onto the canvas like any built-in part. You can come back and edit or delete a definition later; parts you've already placed keep working off their own snapshot even if you change the definition afterward, so nothing already wired breaks underfoot.
+
+It's a generic rounded box rather than hand-drawn artwork like the Victron parts, but the terminals are real \u2014 wiring, routing and the design checks all treat them like any other component. Since a custom part doesn't have a declared electrical role, a couple of the built-in wiring checks (like the main battery fuse rule) won't reason about it the way they would a real fuse or breaker, so keep an eye on that yourself for now.
+
+Community sharing is still the phase-2 idea \u2014 the hard part there isn't the plumbing, it's that a published part with a mislabelled terminal quietly produces wrong wiring for everyone who uses it. I'd like to work that out with the people who asked for this first. If you build something and are open to it becoming a shared part later, I'd love to hear from you.
 
 Thanks,
 Sean
