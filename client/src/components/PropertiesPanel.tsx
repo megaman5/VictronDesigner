@@ -1050,6 +1050,27 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                   </div>
                 )}
 
+                {/* Custom component - read-only info snapshotted from the definition */}
+                {selectedComponent.type === 'custom' && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium">Custom Component</h3>
+                    {Array.isArray(selectedComponent.properties?.supportedVoltages) && (selectedComponent.properties.supportedVoltages as number[]).length > 0 ? (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">DC voltage support</Label>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {(selectedComponent.properties.supportedVoltages as number[]).map((v) => (
+                            <Badge key={v} variant="secondary">{v}V</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No DC voltage declared for this part, so the voltage-mismatch check skips it. Edit the definition in "My Components" to declare one.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Battery-specific properties */}
                 {selectedComponent.type === 'battery' && (
                   <div className="space-y-4">
