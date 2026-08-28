@@ -197,3 +197,39 @@ describe('AI design normalizer - battery side vs system side', () => {
     expect(r.wires[0].toTerminal).not.toBe(r.wires[1].toTerminal);
   });
 });
+
+describe('orientation normalization', () => {
+  const comp = (properties: any) =>
+    ({ id: 'c1', type: 'battery', name: 'Battery', x: 200, y: 200, properties }) as any;
+
+  it('keeps a valid quarter turn untouched', () => {
+    const out = normalizeAIDesign([comp({ rotation: 90 })], [], 12);
+    expect(out.components[0].properties.rotation).toBe(90);
+    expect(out.repairs.filter(r => r.kind === 'orientation')).toHaveLength(0);
+  });
+
+  it('snaps an off-grid angle to the nearest quarter turn', () => {
+    // Terminal positions derive from rotation, so 45 would put terminals
+    // somewhere the orthogonal router cannot reach.
+    const out = normalizeAIDesign([comp({ rotation: 45 })], [], 12);
+    expect([0, 90]).toContain(out.components[0].properties.rotation);
+    expect(out.repairs.some(r => r.kind === 'orientation')).toBe(true);
+  });
+
+  it('wraps angles past a full turn', () => {
+    expect(normalizeAIDesign([comp({ rotation: 450 })], [], 12).components[0].properties.rotation).toBe(90);
+    expect(normalizeAIDesign([comp({ rotation: -90 })], [], 12).components[0].properties.rotation).toBe(270);
+  });
+
+  it('drops a non-numeric rotation rather than passing it through', () => {
+    const out = normalizeAIDesign([comp({ rotation: 'sideways' })], [], 12);
+    expect(out.components[0].properties.rotation).toBe(0);
+    expect(out.repairs.some(r => r.kind === 'orientation')).toBe(true);
+  });
+
+  it('leaves components with no rotation alone', () => {
+    const out = normalizeAIDesign([comp({ voltage: 12 })], [], 12);
+    expect(out.components[0].properties.rotation).toBeUndefined();
+    expect(out.repairs.filter(r => r.kind === 'orientation')).toHaveLength(0);
+  });
+});

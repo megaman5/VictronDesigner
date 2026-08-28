@@ -13,7 +13,7 @@ import { calculateWireSize, calculateInverterDCInput, getACVoltage } from "./wir
  */
 
 export interface DesignRepair {
-  kind: "terminal-remapped" | "wire-dropped" | "gauge-resized";
+  kind: "terminal-remapped" | "wire-dropped" | "gauge-resized" | "orientation";
   wireId?: string;
   detail: string;
 }
@@ -121,6 +121,35 @@ export function normalizeAIDesign(
 ): NormalizedDesign {
   const components = componentsIn.map(c => ({ ...c }));
   const repairs: DesignRepair[] = [];
+
+  // --- 0. Orientation sanity ---------------------------------------------
+  // The model can now orient components, and a bad value here would skew the
+  // whole layout: terminal positions come from the rotation, so "rotation: 45"
+  // would put terminals somewhere the router cannot reach. Snap to the nearest
+  // quarter turn and drop anything that is not a real value.
+  for (const c of components) {
+    const raw = c.properties?.rotation;
+    if (raw === undefined || raw === null) continue;
+
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      c.properties = { ...c.properties, rotation: 0 };
+      repairs.push({
+        kind: "orientation",
+        detail: `${c.name || c.id}: dropped non-numeric rotation "${raw}"`,
+      });
+      continue;
+    }
+
+    const normalized = ((Math.round(n / 90) * 90) % 360 + 360) % 360;
+    if (normalized !== n) {
+      c.properties = { ...c.properties, rotation: normalized };
+      repairs.push({
+        kind: "orientation",
+        detail: `${c.name || c.id}: rotation ${n} snapped to ${normalized}`,
+      });
+    }
+  }
 
   const byId = new Map(components.map(c => [c.id, c]));
   const terminalsFor = new Map<string, Terminal[]>();

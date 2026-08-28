@@ -76,7 +76,7 @@ VictronDesigner/
 - **Database**: PostgreSQL (Neon serverless)
 - **ORM**: Drizzle ORM 0.39 with Zod validation
 - **Session Storage**: PostgreSQL-backed sessions (connect-pg-simple)
-- **AI Integration**: OpenAI API (GPT-4o-mini)
+- **AI Integration**: OpenAI API (GPT-5.x family; the model is configurable in Admin Settings)
 
 ### Development Tools
 - **TypeScript**: 5.6.3 with strict mode
@@ -138,6 +138,46 @@ interface Terminal {
   orientation: "left" | "right" | "top" | "bottom";  // Wire exit direction
 }
 ```
+
+### Component Orientation (rotation & mirroring)
+Components can be turned in 90-degree steps and mirrored. State lives in
+`properties`: `rotation` (0/90/180/270), `mirrorX`, `mirrorY`.
+
+**The transform is applied inside `getComponentTerminals` and
+`getComponentDimensions`.** Everything resolves geometry through those two, so
+wire routing, hit testing, the selection box, canvas bounds, server-side overlap
+detection and PNG export all inherit rotation without knowing it exists. When
+adding code that needs a component's size or terminals, call those helpers -
+never a local size table.
+
+- `getComponentDimensions()` - the **rotated** footprint (what you almost always want)
+- `getBaseComponentDimensions()` - the unrotated artwork size (renderer only)
+
+Rendering draws the artwork at its natural size and turns it with a CSS
+transform. The terminal overlay sits deliberately *outside* that wrapper -
+terminals come back already rotated, so wrapping them would apply the transform
+twice. Text nodes are counter-transformed (`.component-artwork` in `index.css`)
+so labels never read backwards or upside down.
+
+Only quarter turns are allowed: the router is orthogonal and terminals declare
+which edge they exit from, so arbitrary angles would make those meaningless.
+
+### Custom Components (user-defined parts)
+Signed-in users can define their own component with their own terminals
+(`client/src/components/CustomComponentEditor.tsx`, stored in `custom_components`).
+
+**Placed instances snapshot the definition** - terminals, dimensions, appearance
+and supported voltages are copied into the instance's `properties` at drop time,
+so a saved schematic keeps rendering correctly after the definition is edited or
+deleted. `definitionId`/`definitionVersion` exist to detect drift, not to resolve
+geometry.
+
+Custom parts deliberately carry **no** `voltage` property: there is no voltage
+field in the panel to correct it, so a frozen snapshot would go stale against the
+live system voltage and feed both wire sizing and `inferSystemVoltage()`.
+`supportedVoltages` (a list, e.g. `[12, 24]` for a dual-voltage charger) is the
+declared constraint instead; empty means "not declared" and the voltage-mismatch
+check skips the part.
 
 ### Component Dimensions (Critical for AI Generation)
 When AI generates systems, components must not overlap. Minimum spacing:
@@ -275,16 +315,35 @@ busbar-negative: "neg-1" through "neg-6"
    }
    ```
 
-### AI Prompt System (server/routes.ts)
-The AI prompt in `server/routes.ts` lines 100-192 contains the **complete specification** for system generation. This prompt:
-- Defines canvas dimensions and component sizes
-- Specifies layout rules to prevent overlap
-- Lists all terminal IDs for each component type
-- Enforces critical wiring rules
-- Provides wire gauge selection guidelines
-- Defines JSON response format
+### AI Prompt System (`server/ai/skills/`)
+Prompts are **versioned skills**, not inline strings. They used to be pasted into
+`server/routes.ts` twice, which is how the Lynx terminal ids ended up documented
+in one copy and not the other.
 
-**When modifying AI behavior**, update this prompt in `server/routes.ts`.
+- `server/ai/skills/fragments.ts` - the reusable pieces: component dimensions,
+  layout rules, terminal ids, wiring rules, wire gauge selection, orientation
+- `server/ai/skills/` - the skills that compose those fragments into a prompt
+
+**When modifying AI behaviour**, edit the fragment - every skill that uses it
+picks the change up. Preview the rendered prompt without spending a model call:
+`GET /api/admin/ai/skills/:id/preview`.
+
+### AI access control
+The AI endpoints spend real money on the platform key, so they are **not open**:
+- All four (`ai-generate-system`, `-wire-components`, `-iterative`, `-stream`)
+  sit behind `requireAiQuota` in `server/routes.ts` - sign-in required
+- Two caps, both enforced: a per-user lifetime allowance (default $10) and a
+  monthly cap (default $5). See `server/ai/usage-limits.ts`
+- Admin view and top-ups: `/ai-usage-admin`
+- Cost is derived in `observability-storage.ts` from token usage. A model with
+  no price entry logs `null`, which means *unknown* - never treat it as zero
+
+### AI vision on iteration
+From the second iteration, both iterating endpoints attach a rendered PNG of the
+current design (`server/ai/schematic-image.ts`, drawn with node-canvas). The
+model cannot see overlaps or long wire runs from JSON alone. Rendering happens
+per iteration so it sees what it just produced. Non-vision models are detected
+and sent text only.
 
 ## Design System (Material Design 3 Adaptation)
 
@@ -385,7 +444,7 @@ npm run db:push
 
 4. **Create SVG Rendering** in `client/src/components/SchematicComponent.tsx`
 
-5. **Update AI Prompts** in `server/routes.ts` (lines 100-192 and 235-298)
+5. **Update AI Prompts** in `server/ai/skills/fragments.ts` (shared by every skill)
 
 ### Adding New API Endpoints
 
@@ -472,20 +531,19 @@ npm run db:push
 5. Update wire gauge selection guide if thresholds change
 
 ### Task: Update AI System Generation
-1. Edit system prompt in `server/routes.ts` starting at line 100
-2. Key sections to modify:
-   - Component dimensions (lines 106-117)
-   - Layout rules (lines 119-133)
-   - Terminal IDs (lines 135-146)
-   - Wiring rules (lines 160-173)
-   - Wire gauge selection (lines 175-180)
-3. Also update wire-only prompt at line 235 if wiring rules change
-4. Test AI generation with various prompts to validate
+1. Edit the relevant fragment in `server/ai/skills/fragments.ts` (layout, wiring
+   rules, terminal ids, gauge selection, orientation)
+2. Preview the rendered prompt via `GET /api/admin/ai/skills/:id/preview` - no
+   model call, no spend
+3. Fragments are shared, so there is no second copy to keep in sync
+4. If the change affects the shape of the model's output, extend
+   `server/ai-design-normalizer.ts` so a bad value is repaired rather than
+   reaching the canvas
 
 ### Task: Debug Component Overlap
 1. Check component positions in database/state
 2. Verify dimensions in `terminal-config.ts` match actual SVG sizes
-3. Review AI spacing rules in `server/routes.ts` (lines 119-133)
+3. Review AI spacing rules in `server/ai/skills/fragments.ts` (`layoutFragment`)
 4. Ensure minimum spacing: 300px horizontal, 250px vertical
 5. Use canvas grid overlay (20px grid) to visualize positions
 
@@ -498,11 +556,19 @@ npm run db:push
 
 ## Testing Guidelines
 
-Currently there are no automated tests. When adding tests:
-1. **Unit Tests**: Use Vitest for utilities (wire-routing, wire-calculator)
-2. **Component Tests**: Use React Testing Library
-3. **API Tests**: Use Supertest for Express endpoints
-4. **E2E Tests**: Use Playwright for full workflows
+Run the suite with `npm test` (Vitest). There are 300+ tests in `tests/`:
+- `tests/unit/` - calculators, validator rules, wire routing, rotation geometry,
+  AI pricing/quota logic, the AI design normalizer, schematic image rendering
+- `tests/functional/` - component rendering and library behaviour (React Testing Library)
+- `tests/integration/` - export and AI generation paths
+
+Notes:
+- `vitest.config.ts` sets `envDir: './tests'` on purpose. Vite's `loadEnv` reads
+  the project `.env` at config time, and in a production checkout that file is
+  root-owned `0600`, so without this `npm test` fails with EACCES for any
+  non-root user.
+- Not yet covered: E2E. Browser-driven flows (OAuth, drag-and-drop) are still
+  manual, because the Google callback is pinned to the production domain.
 
 ## Environment Variables
 
@@ -531,35 +597,34 @@ Required for full functionality:
 2. **Real-time Collaboration**: Not supported (single-user editing)
 3. **Undo/Redo**: Not implemented (use browser back button as workaround)
 4. **Wire Label Positioning**: Labels use longest segment midpoint (may overlap)
-5. **Component Rotation**: Not supported (all components have fixed orientation)
+5. **Community Component Sharing**: Not supported (custom components are private to their owner)
 
-## Recent Changes (Last Session)
+## Recent Changes
 
-**December 2025 - AI Component Properties Fix:**
-- **Fixed AI omitting properties**: AI was generating loads without `properties` field (watts/amps = 0)
-- **Enhanced AI prompts**: Added explicit JSON examples showing required `properties` field for all components
-- **Added validation for missing properties**: `design-validator.ts` now flags loads without watts/amps as errors
-- **Validation feedback loop**: Iterative AI now receives feedback when properties are missing, helping it self-correct
-- **Example guidance**: Clear ✅ CORRECT vs ❌ WRONG examples in prompts showing proper component format
+**AI access control and spend caps**
+- All four AI endpoints now require sign-in (they previously served anonymous
+  traffic on the platform key - 3,633 such requests were logged)
+- Lifetime ($10) and monthly ($5) caps, both enforced; `/ai-usage-admin` for
+  per-user view, top-ups and resets
+- Token usage and cost are now actually persisted. They never were, so every
+  `ai_logs` row had `cost_usd = null` and any cap would have been inert
+- `lookupPrice` resolves rolling aliases (`gpt-5.2-chat-latest` -> `gpt-5.2`)
 
-**Previous Session - Enhanced Power Calculations and Wire Validation:**
-- **AI Realistic Power Values**: AI now generates realistic amps/watts for loads (LED: 10-50W, Refrigerator: 50-150W, etc.) instead of placeholder zeros
-- **Auto-Calculate Watts ↔ Amps**: Properties panel automatically calculates power from current and vice versa using Ohm's Law (P = V × I)
-- **NEC-Compliant Wire Ampacity Validation**: Wire gauges validated against NEC/ABYC standards with temperature derating factors
-- **Visual Wire Validation**: Wires with validation issues highlighted with colored glow effects (red = error, orange = warning)
-- **Wire Drag-and-Drop**: Drag wire endpoints between terminals with real-time path updates and automatic length recalculation
-- **Component Drag Preview**: Semi-transparent preview of component position while dragging with connected wires updating in real-time
-- **Auto-Validation**: Design validation runs automatically 500ms after any component or wire changes
-- **Scroll-Aware Interactions**: Fixed coordinate calculations for selection box and wire dragging when canvas is scrolled
-- **Z-Order Fix**: Wire drag handles now render in separate overlay layer for proper visibility
+**Component orientation** - 90-degree rotation and mirroring, applied inside the
+terminal/dimension resolvers. `R` / `Shift+R` rotates a whole selection.
 
-Previous features (see `replit.md` for details):
-- Terminal-based wire connections
-- AI system generation with terminal support
-- SmartShunt component and wiring rules
-- Advanced wire routing algorithm (early offset strategy)
-- Selection box multi-select
-- AI wire generation for manually placed components
+**AI vision on iteration** - the design is rendered to PNG server-side each round
+and shown to the model, so it can see overlaps and long runs.
+
+**Custom components** - user-defined parts with author-placed terminals,
+snapshotted on placement. Community sharing is deliberately not built.
+
+**Units and library** - ft/m toggle alongside the existing AWG/mm² one; the
+component library leads with common parts and hides the rest behind "Show more";
+device-shaped icons replaced the repeated Cable/Gauge glyphs.
+
+See `git log` for detail - each of these has a commit message explaining the
+reasoning, and `replit.md` covers earlier work.
 
 ## Dependencies to Be Aware Of
 

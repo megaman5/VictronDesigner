@@ -103,6 +103,12 @@ export function layoutFragment(): string {
     // From the second iteration the user turn carries a rendered picture of
     // the design so far; say so, or the model has no reason to trust it.
     "- On later iterations you are given an image of the current layout. Read it for overlapping boxes, crowded areas and wire runs that cross the whole canvas, and fix those as well as the listed errors",
+    "ORIENTATION (optional, per component):",
+    "- \"rotation\": 0, 90, 180 or 270 turns a component clockwise. No other value is valid",
+    "- \"mirrorX\": true / \"mirrorY\": true flip it without turning it",
+    "- Terminals move with the body, so turning a part re-aims its wires. Use it to face a component toward what it connects to instead of routing a long way around - e.g. turn a busbar 90 degrees to run it vertically beside a stack of loads",
+    "- A quarter turn swaps the component's width and height; keep the spacing rules above true of the turned footprint",
+    "- Leave it out entirely when the default orientation is fine. Do not rotate purely for variety",
   ].join("\n");
 }
 
