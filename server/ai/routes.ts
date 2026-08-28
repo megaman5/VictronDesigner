@@ -3,6 +3,7 @@ import { isAdmin, isAuthenticated, type AuthUser } from "../auth";
 import { byokStorage } from "./byok-storage";
 import { KeyVaultError, redactSecrets } from "./key-vault";
 import { checkQuota, getMonthlySpend, monthlyLimitUsd } from "./usage-limits";
+import { allowanceAdmin } from "./allowance-admin";
 import { PROVIDERS } from "./providers";
 import { listSuites, getSuite } from "./benchmark/cases";
 import { listSkills, getSkill } from "./skills";
@@ -135,6 +136,11 @@ export function registerAIRoutes(app: Express): void {
         limitUsd: quota.limitUsd,
         spentUsd: Number(quota.spend.costUsd.toFixed(4)),
         remainingUsd: Number(quota.remainingUsd.toFixed(4)),
+        lifetimeLimitUsd: Number(quota.lifetimeLimitUsd.toFixed(4)),
+        lifetimeSpentUsd: Number(quota.lifetimeSpentUsd.toFixed(4)),
+        lifetimeRemainingUsd: Number(quota.lifetimeRemainingUsd.toFixed(4)),
+        blockedBy: quota.blockedBy,
+        reason: quota.reason,
         requests: quota.spend.requests,
         // Requests on models with no price entry - cost is unknown, not zero
         unpricedRequests: quota.spend.unpricedRequests,
@@ -143,6 +149,71 @@ export function registerAIRoutes(app: Express): void {
         since: quota.spend.since.toISOString(),
         allowed: quota.allowed,
       });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
+  });
+
+  // --- per-user AI allowance (admin) --------------------------------------
+
+  app.get("/api/admin/ai/usage", isAdmin, async (_req, res) => {
+    try {
+      res.json({
+        users: await allowanceAdmin.listUserUsage(),
+        defaultLifetimeLimitUsd: allowanceAdmin.defaultLifetimeLimitUsd(),
+        monthlyLimitUsd: allowanceAdmin.monthlyLimitUsd(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
+  });
+
+  /** Set a user's total allowance outright. */
+  app.post("/api/admin/ai/usage/:userId/limit", isAdmin, async (req, res) => {
+    const admin = req.user as AuthUser;
+    const limitUsd = Number(req.body?.limitUsd);
+    if (!Number.isFinite(limitUsd) || limitUsd < 0) {
+      return res.status(400).json({ error: "limitUsd must be a non-negative number" });
+    }
+    try {
+      const row = await allowanceAdmin.setLifetimeLimit(
+        req.params.userId,
+        limitUsd,
+        admin.email,
+        req.body?.note
+      );
+      res.json({ allowance: row });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
+  });
+
+  /** Add credit on top of the current allowance - the "they tipped me" path. */
+  app.post("/api/admin/ai/usage/:userId/credit", isAdmin, async (req, res) => {
+    const admin = req.user as AuthUser;
+    const amountUsd = Number(req.body?.amountUsd);
+    if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+      return res.status(400).json({ error: "amountUsd must be a positive number" });
+    }
+    try {
+      const row = await allowanceAdmin.grantCredit(
+        req.params.userId,
+        amountUsd,
+        admin.email,
+        req.body?.note
+      );
+      res.json({ allowance: row });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
+  });
+
+  /** Start counting this user's spend from now, leaving their history intact. */
+  app.post("/api/admin/ai/usage/:userId/reset", isAdmin, async (req, res) => {
+    const admin = req.user as AuthUser;
+    try {
+      const row = await allowanceAdmin.resetSpend(req.params.userId, admin.email, req.body?.note);
+      res.json({ allowance: row });
     } catch (err: any) {
       res.status(500).json({ error: redactSecrets(err.message) });
     }

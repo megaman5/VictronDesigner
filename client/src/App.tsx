@@ -11,6 +11,7 @@ import SchematicDesigner from "@/pages/SchematicDesigner";
 import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
 import SettingsAdmin from "@/pages/SettingsAdmin";
+import AiUsageAdmin from "@/pages/AiUsageAdmin";
 import NotFound from "@/pages/not-found";
 import { KofiWidget } from "@/components/KofiWidget";
 
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/feedback-admin" component={FeedbackAdmin} />
       <Route path="/observability-admin" component={ObservabilityAdmin} />
       <Route path="/settings-admin" component={SettingsAdmin} />
+      <Route path="/ai-usage-admin" component={AiUsageAdmin} />
       <Route component={NotFound} />
     </Switch>
   );

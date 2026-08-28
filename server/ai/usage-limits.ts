@@ -28,17 +28,33 @@ export interface SpendWindow {
 export interface QuotaDecision {
   allowed: boolean;
   reason?: string;
+  /** Which cap stopped the request, when one did. */
+  blockedBy?: "lifetime" | "monthly";
   limitUsd: number;
   spend: SpendWindow;
   remainingUsd: number;
+  /** Total allowance across the account's life, and what is left of it. */
+  lifetimeLimitUsd: number;
+  lifetimeSpentUsd: number;
+  lifetimeRemainingUsd: number;
+  /** Set when an admin has reset the user - lifetime spend counts from here. */
+  lifetimeSince?: Date;
 }
 
 export const DEFAULT_MONTHLY_LIMIT_USD = 5;
+export const DEFAULT_LIFETIME_LIMIT_USD = 10;
 
 export function monthlyLimitUsd(): number {
   const raw = process.env.AI_MONTHLY_LIMIT_USD;
   const parsed = raw ? Number(raw) : NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MONTHLY_LIMIT_USD;
+}
+
+/** Global default lifetime allowance, before any per-user override. */
+export function defaultLifetimeLimitUsd(): number {
+  const raw = process.env.AI_LIFETIME_LIMIT_USD;
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_LIFETIME_LIMIT_USD;
 }
 
 function startOfMonthUtc(now = new Date()): Date {
@@ -80,23 +96,93 @@ export async function getMonthlySpend(userId: string, now = new Date()): Promise
   };
 }
 
+/** The per-user allowance row, if an admin has ever adjusted this user. */
+export async function getAllowance(userId: string) {
+  const { db } = await import("../db");
+  const { aiAllowances } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const [row] = await db.select().from(aiAllowances).where(eq(aiAllowances.userId, userId));
+  return row ?? null;
+}
+
+/**
+ * Platform-billed spend for a user over the whole life of their account,
+ * or since an admin reset them.
+ */
+export async function getLifetimeSpend(
+  userId: string,
+  since?: Date | null
+): Promise<{ costUsd: number; requests: number; unpricedRequests: number }> {
+  const { db } = await import("../db");
+  const { aiLogs } = await import("@shared/schema");
+  const { and, eq, gte, sql } = await import("drizzle-orm");
+
+  const filters = [eq(aiLogs.userId, userId), eq(aiLogs.billedToPlatform, true)];
+  if (since) filters.push(gte(aiLogs.createdAt, since));
+
+  const [row] = await db
+    .select({
+      costUsd: sql<string | null>`coalesce(sum(${aiLogs.costUsd}), 0)`,
+      requests: sql<string>`count(*)`,
+      unpriced: sql<string>`count(*) filter (where ${aiLogs.costUsd} is null)`,
+    })
+    .from(aiLogs)
+    .where(and(...filters));
+
+  return {
+    costUsd: Number(row?.costUsd ?? 0),
+    requests: Number(row?.requests ?? 0),
+    unpricedRequests: Number(row?.unpriced ?? 0),
+  };
+}
+
 /**
  * Decide whether a request may proceed on the platform key.
  * BYOK callers should skip this entirely - it is not our spend.
+ *
+ * Two caps apply and both must pass: a lifetime allowance (the free credit
+ * someone gets, topped up by an admin) and the monthly cap (a rate limit, so
+ * one user cannot burn a whole month's budget in an afternoon).
  */
 export async function checkQuota(userId: string, now = new Date()): Promise<QuotaDecision> {
   const limitUsd = monthlyLimitUsd();
-  const spend = await getMonthlySpend(userId, now);
+  const allowance = await getAllowance(userId);
+  const lifetimeLimitUsd = allowance?.lifetimeLimitUsd ?? defaultLifetimeLimitUsd();
+  const lifetimeSince = allowance?.spendSince ?? undefined;
+
+  const [spend, lifetime] = await Promise.all([
+    getMonthlySpend(userId, now),
+    getLifetimeSpend(userId, lifetimeSince),
+  ]);
+
   const remainingUsd = Math.max(0, limitUsd - spend.costUsd);
-  const allowed = spend.costUsd < limitUsd;
+  const lifetimeRemainingUsd = Math.max(0, lifetimeLimitUsd - lifetime.costUsd);
+
+  const lifetimeExhausted = lifetime.costUsd >= lifetimeLimitUsd;
+  const monthlyExhausted = spend.costUsd >= limitUsd;
+  const allowed = !lifetimeExhausted && !monthlyExhausted;
+
+  // Lifetime is reported first: it is the one the user has to do something
+  // about, whereas the monthly cap clears on its own.
+  const blockedBy = lifetimeExhausted ? "lifetime" : monthlyExhausted ? "monthly" : undefined;
+
+  const reason = lifetimeExhausted
+    ? `Free AI allowance of $${lifetimeLimitUsd.toFixed(2)} used up (spent $${lifetime.costUsd.toFixed(2)}). Add your own API key to keep going, or use the tip button and I will credit you with more.`
+    : monthlyExhausted
+      ? `Monthly AI limit of $${limitUsd.toFixed(2)} reached (used $${spend.costUsd.toFixed(2)}). Add your own API key to keep going, or wait for the limit to reset.`
+      : undefined;
 
   return {
     allowed,
+    blockedBy,
     limitUsd,
     spend,
     remainingUsd,
-    reason: allowed
-      ? undefined
-      : `Monthly AI limit of $${limitUsd.toFixed(2)} reached (used $${spend.costUsd.toFixed(2)}). Add your own API key to keep going, or wait for the limit to reset.`,
+    lifetimeLimitUsd,
+    lifetimeSpentUsd: lifetime.costUsd,
+    lifetimeRemainingUsd,
+    lifetimeSince,
+    reason,
   };
 }

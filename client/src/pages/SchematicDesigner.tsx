@@ -135,6 +135,26 @@ export default function SchematicDesigner() {
 
   // User auth state
   const [user, setUser] = useState<AuthUser | null>(null);
+  // AI spends real money on the platform key, so it needs a signed-in user with
+  // allowance left. The server enforces this; this query only drives the
+  // greyed-out state and its tooltip so the limit is visible before clicking.
+  const { data: aiUsage } = useQuery<{
+    allowed: boolean;
+    reason?: string;
+    blockedBy?: "lifetime" | "monthly";
+    lifetimeRemainingUsd: number;
+  }>({
+    queryKey: ["/api/ai/usage"],
+    enabled: !!user,
+  });
+
+  const aiBlockedReason = !user
+    ? "Log in to use AI features"
+    : aiUsage && !aiUsage.allowed
+      ? aiUsage.blockedBy === "monthly"
+        ? aiUsage.reason ?? "Monthly AI limit reached - it resets at the start of next month."
+        : "Out of free AI usage. Please use the tip button below and I will credit you with more usage."
+      : undefined;
   const [disclaimerOpen, setDisclaimerOpen] = useState(() => getCookie(DISCLAIMER_COOKIE) !== DISCLAIMER_VERSION);
   const [disclaimerReviewOnly, setDisclaimerReviewOnly] = useState(false);
 
@@ -2128,6 +2148,7 @@ export default function SchematicDesigner() {
         user={user}
         currentDesignName={currentDesignName || undefined}
         isAIWiring={aiWireMutation.isPending}
+        aiBlockedReason={aiBlockedReason}
         showWireLabels={showWireLabels}
         onToggleWireLabels={() => setShowWireLabels(!showWireLabels)}
         wireGaugeFormat={wireGaugeFormat}

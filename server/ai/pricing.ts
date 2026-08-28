@@ -138,6 +138,13 @@ export function lookupPrice(model: string): ModelPrice | null {
   const undated = withoutVendor.replace(/-\d{4}-\d{2}-\d{2}$/, "");
   if (MODEL_PRICING[undated]) return MODEL_PRICING[undated];
 
+  // Strip rolling-alias suffixes: "gpt-5.2-chat-latest" and "gpt-5.2-latest"
+  // are the same billed model as "gpt-5.2". Without this they priced as null,
+  // which the quota code correctly treats as "unknown" - so a large share of
+  // real traffic was never counted against anyone's allowance.
+  const unaliased = undated.replace(/-(?:chat-)?latest$/, "");
+  if (MODEL_PRICING[unaliased]) return MODEL_PRICING[unaliased];
+
   return null;
 }
 

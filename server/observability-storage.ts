@@ -1,4 +1,10 @@
 import { db } from "./db";
+import { estimateCostUsd } from "./ai/pricing";
+
+// numeric() columns round-trip as strings in Drizzle; match how the benchmark
+// storage writes money so the two agree.
+const money = (n: number | null | undefined) =>
+  typeof n === "number" ? n.toFixed(6) : null;
 import { sessions, aiLogs, events, errorLogs } from "@shared/schema";
 import { eq, desc, gte, sql, and, count } from "drizzle-orm";
 
@@ -28,6 +34,12 @@ export interface AILogData {
   wireCount?: number;
   errorMessage?: string;
   model?: string;
+  provider?: string;
+  /** Token usage as reported by the provider, when it reports any. */
+  inputTokens?: number;
+  outputTokens?: number;
+  /** False only for BYOK calls, where the spend is the user's, not ours. */
+  billedToPlatform?: boolean;
   response?: {
     components?: any[];
     wires?: any[];
@@ -181,6 +193,21 @@ class ObservabilityStorage {
         wireCount: data.wireCount,
         errorMessage: data.errorMessage,
         model: data.model,
+        provider: data.provider,
+        inputTokens: data.inputTokens,
+        outputTokens: data.outputTokens,
+        billedToPlatform: data.billedToPlatform ?? true,
+        // Cost is derived here rather than at each call site so every path
+        // through the app prices consistently. Unknown models stay null - the
+        // quota code treats null as "unknown", not as free.
+        costUsd: money(
+          data.model && data.inputTokens != null && data.outputTokens != null
+            ? estimateCostUsd(data.model, {
+                inputTokens: data.inputTokens,
+                outputTokens: data.outputTokens,
+              })
+            : null
+        ),
         response: enhancedResponse,
       })
       .returning({ id: aiLogs.id });
