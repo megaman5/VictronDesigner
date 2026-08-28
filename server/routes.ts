@@ -19,6 +19,7 @@ import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
 import { checkQuota } from "./ai/usage-limits";
+import { buildIterationUserMessage } from "./ai/schematic-image";
 
 // Helper to extract visitor ID from request
 function getVisitorId(req: Request): string {
@@ -88,6 +89,7 @@ async function requireAiQuota(req: Request, res: Response, next: NextFunction) {
     res.status(503).json({ code: "quota_unavailable", error: "AI is temporarily unavailable" });
   }
 }
+
 
 // Helper function to extract JSON from markdown code blocks
 function extractJSON(content: string): string {
@@ -1244,11 +1246,14 @@ CRITICAL FIXES NEEDED:
           ? prompt
           : `${prompt}\n\nImprove the previous design based on the feedback above.`;
 
+        // From the second round on, show the model what it just built.
+        const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
+
         const completion = await openai.chat.completions.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
-            { role: "user", content: userMessage }
+            { role: "user", content: userContent as any }
           ],
           max_completion_tokens: 128000,
         });
@@ -1607,12 +1612,18 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           systemMessageLength: systemMessage.length
         });
 
+        // From the second round on, show the model what it just built.
+        const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
+        if (Array.isArray(userContent)) {
+          sendEvent('ai-layout-image', { iteration: iteration + 1 });
+        }
+
         // Stream the AI response
         const stream = await openai.chat.completions.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
-            { role: "user", content: userMessage }
+            { role: "user", content: userContent as any }
           ],
           max_completion_tokens: 128000,
           stream: true, // Enable streaming

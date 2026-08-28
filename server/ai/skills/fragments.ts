@@ -100,6 +100,9 @@ export function layoutFragment(): string {
     "- Minimum 300px horizontal and 250px vertical between component centres - components must not overlap",
     "- Snap all positions to the 20px grid",
     "- Left to right: sources (solar, shore, alternator) → conversion (MPPT, inverter) → storage → distribution → loads",
+    // From the second iteration the user turn carries a rendered picture of
+    // the design so far; say so, or the model has no reason to trust it.
+    "- On later iterations you are given an image of the current layout. Read it for overlapping boxes, crowded areas and wire runs that cross the whole canvas, and fix those as well as the listed errors",
   ].join("\n");
 }
 

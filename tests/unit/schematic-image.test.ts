@@ -1,0 +1,112 @@
+import { describe, it, expect } from 'vitest';
+import { renderSchematicPng } from '../../server/ai/schematic-image';
+
+const comp = (id: string, x: number, y: number, type = 'battery') =>
+  ({ id, type, name: `${type}-${id}`, x, y, properties: { voltage: 12 } }) as any;
+
+describe('renderSchematicPng', () => {
+  it('produces a real PNG', () => {
+    const r = renderSchematicPng([comp('a', 200, 200)], []);
+    expect(r.png.subarray(1, 4).toString()).toBe('PNG');
+    expect(r.dataUrl.startsWith('data:image/png;base64,')).toBe(true);
+    expect(r.width).toBeGreaterThan(0);
+    expect(r.height).toBeGreaterThan(0);
+  });
+
+  it('crops to the content so a corner design is not a stamp in white space', () => {
+    // Two components close together should render a tighter box than two far apart.
+    const tight = renderSchematicPng([comp('a', 200, 200), comp('b', 400, 200)], []);
+    const wide = renderSchematicPng([comp('a', 200, 200), comp('b', 1800, 1200)], []);
+    expect(tight.width / tight.height).not.toBeCloseTo(wide.width / wide.height, 1);
+  });
+
+  it('never exceeds the requested max dimension', () => {
+    const r = renderSchematicPng([comp('a', 0, 0), comp('b', 1900, 1400)], [], { maxDimension: 512 });
+    expect(Math.max(r.width, r.height)).toBeLessThanOrEqual(512);
+  });
+
+  it('renders wires between components', () => {
+    const wires = [
+      { id: 'w', fromComponentId: 'a', toComponentId: 'b', fromTerminal: 'positive', toTerminal: 'positive', polarity: 'positive' },
+    ] as any;
+    const withWire = renderSchematicPng([comp('a', 200, 200), comp('b', 700, 400)], wires);
+    const without = renderSchematicPng([comp('a', 200, 200), comp('b', 700, 400)], []);
+    // The wire adds pixels, so the encoded images differ.
+    expect(withWire.png.equals(without.png)).toBe(false);
+  });
+
+  it('survives a wire referencing a missing component', () => {
+    const wires = [
+      { id: 'w', fromComponentId: 'a', toComponentId: 'ghost', fromTerminal: 'positive', toTerminal: 'positive', polarity: 'positive' },
+    ] as any;
+    expect(() => renderSchematicPng([comp('a', 200, 200)], wires)).not.toThrow();
+  });
+
+  it('handles an empty design without throwing', () => {
+    expect(() => renderSchematicPng([], [])).not.toThrow();
+  });
+
+  it('reflects rotation in the drawn footprint', () => {
+    const upright = renderSchematicPng(
+      [{ id: 'c', type: 'custom', name: 'Bar', x: 200, y: 200, properties: { width: 400, height: 40, terminals: [] } } as any],
+      []
+    );
+    const turned = renderSchematicPng(
+      [{ id: 'c', type: 'custom', name: 'Bar', x: 200, y: 200, properties: { width: 400, height: 40, rotation: 90, terminals: [] } } as any],
+      []
+    );
+    // A long-thin bar turned upright swaps the aspect ratio of the crop.
+    expect(upright.width > upright.height).toBe(true);
+    expect(turned.height > turned.width).toBe(true);
+  });
+});
+
+describe('modelSupportsVision', () => {
+  it('accepts the model families actually in use', async () => {
+    const { modelSupportsVision } = await import('../../server/ai/schematic-image');
+    for (const m of ['gpt-5.5', 'gpt-5.2-chat-latest', 'gpt-5.6-luna', 'gpt-4o', 'o3-mini']) {
+      expect(modelSupportsVision(m)).toBe(true);
+    }
+  });
+
+  it('rejects text-only and non-chat models', async () => {
+    const { modelSupportsVision } = await import('../../server/ai/schematic-image');
+    for (const m of ['gpt-5-audio', 'gpt-4o-realtime', 'text-embedding-3-large', 'llama-2', '']) {
+      expect(modelSupportsVision(m)).toBe(false);
+    }
+  });
+});
+
+describe('buildIterationUserMessage', () => {
+  const design = {
+    components: [{ id: 'a', type: 'battery', name: 'B', x: 200, y: 200, properties: {} }],
+    wires: [],
+  };
+
+  it('attaches the layout image for a vision model', async () => {
+    const { buildIterationUserMessage } = await import('../../server/ai/schematic-image');
+    const msg = buildIterationUserMessage('fix it', design, 'gpt-5.5');
+    expect(Array.isArray(msg)).toBe(true);
+    const parts = msg as any[];
+    expect(parts[0].type).toBe('text');
+    expect(parts[1].type).toBe('image_url');
+    expect(parts[1].image_url.url.startsWith('data:image/png;base64,')).toBe(true);
+  });
+
+  it('stays text-only on the first pass, when there is nothing built yet', async () => {
+    const { buildIterationUserMessage } = await import('../../server/ai/schematic-image');
+    expect(buildIterationUserMessage('start', null, 'gpt-5.5')).toBe('start');
+    expect(buildIterationUserMessage('start', { components: [] }, 'gpt-5.5')).toBe('start');
+  });
+
+  it('stays text-only for a model that cannot see, rather than erroring', async () => {
+    const { buildIterationUserMessage } = await import('../../server/ai/schematic-image');
+    expect(buildIterationUserMessage('fix it', design, 'text-embedding-3-large')).toBe('fix it');
+  });
+
+  it('keeps the original instruction text in the image message', async () => {
+    const { buildIterationUserMessage } = await import('../../server/ai/schematic-image');
+    const parts = buildIterationUserMessage('SPECIFIC FEEDBACK HERE', design, 'gpt-5.5') as any[];
+    expect(parts[0].text).toContain('SPECIFIC FEEDBACK HERE');
+  });
+});
