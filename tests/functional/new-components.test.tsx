@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ComponentLibrary } from '@/components/ComponentLibrary';
 import { SchematicComponent } from '@/components/SchematicComponent';
@@ -21,8 +21,29 @@ function renderLibrary() {
 }
 
 describe('Component library entries', () => {
-  it('offers every Lynx module', () => {
+  // The niche parts sit behind "Show more" so the list opens at a usable
+  // length; expand the section before looking for them.
+  const expand = (section: string) =>
+    fireEvent.click(screen.getByTestId(`button-show-more-${section}`));
+
+  it('shows the everyday parts without expanding', () => {
     renderLibrary();
+    expect(screen.getByText('MultiPlus Inverter')).toBeInTheDocument();
+    expect(screen.getByText('MPPT Controller')).toBeInTheDocument();
+    expect(screen.getByText('Battery Bank')).toBeInTheDocument();
+    expect(screen.getByText(/Fuse \(Class T, MEGA, blade/)).toBeInTheDocument();
+    expect(screen.getByText('DC Circuit Breaker')).toBeInTheDocument();
+  });
+
+  it('keeps the niche parts out of the way until asked for', () => {
+    renderLibrary();
+    expect(screen.queryByText('Lynx Power In')).not.toBeInTheDocument();
+    expect(screen.queryByText('AC Circuit Breaker')).not.toBeInTheDocument();
+  });
+
+  it('offers every Lynx module once the Victron section is expanded', () => {
+    renderLibrary();
+    expand('victron');
     expect(screen.getByText('Lynx Power In')).toBeInTheDocument();
     expect(screen.getByText('Lynx Distributor')).toBeInTheDocument();
     expect(screen.getByText('Lynx Shunt VE.Can')).toBeInTheDocument();
@@ -31,9 +52,18 @@ describe('Component library entries', () => {
 
   it('offers DC and AC breakers, and a general fuse rather than Class T only', () => {
     renderLibrary();
+    expand('safety');
     expect(screen.getByText('DC Circuit Breaker')).toBeInTheDocument();
     expect(screen.getByText('AC Circuit Breaker')).toBeInTheDocument();
     expect(screen.getByText(/Fuse \(Class T, MEGA, blade/)).toBeInTheDocument();
+  });
+
+  it('collapses again with Show less', () => {
+    renderLibrary();
+    expand('victron');
+    expect(screen.getByText('Lynx Power In')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('button-show-less-victron'));
+    expect(screen.queryByText('Lynx Power In')).not.toBeInTheDocument();
   });
 });
 
