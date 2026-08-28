@@ -19,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Trash2, Save, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -73,6 +72,11 @@ const TYPE_COLORS: Record<TerminalType, string> = {
   ground: "hsl(var(--wire-ac-ground))",
 };
 
+// Terminals sit ON the body edge, so half of each dot (and its label) falls
+// outside the body box. The preview pads its viewBox by this much on every
+// side so edge terminals render whole instead of being sliced off.
+const PREVIEW_PAD = 18;
+
 const EDGE_CLICK_THRESHOLD = 40; // px - "near an edge" tolerance for adding a terminal
 const MIN_SIZE = 40;
 const MAX_SIZE = 800;
@@ -81,6 +85,17 @@ const MAX_SIZE = 800;
 // in SchematicDesigner.tsx and battery-bank.ts) - a dual-voltage part like a
 // 12/24V DC-DC charger can support more than one.
 const DC_VOLTAGE_OPTIONS = [12, 24, 48] as const;
+
+// Body colours for the component box. SchematicComponent already renders
+// appearance.bodyColor; these give the author a way to actually set it, so
+// several custom parts in one design stay tellable apart at a glance.
+const BODY_COLORS: { value: string | null; label: string; swatch: string }[] = [
+  { value: null, label: "Default", swatch: "hsl(var(--card))" },
+  { value: "hsl(var(--victron-blue))", label: "Blue", swatch: "hsl(var(--victron-blue))" },
+  { value: "hsl(215 16% 32%)", label: "Slate", swatch: "hsl(215 16% 32%)" },
+  { value: "hsl(142 45% 30%)", label: "Green", swatch: "hsl(142 45% 30%)" },
+  { value: "hsl(28 65% 40%)", label: "Amber", swatch: "hsl(28 65% 40%)" },
+];
 
 function snap(v: number): number {
   return snapToGrid(v);
@@ -104,6 +119,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
   const [height, setHeight] = useState(120);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [supportedVoltages, setSupportedVoltages] = useState<number[]>([]);
+  const [bodyColor, setBodyColor] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -118,6 +134,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       setHeight(definition.height);
       setTerminals(definition.terminals.map(t => ({ ...t })));
       setSupportedVoltages(definition.supportedVoltages ? [...definition.supportedVoltages] : []);
+      setBodyColor(definition.appearance?.bodyColor ?? null);
     } else {
       setName("");
       setSubtitle("");
@@ -125,6 +142,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       setHeight(120);
       setTerminals([]);
       setSupportedVoltages([]);
+      setBodyColor(null);
     }
     setErrors([]);
   }, [open, definition]);
@@ -158,11 +176,13 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
-    const scaleX = width / rect.width;
-    const scaleY = height / rect.height;
+    // The viewBox is padded by PREVIEW_PAD on each side, so the visible box is
+    // (width + 2*PAD) x (height + 2*PAD) and its origin is at -PAD,-PAD.
+    const scaleX = (width + PREVIEW_PAD * 2) / rect.width;
+    const scaleY = (height + PREVIEW_PAD * 2) / rect.height;
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
+      x: (e.clientX - rect.left) * scaleX - PREVIEW_PAD,
+      y: (e.clientY - rect.top) * scaleY - PREVIEW_PAD,
     };
   };
 
@@ -309,12 +329,22 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       height,
       terminals,
       supportedVoltages: supportedVoltages.length > 0 ? supportedVoltages : null,
+      appearance: bodyColor ? { bodyColor } : null,
     });
   };
 
   const toggleSupportedVoltage = (v: number) => {
     setSupportedVoltages(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v].sort((a, b) => a - b));
   };
+
+  // Fit the padded body into the available preview area without distorting it.
+  // A long thin busbar (e.g. 400x40) would otherwise render only 40px tall,
+  // which is too small to click terminals onto accurately.
+  const boxW = width + PREVIEW_PAD * 2;
+  const boxH = height + PREVIEW_PAD * 2;
+  const previewScale = Math.min(560 / boxW, 260 / boxH, 2);
+  const previewW = Math.round(boxW * previewScale);
+  const previewH = Math.round(boxH * previewScale);
 
   const handleWidthChange = (v: string) => {
     const n = parseInt(v, 10);
@@ -327,8 +357,8 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !saveMutation.isPending && onOpenChange(o)}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="shrink-0 p-6 pb-4">
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
             {isEditing ? "Edit Custom Component" : "Create Custom Component"}
@@ -340,6 +370,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-4">
         {errors.length > 0 && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive space-y-1" data-testid="custom-component-errors">
             <div className="flex items-center gap-2 font-medium">
@@ -396,6 +427,25 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
           </div>
         </div>
 
+        <div className="space-y-2">
+          <Label>Body colour</Label>
+          <div className="flex gap-2">
+            {BODY_COLORS.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => setBodyColor(c.value)}
+                title={c.label}
+                aria-label={c.label}
+                aria-pressed={bodyColor === c.value}
+                className={`h-7 w-7 rounded-md border-2 ${bodyColor === c.value ? "border-primary" : "border-border"}`}
+                style={{ background: c.swatch }}
+                data-testid={`button-cc-color-${c.label.toLowerCase()}`}
+              />
+            ))}
+          </div>
+        </div>
+
         <Separator />
 
         <div>
@@ -403,9 +453,9 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
           <div className="flex justify-center rounded-md border bg-muted/30 p-4 overflow-auto">
             <svg
               ref={svgRef}
-              width={Math.min(500, width)}
-              height={Math.min(400, height)}
-              viewBox={`0 0 ${width} ${height}`}
+              width={previewW}
+              height={previewH}
+              viewBox={`${-PREVIEW_PAD} ${-PREVIEW_PAD} ${width + PREVIEW_PAD * 2} ${height + PREVIEW_PAD * 2}`}
               className="cursor-crosshair"
               style={{ background: "hsl(var(--background))" }}
               onClick={handlePreviewClick}
@@ -414,17 +464,17 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
               <rect
                 x={4} y={4}
                 width={Math.max(0, width - 8)} height={Math.max(0, height - 8)}
-                fill="hsl(var(--card))"
+                fill={bodyColor || "hsl(var(--card))"}
                 stroke="hsl(var(--victron-blue-light))"
                 strokeWidth={2}
                 strokeDasharray="6 3"
                 rx={8}
               />
-              <text x={width / 2} y={height / 2 - 6} textAnchor="middle" className="fill-foreground text-sm font-semibold" style={{ pointerEvents: "none" }}>
+              <text x={width / 2} y={height / 2 - 6} textAnchor="middle" className={`${bodyColor ? "fill-white" : "fill-foreground"} text-sm font-semibold`} style={{ pointerEvents: "none" }}>
                 {name || "Custom"}
               </text>
               {subtitle && (
-                <text x={width / 2} y={height / 2 + 10} textAnchor="middle" className="fill-muted-foreground text-[10px]" style={{ pointerEvents: "none" }}>
+                <text x={width / 2} y={height / 2 + 10} textAnchor="middle" className={`${bodyColor ? "fill-white/70" : "fill-muted-foreground"} text-[10px]`} style={{ pointerEvents: "none" }}>
                   {subtitle}
                 </text>
               )}
@@ -455,8 +505,14 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
           {terminals.length === 0 ? (
             <p className="text-sm text-muted-foreground">No terminals yet - click the preview above near an edge to add one.</p>
           ) : (
-            <ScrollArea className="max-h-64">
-              <div className="space-y-2 pr-3">
+            <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 px-2 text-[11px] text-muted-foreground">
+                  <span>ID</span>
+                  <span>Label</span>
+                  <span>Type</span>
+                  <span>Exits</span>
+                  <span className="w-8" />
+                </div>
                 {terminals.map((t, i) => (
                   <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center rounded-md border p-2" data-testid={`terminal-row-${t.id}`}>
                     <Input
@@ -504,12 +560,13 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
                     </Button>
                   </div>
                 ))}
-              </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
 
-        <DialogFooter>
+        </div>
+
+        <DialogFooter className="shrink-0 border-t p-4">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saveMutation.isPending}>
             Cancel
           </Button>

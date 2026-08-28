@@ -4,6 +4,11 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  // The app's .env is 0600 root/www-data-owned in production checkouts, and
+  // vite's loadEnv reads it at config time - which made `npm test` fail with
+  // EACCES for any non-root user. Tests don't need those secrets, so point
+  // env loading at a directory that has none.
+  envDir: './tests',
   test: {
     globals: true,
     environment: 'jsdom',

@@ -48,3 +48,52 @@ describe('toPlacedProperties', () => {
     expect(toPlacedProperties(definition({ supportedVoltages: null })).supportedVoltages).toBeUndefined();
   });
 });
+
+describe('editor preview geometry', () => {
+  // Mirrors CustomComponentEditor: viewBox is padded so terminals sitting ON
+  // the body edge render whole instead of being sliced in half, and the
+  // click->svg mapping has to subtract that same padding back out.
+  const PREVIEW_PAD = 18;
+
+  const toSvgPoint = (clientOffset: number, rectSize: number, boxSize: number) =>
+    clientOffset * ((boxSize + PREVIEW_PAD * 2) / rectSize) - PREVIEW_PAD;
+
+  it('keeps an edge terminal fully inside the padded viewBox', () => {
+    const width = 400, height = 40, r = 8;
+    const minX = -PREVIEW_PAD, maxX = width + PREVIEW_PAD;
+    const minY = -PREVIEW_PAD, maxY = height + PREVIEW_PAD;
+    // A terminal on the bottom edge: its dot spans y +/- r around y=height.
+    expect(height + r).toBeLessThanOrEqual(maxY);
+    expect(0 - r).toBeGreaterThanOrEqual(minY);
+    // And one on the left edge spans x +/- r around x=0.
+    expect(0 - r).toBeGreaterThanOrEqual(minX);
+    expect(width + r).toBeLessThanOrEqual(maxX);
+  });
+
+  it('maps a click at the top-left of the rendered box back to the padded origin', () => {
+    const width = 400;
+    const rectW = width + PREVIEW_PAD * 2; // rendered 1:1
+    expect(toSvgPoint(0, rectW, width)).toBeCloseTo(-PREVIEW_PAD);
+  });
+
+  it('maps a click at the body origin back to 0,0', () => {
+    const width = 400;
+    const rectW = width + PREVIEW_PAD * 2;
+    expect(toSvgPoint(PREVIEW_PAD, rectW, width)).toBeCloseTo(0);
+  });
+
+  it('maps a click at the far body edge back to the body width', () => {
+    const width = 400;
+    const rectW = width + PREVIEW_PAD * 2;
+    expect(toSvgPoint(PREVIEW_PAD + width, rectW, width)).toBeCloseTo(width);
+  });
+
+  it('scales a long thin busbar up to a usable preview height', () => {
+    // 400x40 previously rendered 40px tall, too small to place terminals on.
+    const boxW = 400 + PREVIEW_PAD * 2;
+    const boxH = 40 + PREVIEW_PAD * 2;
+    const scale = Math.min(560 / boxW, 260 / boxH, 2);
+    expect(Math.round(boxH * scale)).toBeGreaterThan(60);
+    expect(Math.round(boxW * scale)).toBeLessThanOrEqual(560);
+  });
+});
