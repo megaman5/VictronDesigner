@@ -74,6 +74,10 @@ export const customComponents = pgTable("custom_components", {
   height: integer("height").notNull(),
   terminals: jsonb("terminals").notNull(), // Terminal[] (see client/src/lib/terminal-config.ts)
   appearance: jsonb("appearance"), // body colour, label placement, optional bars
+  // DC voltages (12/24/48) this part is compatible with, e.g. a dual-voltage
+  // charger declares [12, 24]. null/empty = no declared DC voltage (AC,
+  // passive, or pass-through part) - excluded from the voltage-mismatch check.
+  supportedVoltages: jsonb("supported_voltages"), // number[] | null
   // "private" is the only visibility phase 1 builds UI for; the column exists
   // so phase 2 (community sharing) doesn't need a migration.
   visibility: text("visibility").notNull().default("private"), // private | unlisted | public

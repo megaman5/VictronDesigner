@@ -61,6 +61,11 @@ const EDGE_CLICK_THRESHOLD = 40; // px - "near an edge" tolerance for adding a t
 const MIN_SIZE = 40;
 const MAX_SIZE = 800;
 
+// The system voltages this app reasons about elsewhere (see inferSystemVoltage
+// in SchematicDesigner.tsx and battery-bank.ts) - a dual-voltage part like a
+// 12/24V DC-DC charger can support more than one.
+const DC_VOLTAGE_OPTIONS = [12, 24, 48] as const;
+
 function snap(v: number): number {
   return snapToGrid(v);
 }
@@ -83,6 +88,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
   const [width, setWidth] = useState(160);
   const [height, setHeight] = useState(120);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
+  const [supportedVoltages, setSupportedVoltages] = useState<number[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -97,6 +103,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       setWidth(definition.width);
       setHeight(definition.height);
       setTerminals(definition.terminals.map(t => ({ ...t })));
+      setSupportedVoltages(definition.supportedVoltages ? [...definition.supportedVoltages] : []);
     } else {
       setName("");
       setSubtitle("");
@@ -104,6 +111,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       setWidth(160);
       setHeight(120);
       setTerminals([]);
+      setSupportedVoltages([]);
     }
     setErrors([]);
   }, [open, definition]);
@@ -284,7 +292,12 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       width,
       height,
       terminals,
+      supportedVoltages: supportedVoltages.length > 0 ? supportedVoltages : null,
     });
+  };
+
+  const toggleSupportedVoltage = (v: number) => {
+    setSupportedVoltages(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v].sort((a, b) => a - b));
   };
 
   const handleWidthChange = (v: string) => {
@@ -345,6 +358,29 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
               <Label htmlFor="cc-height">Height (px)</Label>
               <Input id="cc-height" type="number" step={GRID_SIZE} min={MIN_SIZE} max={MAX_SIZE} value={height} onChange={(e) => handleHeightChange(e.target.value)} data-testid="input-cc-height" />
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>DC voltage support</Label>
+          <p className="text-xs text-muted-foreground">
+            Select every DC voltage this part actually works at (e.g. a 12/24V charger supports both).
+            Leave all unselected if it's AC-only, passive, or has no fixed operating voltage - the design
+            checks will then leave it alone rather than guessing.
+          </p>
+          <div className="flex gap-2">
+            {DC_VOLTAGE_OPTIONS.map((v) => (
+              <Button
+                key={v}
+                type="button"
+                size="sm"
+                variant={supportedVoltages.includes(v) ? "default" : "outline"}
+                onClick={() => toggleSupportedVoltage(v)}
+                data-testid={`button-cc-voltage-${v}`}
+              >
+                {v}V
+              </Button>
+            ))}
           </div>
         </div>
 

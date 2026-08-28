@@ -26,6 +26,8 @@ export interface CustomComponentDefinition {
   height: number;
   terminals: Terminal[];
   appearance: CustomComponentAppearance | null;
+  /** DC voltages (12/24/48) this part is compatible with; null/empty = not declared (AC, passive, or pass-through). */
+  supportedVoltages: number[] | null;
   visibility: string;
   version: number;
   createdAt: string;
@@ -40,6 +42,7 @@ export interface CustomComponentInput {
   height: number;
   terminals: Terminal[];
   appearance?: CustomComponentAppearance | null;
+  supportedVoltages?: number[] | null;
 }
 
 /**
@@ -59,6 +62,9 @@ export function toPlacedProperties(
     height: definition.height,
     subtitle: definition.subtitle || undefined,
     appearance: definition.appearance || undefined,
+    supportedVoltages: definition.supportedVoltages && definition.supportedVoltages.length > 0
+      ? definition.supportedVoltages
+      : undefined,
     voltage: systemVoltage,
   };
 }

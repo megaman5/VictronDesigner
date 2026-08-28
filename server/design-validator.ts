@@ -815,6 +815,25 @@ export class DesignValidator {
     }
   }
 
+  /**
+   * DC voltages a component is compatible with, or null when it has no
+   * declared DC voltage requirement (skip the check entirely). Built-in
+   * components report their single `properties.voltage`. Custom components
+   * declare a set (e.g. a 12/24V dual-voltage charger) via
+   * `properties.supportedVoltages`, snapshotted from the definition at
+   * placement time - see docs/custom-components-design.md.
+   */
+  private getDcVoltageCompatibility(comp: SchematicComponent): number[] | null {
+    if (comp.type === "custom") {
+      const supported = Array.isArray(comp.properties?.supportedVoltages)
+        ? (comp.properties!.supportedVoltages as number[])
+        : [];
+      return supported.length > 0 ? supported : null;
+    }
+    const v = comp.properties?.voltage as number | undefined;
+    return v ? [v] : null;
+  }
+
   private validateVoltageMismatches(): void {
     // Get system voltage. For batteries wired in series (e.g. 2x12V = 24V), the
     // reference is the bank voltage, not a single battery's nominal voltage.
@@ -850,18 +869,14 @@ export class DesignValidator {
       // Skip shore power - it's AC, not DC
       if (comp.type === "shore-power") return;
 
-      // Skip custom components - they have no declared electrical behavior
-      // (could be AC, DC, or something else entirely), so a generic DC
-      // system-voltage check would be a false positive.
-      if (comp.type === "custom") return;
+      const compatibleVoltages = this.getDcVoltageCompatibility(comp);
 
-      const compVoltage = comp.properties?.voltage as number | undefined;
-      
-      // Skip components that don't have voltage
-      if (!compVoltage) return;
+      // Skip components with no declared DC voltage requirement (includes
+      // custom components with no supportedVoltages declared).
+      if (!compatibleVoltages) return;
 
-      // Check if DC voltage matches system voltage
-      if (compVoltage !== systemVoltage) {
+      // Check system voltage is one this component can actually run at
+      if (!compatibleVoltages.includes(systemVoltage)) {
         mismatchedComponents.push(comp.id);
       }
     });
@@ -892,14 +907,10 @@ export class DesignValidator {
       if (fromComp.type === "ac-load" || fromComp.type === "ac-panel" || fromComp.type === "shore-power" ||
           toComp.type === "ac-load" || toComp.type === "ac-panel" || toComp.type === "shore-power") return;
 
-      // Skip custom components - no declared electrical behavior to check
-      // system-voltage compatibility against (see comment above).
-      if (fromComp.type === "custom" || toComp.type === "custom") return;
-
       // Skip PV wires (pv-positive/pv-negative) - solar panels use PV voltage (Vmp), not DC system voltage
       // PV voltage is converted by MPPT controller to system voltage
       if (wire.fromTerminal?.includes("pv-") || wire.toTerminal?.includes("pv-")) return;
-      
+
       // Skip if either component is a solar panel (PV voltage) or MPPT (handles PV-to-DC conversion)
       if (fromComp.type === "solar-panel" || toComp.type === "solar-panel" ||
           fromComp.type === "mppt" || toComp.type === "mppt") return;
@@ -909,21 +920,25 @@ export class DesignValidator {
       // system (and the series link itself connects + to -).
       if (seriesBatteryIds.has(fromComp.id) || seriesBatteryIds.has(toComp.id)) return;
 
-      const fromVoltage = fromComp.properties?.voltage as number | undefined;
-      const toVoltage = toComp.properties?.voltage as number | undefined;
+      const fromVoltages = this.getDcVoltageCompatibility(fromComp);
+      const toVoltages = this.getDcVoltageCompatibility(toComp);
 
-      // Skip if either component doesn't have voltage specified
-      if (!fromVoltage || !toVoltage) return;
+      // Skip if either side has no declared DC voltage requirement (includes
+      // custom components with no supportedVoltages declared).
+      if (!fromVoltages || !toVoltages) return;
 
-      // Check if DC voltages match (both should match system voltage for DC components)
-      if (fromVoltage !== toVoltage) {
+      // Compatible as long as the two sides share at least one common
+      // voltage - a 12/24V custom charger is fine wired to a 24V-only device.
+      const compatible = fromVoltages.some(v => toVoltages.includes(v));
+      if (!compatible) {
+        const label = (vs: number[]) => vs.length === 1 ? `${vs[0]}V DC` : `${vs.join('/')}V DC`;
         this.issues.push({
           severity: "error",
           category: "electrical",
-          message: `Voltage mismatch: ${this.getComponentName(fromComp.id)} (${fromVoltage}V DC) connected to ${this.getComponentName(toComp.id)} (${toVoltage}V DC)`,
+          message: `Voltage mismatch: ${this.getComponentName(fromComp.id)} (${label(fromVoltages)}) connected to ${this.getComponentName(toComp.id)} (${label(toVoltages)})`,
           componentIds: [fromComp.id, toComp.id],
           wireId: wire.id,
-          suggestion: `DC components must have matching voltages. Update one or both components to ${systemVoltage}V DC.`,
+          suggestion: `These must share a common DC voltage. Update one or both components (or the custom part's supported-voltage list) so they match.`,
         });
       }
     });
