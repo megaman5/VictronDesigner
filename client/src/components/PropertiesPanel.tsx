@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2 } from "lucide-react";
+import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2, RotateCw, RotateCcw, FlipHorizontal, FlipVertical } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
 import { findBatteryBanks, getBankForBattery } from "@shared/battery-bank";
 import { formatWireGauge, formatWireLength, feetToDisplayLength, displayLengthToFeet, lengthUnitLabel, type LengthUnit } from "@/lib/wire-calculator";
@@ -744,6 +744,27 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
     triggerSaveFeedback();
   };
 
+  const rotateSelected = (delta: number) => {
+    if (!selectedComponent || !onUpdateComponent) return;
+    const current = Number(selectedComponent.properties?.rotation ?? 0);
+    const next = ((current + delta) % 360 + 360) % 360;
+    onUpdateComponent(selectedComponent.id, {
+      properties: { ...selectedComponent.properties, rotation: next },
+    });
+    triggerSaveFeedback();
+  };
+
+  const toggleMirror = (axis: "mirrorX" | "mirrorY") => {
+    if (!selectedComponent || !onUpdateComponent) return;
+    onUpdateComponent(selectedComponent.id, {
+      properties: {
+        ...selectedComponent.properties,
+        [axis]: !selectedComponent.properties?.[axis],
+      },
+    });
+    triggerSaveFeedback();
+  };
+
   const handleWireLengthChange = (value: string) => {
     if (!selectedWire || !onUpdateWire) return;
     const displayValue = parseFloat(value) || 0;
@@ -1049,6 +1070,61 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     </div>
                   </div>
                 )}
+
+                {/* Orientation. Terminals move with the body, so rotating a
+                    component re-aims its wires - which is the point: it lets
+                    you turn a part to face the run instead of routing around
+                    it. */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Orientation</Label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 px-2"
+                      onClick={() => rotateSelected(-90)}
+                      data-testid="button-rotate-ccw"
+                      title="Rotate 90° counter-clockwise"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 px-2"
+                      onClick={() => rotateSelected(90)}
+                      data-testid="button-rotate-cw"
+                      title="Rotate 90° clockwise (R)"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant={selectedComponent.properties?.mirrorX ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 gap-1 px-2"
+                      onClick={() => toggleMirror("mirrorX")}
+                      data-testid="button-mirror-x"
+                      title="Flip horizontally"
+                    >
+                      <FlipHorizontal className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant={selectedComponent.properties?.mirrorY ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 gap-1 px-2"
+                      onClick={() => toggleMirror("mirrorY")}
+                      data-testid="button-mirror-y"
+                      title="Flip vertically"
+                    >
+                      <FlipVertical className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground ml-1" data-testid="text-rotation">
+                      {Number(selectedComponent.properties?.rotation ?? 0)}°
+                    </span>
+                  </div>
+                </div>
+
+                <Separator />
 
                 {/* Custom component - read-only info snapshotted from the definition */}
                 {selectedComponent.type === 'custom' && (

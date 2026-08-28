@@ -1750,6 +1750,18 @@ export default function SchematicDesigner() {
     });
   };
 
+  const handleRotateComponents = (componentIds: string[], delta: number) => {
+    const ids = new Set(componentIds);
+    setComponents(prev => prev.map(comp => {
+      if (!ids.has(comp.id)) return comp;
+      const current = Number(comp.properties?.rotation ?? 0);
+      const rotation = ((current + delta) % 360 + 360) % 360;
+      const updated = { ...comp, properties: { ...comp.properties, rotation } };
+      if (selectedComponent?.id === comp.id) setSelectedComponent(updated);
+      return updated;
+    }));
+  };
+
   const handleComponentMove = (componentId: string, deltaX: number, deltaY: number) => {
     setComponents(prev => prev.map(comp =>
       comp.id === componentId
@@ -2202,6 +2214,7 @@ export default function SchematicDesigner() {
           onWireConnectionComplete={handleWireConnectionComplete}
           onWireDelete={handleWireDelete}
           onWireUpdate={handleWireUpdate}
+          onRotateComponents={handleRotateComponents}
           wireConnectionMode={wireConnectionMode}
           wireStartComponent={wireStartComponent}
           showWireLabels={showWireLabels}
