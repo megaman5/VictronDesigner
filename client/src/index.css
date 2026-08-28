@@ -374,3 +374,25 @@
     inset: -1px;
   }
 }
+/*
+ * Keep component labels readable when the body is flipped or turned.
+ *
+ * Rotating/mirroring a component transforms its whole SVG, text included, so a
+ * flipped part reads backwards and a 180-degree one reads upside down. Neither
+ * is ever what you want on a schematic - the symbol should flip, the labels
+ * should not.
+ *
+ * Each text node is counter-transformed about its own centre, so it keeps the
+ * position the parent transform gave it while the glyphs stay the right way
+ * round. The counter values are set per instance as custom properties.
+ *
+ * Quarter turns deliberately leave text rotated with the body: sideways labels
+ * are conventional on schematics and readable, and standing them upright would
+ * push them out of a box that just became narrower.
+ */
+.component-artwork text {
+  transform: scale(var(--label-flip-x, 1), var(--label-flip-y, 1))
+             rotate(var(--label-rotate, 0deg));
+  transform-box: fill-box;
+  transform-origin: center;
+}

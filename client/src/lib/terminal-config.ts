@@ -581,6 +581,25 @@ export function transformDimensions(
 }
 
 /**
+ * CSS custom properties that cancel a component's transform for its text.
+ *
+ * A mirrored component reads backwards and a 180-degree one reads upside down;
+ * neither is ever correct on a schematic. Cancelling the transform on the text
+ * nodes alone keeps the symbol flipped while the labels stay legible.
+ *
+ * Quarter turns are left alone on purpose: sideways text is conventional and
+ * readable, and standing it upright would push labels out of a box that just
+ * became narrower.
+ */
+export function getLabelCounterTransform(o: Orientation): Record<string, string> {
+  return {
+    "--label-flip-x": o.mirrorX ? "-1" : "1",
+    "--label-flip-y": o.mirrorY ? "-1" : "1",
+    "--label-rotate": o.rotation === 180 ? "180deg" : "0deg",
+  };
+}
+
+/**
  * Terminals for a component instance. Most components have a fixed terminal
  * set keyed by type, but some (MPPT LOAD output) vary by the selected model,
  * so pass the component's properties when they are available.

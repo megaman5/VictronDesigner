@@ -215,3 +215,94 @@ describe('rotated components render', () => {
     expect(container.innerHTML).toContain('scale(-1, 1)');
   });
 });
+
+describe('label readability under transform', () => {
+  it('un-mirrors text so a flipped component never reads backwards', async () => {
+    const { getLabelCounterTransform } = await import('@/lib/terminal-config');
+    expect(getLabelCounterTransform(O(0, true, false))['--label-flip-x']).toBe('-1');
+    expect(getLabelCounterTransform(O(0, false, true))['--label-flip-y']).toBe('-1');
+  });
+
+  it('turns text back upright at 180, where it would otherwise be upside down', async () => {
+    const { getLabelCounterTransform } = await import('@/lib/terminal-config');
+    expect(getLabelCounterTransform(O(180))['--label-rotate']).toBe('180deg');
+  });
+
+  it('leaves quarter turns alone - sideways text is conventional and fits the box', async () => {
+    const { getLabelCounterTransform } = await import('@/lib/terminal-config');
+    expect(getLabelCounterTransform(O(90))['--label-rotate']).toBe('0deg');
+    expect(getLabelCounterTransform(O(270))['--label-rotate']).toBe('0deg');
+  });
+
+  it('cancels rotation and mirroring together', async () => {
+    const { getLabelCounterTransform } = await import('@/lib/terminal-config');
+    const c = getLabelCounterTransform(O(180, true, false));
+    expect(c['--label-flip-x']).toBe('-1');
+    expect(c['--label-rotate']).toBe('180deg');
+  });
+
+  it('is a no-op for an untransformed component', async () => {
+    const { getLabelCounterTransform } = await import('@/lib/terminal-config');
+    expect(getLabelCounterTransform(O(0))).toEqual({
+      '--label-flip-x': '1',
+      '--label-flip-y': '1',
+      '--label-rotate': '0deg',
+    });
+  });
+
+  it('emits the counter properties onto the rendered artwork', async () => {
+    const { render } = await import('@testing-library/react');
+    const { SchematicComponent } = await import('@/components/SchematicComponent');
+    const { container } = render(
+      <SchematicComponent id="c" type="battery" name="Battery" properties={{ mirrorX: true }} selected={false} />
+    );
+    const artwork = container.querySelector('.component-artwork') as HTMLElement;
+    expect(artwork).toBeTruthy();
+    expect(artwork.style.getPropertyValue('--label-flip-x')).toBe('-1');
+  });
+});
+
+describe('glyph orientation across every transform combination', () => {
+  // Compose the transform chain the browser applies: the parent's
+  // rotate+scale, then the per-text counter-transform. A negative determinant
+  // means the glyphs are mirrored; [-1,0,0,-1] means upside down. Neither is
+  // acceptable for any combination.
+  type M = [number, number, number, number];
+  const mul = (a: M, b: M): M => [
+    a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+  ];
+  const rot = (d: number): M => {
+    const r = (d * Math.PI) / 180;
+    const c = Math.round(Math.cos(r)), s = Math.round(Math.sin(r));
+    return [c, s, -s, c];
+  };
+  const scl = (x: number, y: number): M => [x, 0, 0, y];
+
+  it('never mirrors and never inverts text, for any rotation/mirror pair', async () => {
+    const { getLabelCounterTransform } = await import('@/lib/terminal-config');
+
+    for (const rotation of [0, 90, 180, 270]) {
+      for (const mirrorX of [false, true]) {
+        for (const mirrorY of [false, true]) {
+          const o = O(rotation, mirrorX, mirrorY);
+          const c = getLabelCounterTransform(o);
+          const counter = mul(
+            scl(Number(c['--label-flip-x']), Number(c['--label-flip-y'])),
+            rot(parseInt(c['--label-rotate'], 10))
+          );
+          const parent = mul(rot(rotation), scl(mirrorX ? -1 : 1, mirrorY ? -1 : 1));
+          const total = mul(parent, counter);
+
+          const determinant = total[0] * total[3] - total[1] * total[2];
+          const label = `rotation=${rotation} mirrorX=${mirrorX} mirrorY=${mirrorY}`;
+          expect(determinant, `${label} mirrored the text`).toBeGreaterThan(0);
+          expect(
+            total[0] === -1 && total[3] === -1,
+            `${label} left the text upside down`
+          ).toBe(false);
+        }
+      }
+    }
+  });
+});
