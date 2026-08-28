@@ -99,7 +99,7 @@ export function ComponentLibrary({
 
       <ScrollArea className="flex-1">
         <div className="p-4">
-          <Accordion type="multiple" defaultValue={["victron", "generic", "safety", "custom", "my-components"]} className="w-full">
+          <Accordion type="multiple" defaultValue={["victron", "generic", "safety", "custom"]} className="w-full">
             <AccordionItem value="victron">
               <AccordionTrigger className="text-sm font-medium">
                 Victron Components
@@ -171,25 +171,7 @@ export function ComponentLibrary({
                 Custom Components
               </AccordionTrigger>
               <AccordionContent>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 mt-2"
-                  onClick={onAddCustom}
-                  data-testid="button-add-custom"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Custom Component
-                </Button>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="my-components">
-              <AccordionTrigger className="text-sm font-medium">
-                My Components
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-2 mt-2">
+                <div className="space-y-3 mt-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -198,12 +180,12 @@ export function ComponentLibrary({
                     data-testid="button-create-custom-definition"
                   >
                     <Plus className="h-4 w-4" />
-                    Create Custom Component
+                    Build a Component
                   </Button>
 
                   {!isAuthenticated && (
                     <p className="text-xs text-muted-foreground">
-                      Sign in to save and reuse your own component definitions.
+                      Sign in to build components with your own terminals and reuse them across designs.
                     </p>
                   )}
 
@@ -213,7 +195,7 @@ export function ComponentLibrary({
 
                   {isAuthenticated && !myComponentsLoading && myComponents.length === 0 && (
                     <p className="text-xs text-muted-foreground">
-                      No custom components yet. Create one to define your own terminals.
+                      Nothing saved yet. Build a component to place your own terminals exactly where you need them.
                     </p>
                   )}
 
@@ -260,6 +242,24 @@ export function ComponentLibrary({
                       </Button>
                     </div>
                   ))}
+
+                  <Separator />
+
+                  <div className="space-y-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full gap-2"
+                      onClick={onAddCustom}
+                      data-testid="button-add-custom"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Quick-add a plain box
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      A one-off placeholder with fixed +/- in and out terminals. Not saved to your library.
+                    </p>
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>

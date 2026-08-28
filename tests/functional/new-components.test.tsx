@@ -1,14 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ComponentLibrary } from '@/components/ComponentLibrary';
 import { SchematicComponent } from '@/components/SchematicComponent';
 import { getComponentTerminals, TERMINAL_CONFIGS } from '@/lib/terminal-config';
 
 vi.mock('@/lib/tracking', () => ({ trackAction: vi.fn() }));
 
+// ComponentLibrary fetches the signed-in user's saved custom components with
+// useQuery, so it needs a query client in context even when signed out.
+function renderLibrary() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ComponentLibrary />
+    </QueryClientProvider>
+  );
+}
+
 describe('Component library entries', () => {
   it('offers every Lynx module', () => {
-    render(<ComponentLibrary />);
+    renderLibrary();
     expect(screen.getByText('Lynx Power In')).toBeInTheDocument();
     expect(screen.getByText('Lynx Distributor')).toBeInTheDocument();
     expect(screen.getByText('Lynx Shunt VE.Can')).toBeInTheDocument();
@@ -16,7 +30,7 @@ describe('Component library entries', () => {
   });
 
   it('offers DC and AC breakers, and a general fuse rather than Class T only', () => {
-    render(<ComponentLibrary />);
+    renderLibrary();
     expect(screen.getByText('DC Circuit Breaker')).toBeInTheDocument();
     expect(screen.getByText('AC Circuit Breaker')).toBeInTheDocument();
     expect(screen.getByText(/Fuse \(Class T, MEGA, blade/)).toBeInTheDocument();

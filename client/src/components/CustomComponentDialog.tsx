@@ -42,12 +42,12 @@ export function CustomComponentDialog({ open, onOpenChange, onAdd }: CustomCompo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
-            Add Custom Component
+            Quick-add a plain box
           </DialogTitle>
           <DialogDescription>
-            Create a generic component for any device that doesn't have a dedicated
-            symbol yet (e.g. Quattro, Argo FET, Cyrix-CT). It has DC +/- terminals on
-            both sides so you can wire it inline.
+            Drops a one-off placeholder with fixed DC +/- terminals on both sides, so you
+            can wire it inline right away. It is not saved to your library. To place your
+            own terminals and reuse the part across designs, use "Build a Component" instead.
           </DialogDescription>
         </DialogHeader>
 
@@ -58,7 +58,7 @@ export function CustomComponentDialog({ open, onOpenChange, onAdd }: CustomCompo
             </Label>
             <Input
               id="custom-name"
-              placeholder="e.g. Quattro 48/5000"
+              placeholder="e.g. Water maker"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -73,7 +73,7 @@ export function CustomComponentDialog({ open, onOpenChange, onAdd }: CustomCompo
             <Label htmlFor="custom-subtitle">Subtitle (optional)</Label>
             <Input
               id="custom-subtitle"
-              placeholder="e.g. Inverter/Charger"
+              placeholder="e.g. 12V, 8A"
               value={subtitle}
               onChange={(e) => setSubtitle(e.target.value)}
               onKeyDown={(e) => {

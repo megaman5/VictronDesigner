@@ -569,4 +569,66 @@ describe('Design Validator', () => {
       expect(undersized.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Custom Component Supported Voltages', () => {
+    const customPart = (supportedVoltages?: number[]) =>
+      createComponent('custom1', 'custom', 400, 100, {
+        terminals: [
+          { id: 'in-positive', type: 'positive', label: '+', x: 0, y: 40, color: 'red', orientation: 'left' },
+        ],
+        width: 160,
+        height: 120,
+        ...(supportedVoltages ? { supportedVoltages } : {}),
+      });
+
+    const voltageIssues = (components: SchematicComponent[], systemVoltage: number) =>
+      new DesignValidator(components, [], systemVoltage)
+        .validate()
+        .issues.filter(i => i.message.includes('voltage mismatch'));
+
+    it('flags a custom part that cannot run at the system voltage', () => {
+      const components = [
+        createComponent('bat1', 'battery', 100, 100, { voltage: 48 }),
+        customPart([12]),
+      ];
+      expect(voltageIssues(components, 48)).toHaveLength(1);
+    });
+
+    it('accepts a dual-voltage custom part that includes the system voltage', () => {
+      const components = [
+        createComponent('bat1', 'battery', 100, 100, { voltage: 24 }),
+        customPart([12, 24]),
+      ];
+      expect(voltageIssues(components, 24)).toHaveLength(0);
+    });
+
+    it('skips a custom part that declares no supported voltages', () => {
+      const components = [
+        createComponent('bat1', 'battery', 100, 100, { voltage: 48 }),
+        customPart(),
+      ];
+      expect(voltageIssues(components, 48)).toHaveLength(0);
+    });
+
+    it('treats two wired custom parts as compatible when their voltages overlap', () => {
+      const a = createComponent('a', 'custom', 400, 100, { supportedVoltages: [12, 24] });
+      const b = createComponent('b', 'custom', 800, 100, { supportedVoltages: [24, 48] });
+      const wire = createWire('w1', 'a', 'b');
+      const issues = new DesignValidator([a, b], [wire], 24)
+        .validate()
+        .issues.filter(i => i.message.includes('Voltage mismatch'));
+      expect(issues).toHaveLength(0);
+    });
+
+    it('flags two wired custom parts with no voltage in common', () => {
+      const a = createComponent('a', 'custom', 400, 100, { supportedVoltages: [12] });
+      const b = createComponent('b', 'custom', 800, 100, { supportedVoltages: [48] });
+      const wire = createWire('w1', 'a', 'b');
+      const issues = new DesignValidator([a, b], [wire], 12)
+        .validate()
+        .issues.filter(i => i.message.includes('Voltage mismatch'));
+      expect(issues).toHaveLength(1);
+    });
+  });
+
 });

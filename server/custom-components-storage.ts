@@ -5,7 +5,7 @@ import type {
   InsertCustomComponentDefinition,
   UpdateCustomComponentDefinition,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 /**
  * CRUD for user-defined ("Phase 1") custom component definitions.
@@ -47,9 +47,16 @@ class CustomComponentsStorage {
     id: string,
     data: UpdateCustomComponentDefinition
   ): Promise<CustomComponentDefinition | null> {
+    // Bump the version on every edit. Placed instances snapshot the version
+    // they were created from, so this is what makes "this placed part is
+    // older than its definition" answerable at all - without it the stored
+    // definitionVersion would be a constant 1 and tell us nothing. `version`
+    // is owned here, so ignore any value a client sends.
+    const { version: _ignored, ...rest } = data;
+
     const [row] = await db
       .update(customComponents)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...rest, version: sql`${customComponents.version} + 1`, updatedAt: new Date() })
       .where(and(eq(customComponents.id, id), eq(customComponents.ownerId, ownerId)))
       .returning();
 

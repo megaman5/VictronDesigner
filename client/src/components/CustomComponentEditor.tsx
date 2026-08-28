@@ -43,6 +43,22 @@ const TERMINAL_TYPES: TerminalType[] = [
 
 const ORIENTATIONS: TerminalOrientation[] = ["left", "right", "top", "bottom"];
 
+// Short default label per type, in the style the built-in components use
+// ("+", "PV+", "N"). The label is drawn next to the terminal on the canvas,
+// so it has to stay short - an id-derived default like "TERMINAL-1" is
+// unreadable once there are more than a couple of terminals.
+const DEFAULT_LABELS: Record<TerminalType, string> = {
+  positive: "+",
+  negative: "-",
+  "pv-positive": "PV+",
+  "pv-negative": "PV-",
+  hot: "L",
+  neutral: "N",
+  ground: "G",
+  "ac-in": "AC IN",
+  "ac-out": "AC OUT",
+};
+
 // Default dot color per terminal type, matching the wire color CSS vars used
 // throughout terminal-config.ts / SchematicComponent.tsx.
 const TYPE_COLORS: Record<TerminalType, string> = {
@@ -84,7 +100,6 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
 
   const [name, setName] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [category, setCategory] = useState("custom");
   const [width, setWidth] = useState(160);
   const [height, setHeight] = useState(120);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
@@ -99,7 +114,6 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
     if (definition) {
       setName(definition.name);
       setSubtitle(definition.subtitle || "");
-      setCategory(definition.category || "custom");
       setWidth(definition.width);
       setHeight(definition.height);
       setTerminals(definition.terminals.map(t => ({ ...t })));
@@ -107,7 +121,6 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
     } else {
       setName("");
       setSubtitle("");
-      setCategory("custom");
       setWidth(160);
       setHeight(120);
       setTerminals([]);
@@ -127,7 +140,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
       queryClient.invalidateQueries({ queryKey: ["/api/custom-components"] });
       toast({
         title: isEditing ? "Custom component updated" : "Custom component created",
-        description: `"${saved.name}" is ready to place from the My Components library.`,
+        description: `"${saved.name}" is ready to drag on from Custom Components.`,
       });
       onSaved?.(saved);
       onOpenChange(false);
@@ -201,7 +214,7 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
     const newTerminal: Terminal = {
       id,
       type: "positive",
-      label: id.toUpperCase(),
+      label: DEFAULT_LABELS.positive,
       x,
       y,
       color: TYPE_COLORS.positive,
@@ -214,7 +227,11 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
     setTerminals(prev => prev.map(t => {
       if (t.id !== id) return t;
       const next = { ...t, ...patch };
-      if (patch.type) next.color = TYPE_COLORS[patch.type];
+      if (patch.type) {
+        next.color = TYPE_COLORS[patch.type];
+        // Only retarget the label if the author never customised it.
+        if (t.label === DEFAULT_LABELS[t.type]) next.label = DEFAULT_LABELS[patch.type];
+      }
       return next;
     }));
   };
@@ -288,7 +305,6 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
     saveMutation.mutate({
       name: name.trim(),
       subtitle: subtitle.trim() || null,
-      category: category.trim() || "custom",
       width,
       height,
       terminals,
@@ -344,10 +360,6 @@ export function CustomComponentEditor({ open, onOpenChange, definition, onSaved 
           <div className="space-y-2">
             <Label htmlFor="cc-subtitle">Subtitle</Label>
             <Input id="cc-subtitle" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="e.g. 1000A busbar" data-testid="input-cc-subtitle" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="cc-category">Category</Label>
-            <Input id="cc-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="custom" data-testid="input-cc-category" />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-2">

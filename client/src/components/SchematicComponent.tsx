@@ -1089,6 +1089,31 @@ export function SchematicComponent({
             {subtitle && (
               <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="fill-muted-foreground text-[9px]">{subtitle}</text>
             )}
+            {/* Terminal labels. Built-in components hard-code these into their
+                own artwork; a custom part's terminals are author-defined, so
+                draw them from the snapshot - otherwise a multi-terminal part
+                is just a row of unlabelled dots. Offset inward from the edge
+                so the text sits inside the body, clear of the terminal dot. */}
+            {(properties.terminals as Terminal[]).map((t) => {
+              const inset = 11;
+              const pos = {
+                left: { x: t.x + inset, y: t.y + 3, anchor: "start" as const },
+                right: { x: t.x - inset, y: t.y + 3, anchor: "end" as const },
+                top: { x: t.x, y: t.y + inset + 4, anchor: "middle" as const },
+                bottom: { x: t.x, y: t.y - inset, anchor: "middle" as const },
+              }[t.orientation];
+              return (
+                <text
+                  key={t.id}
+                  x={pos.x}
+                  y={pos.y}
+                  textAnchor={pos.anchor}
+                  className="fill-muted-foreground text-[7px] font-medium"
+                >
+                  {t.label}
+                </text>
+              );
+            })}
           </svg>
         );
       }

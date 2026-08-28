@@ -1065,7 +1065,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        No DC voltage declared for this part, so the voltage-mismatch check skips it. Edit the definition in "My Components" to declare one.
+                        No DC voltage declared for this part, so the voltage-mismatch check skips it. Edit the definition under Custom Components to declare one.
                       </p>
                     )}
                   </div>

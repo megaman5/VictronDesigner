@@ -1648,7 +1648,7 @@ export default function SchematicDesigner() {
         name: definition.name,
         x: snap(x),
         y: snap(y),
-        properties: toPlacedProperties(definition, systemVoltage),
+        properties: toPlacedProperties(definition),
       };
       setComponents(prev => [...prev, newComponent]);
       setSelectedComponent(newComponent);
@@ -1717,7 +1717,10 @@ export default function SchematicDesigner() {
       name,
       x: snap(900),
       y: snap(700),
-      properties: { subtitle, voltage: systemVoltage },
+      // No `voltage`: like editor-built custom parts, a quick-add box has no
+      // voltage field in the properties panel, so a frozen snapshot would go
+      // stale against the live system voltage. See toPlacedProperties().
+      properties: { subtitle },
     };
     setComponents(prev => [...prev, newComponent]);
     setSelectedComponent(newComponent);
@@ -2325,7 +2328,7 @@ export default function SchematicDesigner() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete "{deleteCustomTarget?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the definition from your My Components library. Copies already
+              This removes the definition from your Custom Components library. Copies already
               placed on the canvas keep working - they snapshot their own terminals - but
               you won't be able to place new copies of this part.
             </AlertDialogDescription>
