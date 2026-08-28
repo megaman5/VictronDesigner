@@ -1,4 +1,4 @@
-import { Terminal, getComponentTerminals, getComponentDimensions, mpptHasLoadOutput } from "@/lib/terminal-config";
+import { Terminal, getComponentTerminals, getComponentDimensions, getBaseComponentDimensions, getOrientation, isDefaultOrientation, mpptHasLoadOutput } from "@/lib/terminal-config";
 import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
 interface ComponentProperties {
@@ -37,8 +37,14 @@ export function SchematicComponent({
   // Terminals can vary per instance (e.g. MPPT models with a LOAD output, or
   // a custom component's own snapshotted terminal list)
   const terminals = getComponentTerminals(type, properties);
-  // Custom components snapshot their own width/height too
+  // Custom components snapshot their own width/height too. `dims` is the
+  // rotated footprint everything else works in; `baseDims` is the artwork's
+  // natural size, which the renderer draws at before the CSS transform turns
+  // it. Terminals are already rotated, so the overlay uses `dims` untouched.
   const dims = getComponentDimensions(type, properties);
+  const baseDims = getBaseComponentDimensions(type, properties);
+  const orientation = getOrientation(properties);
+  const rotated = !isDefaultOrientation(orientation);
 
   const getLoadLabel = () => {
      if (!properties) return null;
@@ -1146,8 +1152,30 @@ export function SchematicComponent({
       }`}
       onClick={onClick}
     >
-      <div className="hover-elevate active-elevate-2 rounded-md relative" style={{ background: 'transparent' }}>
-        {renderShape()}
+      <div
+        className="hover-elevate active-elevate-2 rounded-md relative"
+        style={{ background: 'transparent', width: dims.width, height: dims.height }}
+      >
+        {/* The artwork is drawn at its natural size and turned with a CSS
+            transform, centred inside the rotated footprint. Terminals are not
+            wrapped: getComponentTerminals already returns them in rotated
+            coordinates, so rotating them again would double the transform. */}
+        {rotated ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: baseDims.width,
+              height: baseDims.height,
+              transform: `translate(-50%, -50%) rotate(${orientation.rotation}deg) scale(${orientation.mirrorX ? -1 : 1}, ${orientation.mirrorY ? -1 : 1})`,
+            }}
+          >
+            {renderShape()}
+          </div>
+        ) : (
+          renderShape()
+        )}
 
         {viewMode === 'load' && loadLabel && (
            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">

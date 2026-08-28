@@ -475,6 +475,112 @@ export function mpptHasLoadOutput(properties?: Record<string, any> | null): bool
 }
 
 /**
+ * Component orientation.
+ *
+ * Rotation is in 90-degree steps only. The wire router is orthogonal and each
+ * terminal declares which edge it exits from, so arbitrary angles would leave
+ * "left"/"top" meaningless; quarter turns keep both the router and the 20px
+ * grid valid. Mirroring flips the body without rotating it, which is what you
+ * want for a busbar feeding the other way.
+ */
+export type Rotation = 0 | 90 | 180 | 270;
+
+export interface Orientation {
+  rotation: Rotation;
+  mirrorX: boolean;
+  mirrorY: boolean;
+}
+
+export const DEFAULT_ORIENTATION: Orientation = { rotation: 0, mirrorX: false, mirrorY: false };
+
+const ROTATIONS: Rotation[] = [0, 90, 180, 270];
+
+/** Read orientation off a component's properties, tolerating older saves. */
+export function getOrientation(properties?: Record<string, any> | null): Orientation {
+  const raw = Number(properties?.rotation ?? 0);
+  const rotation = (ROTATIONS as number[]).includes(raw) ? (raw as Rotation) : 0;
+  return {
+    rotation,
+    mirrorX: !!properties?.mirrorX,
+    mirrorY: !!properties?.mirrorY,
+  };
+}
+
+/** True when the component is left in its default orientation. */
+export function isDefaultOrientation(o: Orientation): boolean {
+  return o.rotation === 0 && !o.mirrorX && !o.mirrorY;
+}
+
+const MIRROR_X_EDGE: Record<TerminalOrientation, TerminalOrientation> = {
+  left: "right", right: "left", top: "top", bottom: "bottom",
+};
+const MIRROR_Y_EDGE: Record<TerminalOrientation, TerminalOrientation> = {
+  top: "bottom", bottom: "top", left: "left", right: "right",
+};
+// A quarter turn clockwise moves the left edge to the top, the top to the
+// right, and so on.
+const ROTATE_EDGE_CW: Record<TerminalOrientation, TerminalOrientation> = {
+  left: "top", top: "right", right: "bottom", bottom: "left",
+};
+
+function rotateEdge(edge: TerminalOrientation, rotation: Rotation): TerminalOrientation {
+  let e = edge;
+  for (let i = 0; i < rotation / 90; i++) e = ROTATE_EDGE_CW[e];
+  return e;
+}
+
+/**
+ * Map a terminal from the component's own (unrotated) coordinate space into
+ * the space it actually occupies on the canvas.
+ *
+ * Mirroring is applied first, in the body's own frame, then the rotation - so
+ * "flip it, then turn it" behaves the way it reads.
+ */
+export function transformTerminal(
+  terminal: Terminal,
+  baseWidth: number,
+  baseHeight: number,
+  o: Orientation
+): Terminal {
+  let { x, y } = terminal;
+  let edge = terminal.orientation;
+
+  if (o.mirrorX) {
+    x = baseWidth - x;
+    edge = MIRROR_X_EDGE[edge];
+  }
+  if (o.mirrorY) {
+    y = baseHeight - y;
+    edge = MIRROR_Y_EDGE[edge];
+  }
+
+  switch (o.rotation) {
+    case 90:
+      [x, y] = [baseHeight - y, x];
+      break;
+    case 180:
+      [x, y] = [baseWidth - x, baseHeight - y];
+      break;
+    case 270:
+      [x, y] = [y, baseWidth - x];
+      break;
+  }
+
+  return { ...terminal, x, y, orientation: rotateEdge(edge, o.rotation) };
+}
+
+/** A quarter turn swaps the footprint's width and height. */
+export function transformDimensions(
+  width: number,
+  height: number,
+  o: Orientation
+): { width: number; height: number } {
+  return o.rotation === 90 || o.rotation === 270
+    ? { width: height, height: width }
+    : { width, height };
+}
+
+/**
  * Terminals for a component instance. Most components have a fixed terminal
  * set keyed by type, but some (MPPT LOAD output) vary by the selected model,
  * so pass the component's properties when they are available.
@@ -494,17 +600,40 @@ export function getComponentTerminals(
     Array.isArray(properties.terminals) &&
     properties.terminals.length > 0
   ) {
-    return properties.terminals as Terminal[];
+    return applyOrientation(
+      properties.terminals as Terminal[],
+      Number(properties.width) || 160,
+      Number(properties.height) || 120,
+      properties
+    );
   }
 
   const config = TERMINAL_CONFIGS[componentType];
   if (!config) return [];
 
-  if (componentType === "mppt" && mpptHasLoadOutput(properties)) {
-    return [...config.terminals, ...MPPT_LOAD_TERMINALS];
-  }
+  const base =
+    componentType === "mppt" && mpptHasLoadOutput(properties)
+      ? [...config.terminals, ...MPPT_LOAD_TERMINALS]
+      : config.terminals;
 
-  return config.terminals;
+  return applyOrientation(base, config.width, config.height, properties);
+}
+
+/**
+ * Apply the instance's rotation/mirroring to a terminal list. Everything that
+ * resolves terminals goes through getComponentTerminals, so doing it here
+ * means routing, hit testing, validation and export all see rotated geometry
+ * without each having to know about it.
+ */
+function applyOrientation(
+  terminals: Terminal[],
+  baseWidth: number,
+  baseHeight: number,
+  properties?: Record<string, any> | null
+): Terminal[] {
+  const o = getOrientation(properties);
+  if (isDefaultOrientation(o)) return terminals;
+  return terminals.map(t => transformTerminal(t, baseWidth, baseHeight, o));
 }
 
 /**
@@ -515,6 +644,19 @@ export function getComponentTerminals(
  * box for unknown types, matching the fallback used elsewhere in the app.
  */
 export function getComponentDimensions(
+  componentType: string,
+  properties?: Record<string, any> | null
+): { width: number; height: number } {
+  const base = getBaseComponentDimensions(componentType, properties);
+  return transformDimensions(base.width, base.height, getOrientation(properties));
+}
+
+/**
+ * The component's own size before rotation. Only the renderer needs this: it
+ * draws the artwork at its natural size and rotates it with a transform,
+ * while everything else works with the rotated footprint.
+ */
+export function getBaseComponentDimensions(
   componentType: string,
   properties?: Record<string, any> | null
 ): { width: number; height: number } {

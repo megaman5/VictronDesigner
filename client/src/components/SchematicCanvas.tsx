@@ -37,6 +37,8 @@ interface SchematicCanvasProps {
   onWireConnectionComplete?: (wireData: WireConnectionData) => void;
   onWireDelete?: (wireId: string) => void;
   onWireUpdate?: (wireId: string, updates: Partial<Wire>) => void;
+  /** Turn the given components by a quarter turn. Positive is clockwise. */
+  onRotateComponents?: (componentIds: string[], delta: number) => void;
   onWireEdit?: (wire: Wire) => void;
   wireConnectionMode?: boolean;
   wireStartComponent?: string | null;
@@ -67,6 +69,7 @@ export function SchematicCanvas({
   onWireConnectionComplete,
   onWireDelete,
   onWireUpdate,
+  onRotateComponents,
   onWireEdit,
   wireConnectionMode = false,
   wireStartComponent = null,
@@ -862,6 +865,16 @@ export function SchematicCanvas({
       return;
     }
     
+    // Rotate selection a quarter turn (R, or Shift+R to go the other way).
+    // Works on a multi-selection so a whole sub-assembly can be turned at once.
+    if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey) {
+      if (selectedIds.length > 0) {
+        e.preventDefault();
+        onRotateComponents?.(selectedIds, e.shiftKey ? -90 : 90);
+      }
+      return;
+    }
+
     // Delete
     if (e.key === "Delete" || e.key === "Backspace") {
       // Delete selected wire
@@ -882,36 +895,14 @@ export function SchematicCanvas({
     const comp = components.find((c) => c.id === id);
     if (!comp) return { x: 0, y: 0 };
 
-    const widths: Record<string, number> = {
-      multiplus: 180,
-      battery: 160,
-      mppt: 160,
-      'solar-panel': 140,
-      cerbo: 180,
-      bmv: 140,
-      'ac-load': 120,
-      'dc-load': 120,
-      fuse: 80,
-      switch: 80,
-      'breaker-panel': 160,
-    };
-
-    const heights: Record<string, number> = {
-      multiplus: 140,
-      battery: 110,
-      mppt: 130,
-      'solar-panel': 120,
-      cerbo: 120,
-      bmv: 140,
-      'ac-load': 100,
-      'dc-load': 100,
-      fuse: 60,
-      switch: 80,
-    };
-
+    // Was a hardcoded size table covering only 11 of the component types, so
+    // everything else fell back to 120x100. getComponentDimensions knows every
+    // type, honours a custom part's snapshotted size, and accounts for
+    // rotation.
+    const dims = getComponentDimensions(comp.type, comp.properties);
     return {
-      x: comp.x + (widths[comp.type] || 120) / 2,
-      y: comp.y + (heights[comp.type] || 100) / 2
+      x: comp.x + dims.width / 2,
+      y: comp.y + dims.height / 2,
     };
   };
 
