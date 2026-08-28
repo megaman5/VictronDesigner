@@ -2300,7 +2300,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
   app.post("/api/custom-components", requireAuth, async (req, res) => {
     try {
       const user = req.user as AuthUser;
-      const data = insertCustomComponentSchema.omit({ ownerId: true }).parse(req.body);
+      // ownerId comes from the session; version is owned by the server (it is
+      // bumped on every update), so neither is accepted from the client.
+      const data = insertCustomComponentSchema.omit({ ownerId: true, version: true }).parse(req.body);
 
       if (!Array.isArray(data.terminals) || data.terminals.length === 0) {
         return res.status(400).json({ error: "At least one terminal is required" });

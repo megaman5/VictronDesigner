@@ -49,10 +49,16 @@ export interface CustomComponentInput {
  * Properties snapshot placed on a SchematicComponent of type "custom" when a
  * definition is dropped onto the canvas. getComponentTerminals/
  * getComponentDimensions in terminal-config.ts read this back.
+ *
+ * Deliberately does NOT set `voltage`. Built-in components freeze the system
+ * voltage at drop time, but a custom part has no voltage field in the
+ * properties panel to correct it afterwards, so a frozen value would go stale
+ * the moment the system voltage changed - and it feeds both wire sizing and
+ * inferSystemVoltage(). Omitting it lets both fall back to the live system
+ * voltage; `supportedVoltages` is the declared constraint instead.
  */
 export function toPlacedProperties(
-  definition: CustomComponentDefinition,
-  systemVoltage: number
+  definition: CustomComponentDefinition
 ): Record<string, any> {
   return {
     definitionId: definition.id,
@@ -65,6 +71,5 @@ export function toPlacedProperties(
     supportedVoltages: definition.supportedVoltages && definition.supportedVoltages.length > 0
       ? definition.supportedVoltages
       : undefined,
-    voltage: systemVoltage,
   };
 }

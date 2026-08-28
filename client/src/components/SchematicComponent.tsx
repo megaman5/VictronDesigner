@@ -1073,6 +1073,11 @@ export function SchematicComponent({
         const h = dims.height;
         const bodyColor = (properties.appearance as { bodyColor?: string } | undefined)?.bodyColor;
         const labelY = subtitle ? h / 2 - 6 : h / 2;
+        // The colour presets are all dark, so switch to white text on them the
+        // way the built-in victron-blue components do. The default (unset)
+        // body is themed card colour and needs the themed foreground instead.
+        const titleFill = bodyColor ? "fill-white" : "fill-foreground";
+        const subFill = bodyColor ? "fill-white/70" : "fill-muted-foreground";
 
         return (
           <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
@@ -1085,10 +1090,35 @@ export function SchematicComponent({
               strokeDasharray="6 3"
               rx="8"
             />
-            <text x={w / 2} y={labelY} textAnchor="middle" className="fill-foreground text-sm font-semibold">{name || "Custom"}</text>
+            <text x={w / 2} y={labelY} textAnchor="middle" className={`${titleFill} text-sm font-semibold`}>{name || "Custom"}</text>
             {subtitle && (
-              <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="fill-muted-foreground text-[9px]">{subtitle}</text>
+              <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className={`${subFill} text-[9px]`}>{subtitle}</text>
             )}
+            {/* Terminal labels. Built-in components hard-code these into their
+                own artwork; a custom part's terminals are author-defined, so
+                draw them from the snapshot - otherwise a multi-terminal part
+                is just a row of unlabelled dots. Offset inward from the edge
+                so the text sits inside the body, clear of the terminal dot. */}
+            {(properties.terminals as Terminal[]).map((t) => {
+              const inset = 11;
+              const pos = {
+                left: { x: t.x + inset, y: t.y + 3, anchor: "start" as const },
+                right: { x: t.x - inset, y: t.y + 3, anchor: "end" as const },
+                top: { x: t.x, y: t.y + inset + 4, anchor: "middle" as const },
+                bottom: { x: t.x, y: t.y - inset, anchor: "middle" as const },
+              }[t.orientation];
+              return (
+                <text
+                  key={t.id}
+                  x={pos.x}
+                  y={pos.y}
+                  textAnchor={pos.anchor}
+                  className={`${subFill} text-[7px] font-medium`}
+                >
+                  {t.label}
+                </text>
+              );
+            })}
           </svg>
         );
       }
