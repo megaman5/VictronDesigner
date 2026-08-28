@@ -1,4 +1,4 @@
-import { Terminal, getComponentTerminals, getComponentDimensions, getBaseComponentDimensions, getOrientation, isDefaultOrientation, mpptHasLoadOutput } from "@/lib/terminal-config";
+import { Terminal, getComponentTerminals, getComponentDimensions, getBaseComponentDimensions, getOrientation, isDefaultOrientation, getLabelCounterTransform, mpptHasLoadOutput } from "@/lib/terminal-config";
 import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
 interface ComponentProperties {
@@ -45,6 +45,7 @@ export function SchematicComponent({
   const baseDims = getBaseComponentDimensions(type, properties);
   const orientation = getOrientation(properties);
   const rotated = !isDefaultOrientation(orientation);
+  const labelCounter = getLabelCounterTransform(orientation);
 
   const getLoadLabel = () => {
      if (!properties) return null;
@@ -1162,6 +1163,7 @@ export function SchematicComponent({
             coordinates, so rotating them again would double the transform. */}
         {rotated ? (
           <div
+            className="component-artwork"
             style={{
               position: 'absolute',
               left: '50%',
@@ -1169,6 +1171,9 @@ export function SchematicComponent({
               width: baseDims.width,
               height: baseDims.height,
               transform: `translate(-50%, -50%) rotate(${orientation.rotation}deg) scale(${orientation.mirrorX ? -1 : 1}, ${orientation.mirrorY ? -1 : 1})`,
+              // Undo the transform for text only, so labels never read
+              // backwards or upside down. See .component-artwork in index.css.
+              ...(labelCounter as React.CSSProperties),
             }}
           >
             {renderShape()}
