@@ -18,6 +18,7 @@ import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
+import { checkQuota } from "./ai/usage-limits";
 
 // Helper to extract visitor ID from request
 function getVisitorId(req: Request): string {
@@ -49,6 +50,43 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     return next();
   }
   res.status(401).json({ error: "Unauthorized" });
+}
+
+/**
+ * Gate for the AI endpoints, which run on the platform's API key and cost real
+ * money. These were open to anonymous callers, so sign-in is now required and
+ * both the lifetime allowance and the monthly cap are enforced before the
+ * model is ever called.
+ *
+ * The `code` in the body is what the client keys its tooltip off, so the
+ * wording lives in one place on the front end rather than being parsed out of
+ * a message string.
+ */
+async function requireAiQuota(req: Request, res: Response, next: NextFunction) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({
+      code: "auth_required",
+      error: "Log in to use AI features",
+    });
+  }
+
+  const user = req.user as AuthUser;
+  try {
+    const quota = await checkQuota(user.id);
+    if (!quota.allowed) {
+      return res.status(429).json({
+        code: quota.blockedBy === "monthly" ? "monthly_limit" : "quota_exhausted",
+        error: quota.reason,
+        lifetimeLimitUsd: quota.lifetimeLimitUsd,
+        lifetimeSpentUsd: quota.lifetimeSpentUsd,
+      });
+    }
+    next();
+  } catch (err: any) {
+    // A quota lookup failure must not silently hand out free model calls.
+    console.error("[ai-quota] check failed:", err?.message);
+    res.status(503).json({ code: "quota_unavailable", error: "AI is temporarily unavailable" });
+  }
 }
 
 // Helper function to extract JSON from markdown code blocks
@@ -241,7 +279,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI-powered system generation
-  app.post("/api/ai-generate-system", async (req, res) => {
+  app.post("/api/ai-generate-system", requireAiQuota, async (req, res) => {
+    // Token usage for cost accounting. Accumulated across every model call
+    // this request makes (the iterative endpoint makes several), so the
+    // logged cost reflects the whole request, not just the last round.
+    const tokenUsage = { inputTokens: 0, outputTokens: 0 };
     const startTime = Date.now();
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
@@ -302,6 +344,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         response_format: { type: "json_object" },
       });
 
+      tokenUsage.inputTokens += completion.usage?.prompt_tokens ?? 0;
+      tokenUsage.outputTokens += completion.usage?.completion_tokens ?? 0;
       const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
 
       // Log AI response for debugging
@@ -329,6 +373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Log to observability
       await observabilityStorage.logAIRequest({
+        ...tokenUsage,
         visitorId,
         userId: user?.id,
         userEmail: user?.email,
@@ -355,6 +400,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
+        ...tokenUsage,
         visitorId,
         userId: user?.id,
         userEmail: user?.email,
@@ -373,7 +419,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI wire generation for existing components
-  app.post("/api/ai-wire-components", async (req, res) => {
+  app.post("/api/ai-wire-components", requireAiQuota, async (req, res) => {
+    // Token usage for cost accounting. Accumulated across every model call
+    // this request makes (the iterative endpoint makes several), so the
+    // logged cost reflects the whole request, not just the last round.
+    const tokenUsage = { inputTokens: 0, outputTokens: 0 };
     const startTime = Date.now();
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
@@ -790,6 +840,8 @@ QUALITY IMPROVEMENT GUIDELINES:
         response_format: { type: "json_object" },
       });
 
+        tokenUsage.inputTokens += completion.usage?.prompt_tokens ?? 0;
+        tokenUsage.outputTokens += completion.usage?.completion_tokens ?? 0;
         const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
 
         console.log(`AI Wire Generation Response (Iteration ${iteration + 1}):`, JSON.stringify(response, null, 2));
@@ -929,6 +981,7 @@ QUALITY IMPROVEMENT GUIDELINES:
 
       // Log to observability
       await observabilityStorage.logAIRequest({
+        ...tokenUsage,
         visitorId,
         userId: user?.id,
         userEmail: user?.email,
@@ -969,6 +1022,7 @@ QUALITY IMPROVEMENT GUIDELINES:
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
+        ...tokenUsage,
         visitorId,
         userId: user?.id,
         userEmail: user?.email,
@@ -987,7 +1041,11 @@ QUALITY IMPROVEMENT GUIDELINES:
   });
 
   // Iterative AI generation with quality validation
-  app.post("/api/ai-generate-system-iterative", async (req, res) => {
+  app.post("/api/ai-generate-system-iterative", requireAiQuota, async (req, res) => {
+    // Token usage for cost accounting. Accumulated across every model call
+    // this request makes (the iterative endpoint makes several), so the
+    // logged cost reflects the whole request, not just the last round.
+    const tokenUsage = { inputTokens: 0, outputTokens: 0 };
     let aiModel = DEFAULT_AI_MODEL;
 
     try {
@@ -1195,6 +1253,8 @@ CRITICAL FIXES NEEDED:
           max_completion_tokens: 128000,
         });
 
+        tokenUsage.inputTokens += completion.usage?.prompt_tokens ?? 0;
+        tokenUsage.outputTokens += completion.usage?.completion_tokens ?? 0;
         const content = completion.choices[0].message.content;
         if (!content) {
           throw new Error("Empty response from AI");
@@ -1341,7 +1401,11 @@ CRITICAL FIXES NEEDED:
   });
 
   // SSE streaming endpoint for real-time progress updates
-  app.post("/api/ai-generate-system-stream", async (req, res) => {
+  app.post("/api/ai-generate-system-stream", requireAiQuota, async (req, res) => {
+    // Token usage for cost accounting. Accumulated across every model call
+    // this request makes (the iterative endpoint makes several), so the
+    // logged cost reflects the whole request, not just the last round.
+    const tokenUsage = { inputTokens: 0, outputTokens: 0 };
     const startTime = Date.now();
     const visitorId = getVisitorId(req);
     const user = req.user as AuthUser | undefined;
@@ -1584,8 +1648,14 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           
           // Track token usage (may come in final chunk)
           if (chunk.usage) {
+            const priorPrompt = promptTokens;
+            const priorCompletion = completionTokens;
             promptTokens = chunk.usage.prompt_tokens || promptTokens;
             completionTokens = chunk.usage.completion_tokens || completionTokens;
+            // Roll the delta into the request total so multi-iteration streams
+            // bill for every round, not just the last one.
+            tokenUsage.inputTokens += Math.max(0, promptTokens - priorPrompt);
+            tokenUsage.outputTokens += Math.max(0, completionTokens - priorCompletion);
           }
         }
 
@@ -1839,6 +1909,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
           // Log success to observability with full debugging info
           await observabilityStorage.logAIRequest({
+            ...tokenUsage,
             visitorId,
             userId: user?.id,
             userEmail: user?.email,
@@ -1902,6 +1973,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         
         // Log failure to observability with full debugging info
         await observabilityStorage.logAIRequest({
+          ...tokenUsage,
           visitorId,
           userId: user?.id,
           userEmail: user?.email,
@@ -2033,6 +2105,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
       // Log success to observability with full debugging info
       await observabilityStorage.logAIRequest({
+        ...tokenUsage,
         visitorId,
         userId: user?.id,
         userEmail: user?.email,
@@ -2072,6 +2145,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
+        ...tokenUsage,
         visitorId,
         userId: user?.id,
         userEmail: user?.email,

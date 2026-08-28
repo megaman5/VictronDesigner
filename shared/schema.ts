@@ -88,6 +88,29 @@ export const customComponents = pgTable("custom_components", {
   ownerIdIdx: index("custom_components_owner_id_idx").on(table.ownerId),
 }));
 
+/**
+ * Per-user AI allowance on the platform's API key.
+ *
+ * A row only exists once an admin has adjusted someone; everyone else runs on
+ * the defaults, so absence of a row is the normal case rather than an error.
+ *
+ * `lifetimeLimitUsd` overrides the global default. `spendSince` is how a reset
+ * works: spend is only ever counted from that instant, so resetting a user is
+ * a timestamp bump rather than deleting their ai_logs history.
+ */
+export const aiAllowances = pgTable("ai_allowances", {
+  userId: varchar("user_id").primaryKey(),
+  userEmail: text("user_email"),
+  /** Overrides AI_LIFETIME_LIMIT_USD for this user. Null = use the default. */
+  lifetimeLimitUsd: real("lifetime_limit_usd"),
+  /** Lifetime spend counts only from here. Null = count everything. */
+  spendSince: timestamp("spend_since"),
+  /** Free-text reason, shown in the admin list. */
+  note: text("note"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
 export const appSettings = pgTable("app_settings", {
   key: varchar("key").primaryKey(),
   value: text("value").notNull(),
@@ -354,6 +377,7 @@ export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type ErrorLog = typeof errorLogs.$inferSelect;
 export type InsertErrorLog = z.infer<typeof insertErrorLogSchema>;
+export type AiAllowance = typeof aiAllowances.$inferSelect;
 export type CustomComponentDefinition = typeof customComponents.$inferSelect;
 export type InsertCustomComponentDefinition = z.infer<typeof insertCustomComponentSchema>;
 export type UpdateCustomComponentDefinition = z.infer<typeof updateCustomComponentSchema>;

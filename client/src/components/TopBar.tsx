@@ -27,6 +27,57 @@ interface AuthUser {
 type WireGaugeFormat = "awg" | "metric";
 type LengthUnit = "ft" | "m";
 
+/**
+ * An AI button that greys out with an explanatory tooltip when AI is not
+ * available. A disabled button swallows pointer events, so the trigger wraps
+ * it in a span - otherwise the tooltip never fires for the exact state that
+ * most needs explaining.
+ */
+function AIAction({
+  blockedReason,
+  testId,
+  onClick,
+  disabled,
+  variant,
+  className,
+  children,
+}: {
+  blockedReason?: string;
+  testId: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  variant?: "default" | "outline";
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const blocked = !!blockedReason;
+  const button = (
+    <Button
+      variant={variant}
+      size="sm"
+      onClick={blocked ? undefined : onClick}
+      disabled={blocked || disabled}
+      data-testid={testId}
+      className={`gap-2 ${className ?? ""}`}
+    >
+      {children}
+    </Button>
+  );
+
+  if (!blocked) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex cursor-not-allowed" data-testid={`${testId}-blocked`}>
+          {button}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{blockedReason}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 interface TopBarProps {
   onAIPrompt?: () => void;
   onAIWire?: () => void;
@@ -46,6 +97,8 @@ interface TopBarProps {
   user?: AuthUser | null;
   currentDesignName?: string;
   isAIWiring?: boolean;
+  /** Why AI is unavailable, if it is. Undefined means it is usable. */
+  aiBlockedReason?: string;
   showWireLabels?: boolean;
   onToggleWireLabels?: () => void;
   wireGaugeFormat?: WireGaugeFormat;
@@ -80,6 +133,7 @@ export function TopBar({
   user,
   currentDesignName,
   isAIWiring = false,
+  aiBlockedReason,
   showWireLabels = true,
   onToggleWireLabels,
   wireGaugeFormat = "awg",
@@ -120,24 +174,27 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          {/* AI runs on the platform's API key, so it needs a signed-in user
+              with allowance left. When it is unavailable the buttons grey out
+              and the tooltip says what to do about it - a disabled button
+              needs a wrapper to still receive hover events. */}
+          <AIAction
+            blockedReason={aiBlockedReason}
+            testId="button-ai-prompt"
             onClick={onAIPrompt}
-            data-testid="button-ai-prompt"
-            className="gap-2"
+            variant="outline"
           >
             <Sparkles className="h-4 w-4" />
             {hasComponents ? "AI Iterate" : "AI Design"}
-          </Button>
+          </AIAction>
 
-          <Button
-            variant={hasWireIssues ? "default" : "outline"}
-            size="sm"
+          <AIAction
+            blockedReason={aiBlockedReason}
+            testId="button-ai-wire"
             onClick={onAIWire}
             disabled={isAIWiring}
-            data-testid="button-ai-wire"
-            className={`gap-2 ${hasWireIssues ? "bg-destructive hover:bg-destructive/90" : ""}`}
+            variant={hasWireIssues ? "default" : "outline"}
+            className={hasWireIssues ? "bg-destructive hover:bg-destructive/90" : ""}
           >
             {isAIWiring ? (
               <>
@@ -150,7 +207,7 @@ export function TopBar({
                 AI Wire
               </>
             )}
-          </Button>
+          </AIAction>
 
           <Button
             variant={wireMode ? "default" : "outline"}
@@ -375,6 +432,10 @@ export function TopBar({
                     <DropdownMenuItem onClick={() => window.location.href = '/observability-admin'}>
                       <Activity className="h-4 w-4 mr-2" />
                       Observability Admin
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => window.location.href = '/ai-usage-admin'}>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      AI Usage
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => window.location.href = '/settings-admin'}>
                       <Settings className="h-4 w-4 mr-2" />
