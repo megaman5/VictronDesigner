@@ -251,12 +251,23 @@ VictronDesigner.com`,
 
 // Returns a tailored draft if one exists for this feedback, otherwise a
 // friendly generic template that quotes the original message.
+// Appended below the sign-off of every draft. Deliberately a footer rather
+// than a sentence in the body: a reply about someone's bug report should read
+// as a reply, not as a pitch with an ask folded into it.
+const TIP_FOOTER = `--
+VictronDesigner.com is free to use. If it saved you some time, you can buy me a coffee: https://ko-fi.com/megaman5`;
+
+function withTipFooter(draft: ReplyDraft): ReplyDraft {
+  if (draft.body.includes(TIP_FOOTER)) return draft;
+  return { ...draft, body: `${draft.body}\n\n${TIP_FOOTER}` };
+}
+
 export function buildReplyDraft(feedback: { id: string; message: string }): ReplyDraft {
   const tailored = FEEDBACK_REPLY_DRAFTS[feedback.id];
-  if (tailored) return tailored;
+  if (tailored) return withTipFooter(tailored);
 
   const quoted = feedback.message.split("\n").map((line) => `> ${line}`).join("\n");
-  return {
+  return withTipFooter({
     subject: "Re: your VictronDesigner.com feedback",
     body: `Hi,
 
@@ -270,7 +281,7 @@ ${quoted}
 Thanks,
 Sean
 VictronDesigner.com`,
-  };
+  });
 }
 
 // Builds a Gmail "compose" deep link that opens a prefilled message in the
