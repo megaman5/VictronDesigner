@@ -4,6 +4,7 @@ import { resolveTarget, type ProviderCredentials, type ProviderId } from "../pro
 import { estimateCostUsd } from "../pricing";
 import { validateDesign } from "../../design-validator";
 import { normalizeAIDesign } from "../../ai-design-normalizer";
+import { judgeDesign, type JudgePanelResult } from "./judge";
 
 /**
  * Executes a benchmark suite against one (skill, provider, model) target.
@@ -16,7 +17,16 @@ export interface RunOptions {
   suiteId: string;
   model: string;
   providerId?: ProviderId;
+  /** Run only these cases from the suite. Empty/undefined = all. */
+  caseIds?: string[];
   repeats?: number;
+  /**
+   * Vision models that grade each best design from its rendered PNG.
+   * Empty/undefined = no judging (it costs extra model calls).
+   */
+  judges?: string[];
+  /** Known-good designs by caseId, shown to judges as calibration anchors. */
+  exemplars?: Record<string, { components: any[]; wires: any[] }>;
   /**
    * Refinement passes per case, matching what the production streaming
    * endpoint does. 1 means single-shot. Later passes receive the previous
@@ -54,6 +64,11 @@ export interface CaseResult {
   outputTokens: number;
   costUsd: number | null;
   durationMs: number;
+  /** Panel median from the vision judges, when judging was requested. */
+  judgeScore: number | null;
+  judgeStdDev: number | null;
+  judgeCostUsd: number | null;
+  judgeDetails: unknown | null;
   errorMessage?: string;
   issues?: unknown;
   output?: unknown;
@@ -86,20 +101,12 @@ export interface RunStats {
   meanDurationMs: number | null;
   totalRepairs: number;
   meanIterations: number | null;
+  meanJudgeScore: number | null;
+  totalJudgeCostUsd: number | null;
 }
 
-/** Pull the first JSON object out of a model response. */
-export function extractJson(text: string): any {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fenced ? fenced[1] : trimmed;
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("No JSON object found in model response");
-  }
-  return JSON.parse(body.slice(start, end + 1));
-}
+import { extractJson } from "./extract-json";
+export { extractJson };
 
 export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
   const suite = getSuite(opts.suiteId);
@@ -115,7 +122,16 @@ export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
   const results: CaseResult[] = [];
   let samplingApplied: boolean | null = null;
 
-  for (const testCase of suite.cases) {
+  const cases = opts.caseIds?.length
+    ? suite.cases.filter(c => opts.caseIds!.includes(c.id))
+    : suite.cases;
+  if (!cases.length) {
+    throw new Error(
+      `No matching cases in suite "${suite.id}". Known: ${suite.cases.map(c => c.id).join(", ")}`
+    );
+  }
+
+  for (const testCase of cases) {
     for (let repeat = 1; repeat <= repeats; repeat++) {
       if (opts.signal?.aborted) throw new Error("Benchmark aborted");
 
@@ -130,6 +146,9 @@ export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
         temperature: opts.temperature,
         seed: opts.seed,
         maxOutputTokens: opts.maxOutputTokens,
+        judges: opts.judges,
+        exemplar: opts.exemplars?.[testCase.id] ?? null,
+        credentials: opts.credentials ?? null,
         signal: opts.signal,
         onSampling: applied => {
           samplingApplied = samplingApplied === null ? applied : samplingApplied && applied;
@@ -149,7 +168,7 @@ export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
     usingPlatformKey: target.usingPlatformKey,
     samplingApplied,
     results,
-    stats: summarize(results, suite, repeats),
+    stats: summarize(results, cases),
   };
 }
 
@@ -164,6 +183,9 @@ async function runCase(args: {
   temperature?: number;
   seed?: number;
   maxOutputTokens?: number;
+  judges?: string[];
+  exemplar?: { components: any[]; wires: any[] } | null;
+  credentials?: ProviderCredentials | null;
   signal?: AbortSignal;
   onSampling: (applied: boolean) => void;
 }): Promise<CaseResult> {
@@ -188,6 +210,10 @@ async function runCase(args: {
     outputTokens: 0,
     costUsd: null,
     durationMs: 0,
+    judgeScore: null,
+    judgeStdDev: null,
+    judgeCostUsd: null,
+    judgeDetails: null,
   };
 
   try {
@@ -290,6 +316,26 @@ async function runCase(args: {
       })
       .filter((x): x is string => x !== null);
 
+    // Judge the winning design, not every pass - the panel exists to grade
+    // what a user would have received.
+    let judged: JudgePanelResult | null = null;
+    if (args.judges?.length) {
+      try {
+        judged = await judgeDesign({
+          design: best.design,
+          prompt: testCase.prompt,
+          systemVoltage: testCase.systemVoltage,
+          exemplar: args.exemplar,
+          judges: args.judges,
+          credentials: args.credentials,
+          signal: args.signal,
+        });
+      } catch (err: any) {
+        // Grading failure should not void a completed generation.
+        console.warn(`[benchmark] judging failed for ${testCase.id}:`, err?.message);
+      }
+    }
+
     return {
       ...base,
       success: true,
@@ -304,6 +350,12 @@ async function runCase(args: {
       expectationsMet: failed.length === 0,
       failedExpectations: failed,
       durationMs: Date.now() - started,
+      judgeScore: judged?.score ?? null,
+      judgeStdDev: judged?.stdDev ?? null,
+      judgeCostUsd: judged?.costUsd ?? null,
+      judgeDetails: judged
+        ? { verdicts: judged.verdicts, lowConfidence: judged.lowConfidence, usedExemplar: judged.usedExemplar }
+        : null,
       issues: best.validation.issues,
       output: best.design,
     };
@@ -317,12 +369,12 @@ async function runCase(args: {
   }
 }
 
-function summarize(results: CaseResult[], suite: BenchmarkSuite, repeats: number): RunStats {
+function summarize(results: CaseResult[], cases: BenchmarkCase[]): RunStats {
   const scores = results
     .map(r => r.score)
     .filter((s): s is number => typeof s === "number");
 
-  const minScoreByCase = new Map(suite.cases.map(c => [c.id, c.minScore]));
+  const minScoreByCase = new Map(cases.map(c => [c.id, c.minScore]));
   const passes = results.filter(
     r =>
       r.success &&
@@ -334,8 +386,15 @@ function summarize(results: CaseResult[], suite: BenchmarkSuite, repeats: number
   const costs = results.map(r => r.costUsd).filter((c): c is number => typeof c === "number");
   const durations = results.filter(r => r.success).map(r => r.durationMs);
 
+  const judgeScores = results
+    .map(r => r.judgeScore)
+    .filter((s): s is number => typeof s === "number");
+  const judgeCosts = results
+    .map(r => r.judgeCostUsd)
+    .filter((c): c is number => typeof c === "number");
+
   return {
-    caseCount: suite.cases.length * repeats,
+    caseCount: results.length,
     completedCount: results.length,
     meanScore: mean(scores),
     medianScore: median(scores),
@@ -350,6 +409,8 @@ function summarize(results: CaseResult[], suite: BenchmarkSuite, repeats: number
     meanDurationMs: durations.length ? Math.round(mean(durations)!) : null,
     totalRepairs: results.reduce((a, r) => a + (r.repairCount ?? 0), 0),
     meanIterations: mean(results.filter(r => r.success).map(r => r.iterationsUsed)),
+    meanJudgeScore: mean(judgeScores),
+    totalJudgeCostUsd: judgeCosts.length ? judgeCosts.reduce((a, c) => a + c, 0) : null,
   };
 }
 

@@ -168,6 +168,16 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  /** Daily spend across all users, for the usage-over-time chart. */
+  app.get("/api/admin/ai/usage/daily", isAdmin, async (req, res) => {
+    try {
+      const days = Math.min(365, Math.max(1, Number(req.query.days) || 90));
+      res.json({ days: await allowanceAdmin.listDailyUsage(days) });
+    } catch (err: any) {
+      res.status(500).json({ error: redactSecrets(err.message) });
+    }
+  });
+
   /** Set a user's total allowance outright. */
   app.post("/api/admin/ai/usage/:userId/limit", isAdmin, async (req, res) => {
     const admin = req.user as AuthUser;
@@ -236,6 +246,9 @@ export function registerAIRoutes(app: Express): void {
         apiKey,
         baseUrl,
         maxOutputTokens,
+        caseIds,
+        judge = false,
+        judges,
       } = req.body ?? {};
 
       if (!suiteId || !model) {
@@ -260,6 +273,9 @@ export function registerAIRoutes(app: Express): void {
         temperature,
         seed,
         maxOutputTokens,
+        caseIds: Array.isArray(caseIds) ? caseIds : undefined,
+        judge: Boolean(judge),
+        judges: Array.isArray(judges) ? judges : undefined,
         label,
         triggeredBy: user?.email,
         credentials: apiKey ? { apiKey, baseUrl } : null,

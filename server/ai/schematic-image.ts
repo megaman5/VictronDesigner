@@ -143,13 +143,13 @@ export function renderSchematicPng(
     ctx.stroke();
 
     ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 15px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(truncate(ctx, c.name || c.type, d.width - 10), c.x + d.width / 2, c.y + d.height / 2);
+    fitText(ctx, c.name || c.type, d.width - 8, 15, true);
+    ctx.fillText(c.name || c.type, c.x + d.width / 2, c.y + d.height / 2);
 
     ctx.fillStyle = "#64748b";
-    ctx.font = "12px sans-serif";
-    ctx.fillText(truncate(ctx, c.type, d.width - 10), c.x + d.width / 2, c.y + d.height / 2 + 16);
+    fitText(ctx, c.type, d.width - 8, 12, false);
+    ctx.fillText(c.type, c.x + d.width / 2, c.y + d.height / 2 + 16);
 
     // Terminals, so the model can see which side a connection has to leave from.
     for (const t of getComponentTerminals(c.type, c.properties as any)) {
@@ -184,12 +184,22 @@ function terminalColor(type: string): string {
   return "#9ca3af";
 }
 
-/** Trim a label to fit its box rather than letting it bleed into neighbours. */
-function truncate(ctx: any, text: string, maxWidth: number): string {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  let t = text;
-  while (t.length > 1 && ctx.measureText(t + "...").width > maxWidth) t = t.slice(0, -1);
-  return t + "...";
+/**
+ * Pick the largest font size at which a label still fits its box.
+ *
+ * These labels used to be truncated to fit ("300A Positive Bus" -> "300A Posit..."),
+ * which the vision judges reliably marked down as a fault in the *design* -
+ * they cannot tell a clipped label from a badly named component. Shrinking to
+ * fit keeps the name readable, so a judge grades the layout rather than the
+ * renderer. Very long names simply render at the 8px floor.
+ */
+export function fitText(ctx: any, text: string, maxWidth: number, preferredPx: number, bold: boolean): void {
+  const weight = bold ? "bold " : "";
+  for (let px = preferredPx; px >= 8; px--) {
+    ctx.font = `${weight}${px}px sans-serif`;
+    if (ctx.measureText(text).width <= maxWidth) return;
+  }
+  ctx.font = `${weight}8px sans-serif`;
 }
 
 /**
@@ -201,12 +211,18 @@ export function modelSupportsVision(model: string): boolean {
   const m = (model ?? "").toLowerCase();
   if (!m) return false;
   if (m.includes("audio") || m.includes("realtime") || m.includes("embedding")) return false;
+  // A provider prefix ("anthropic/claude-opus-5") means OpenRouter routing;
+  // vision support belongs to the underlying model either way.
+  const bare = m.includes("/") ? m.slice(m.indexOf("/") + 1) : m;
   return (
-    m.startsWith("gpt-4o") ||
-    m.startsWith("gpt-4.1") ||
-    m.startsWith("gpt-5") ||
-    m.startsWith("o3") ||
-    m.startsWith("o4")
+    bare.startsWith("gpt-4o") ||
+    bare.startsWith("gpt-4.1") ||
+    bare.startsWith("gpt-5") ||
+    bare.startsWith("o3") ||
+    bare.startsWith("o4") ||
+    // All current Claude (3+) and Gemini (1.5+) chat models accept images.
+    bare.startsWith("claude-") ||
+    bare.startsWith("gemini-")
   );
 }
 

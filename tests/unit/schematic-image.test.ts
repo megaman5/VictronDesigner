@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderSchematicPng } from '../../server/ai/schematic-image';
+import { fitText, renderSchematicPng } from '../../server/ai/schematic-image';
 
 const comp = (id: string, x: number, y: number, type = 'battery') =>
   ({ id, type, name: `${type}-${id}`, x, y, properties: { voltage: 12 } }) as any;
@@ -108,5 +108,49 @@ describe('buildIterationUserMessage', () => {
     const { buildIterationUserMessage } = await import('../../server/ai/schematic-image');
     const parts = buildIterationUserMessage('SPECIFIC FEEDBACK HERE', design, 'gpt-5.5') as any[];
     expect(parts[0].text).toContain('SPECIFIC FEEDBACK HERE');
+  });
+});
+
+describe('Component labels', () => {
+  // A fake 2d context: text width is proportional to length x font size, which
+  // is enough to exercise the fitting loop without a real canvas.
+  const fakeCtx = () => ({
+    font: '',
+    measureText(t: string) {
+      const px = Number(/(\d+)px/.exec(this.font)?.[1] ?? 15);
+      return { width: t.length * px * 0.55 };
+    },
+  });
+
+  it('keeps a preferred size when the label already fits', () => {
+    const ctx = fakeCtx();
+    fitText(ctx as any, 'Battery', 200, 15, true);
+    expect(ctx.font).toBe('bold 15px sans-serif');
+  });
+
+  it('shrinks a long label instead of clipping it', () => {
+    // "300A Positive Distribution Bus" used to render as "300A Posit...",
+    // which the vision judges scored as a design fault rather than a
+    // rendering limit.
+    const ctx = fakeCtx();
+    fitText(ctx as any, '300A Positive Distribution Bus', 200, 15, true);
+    const px = Number(/(\d+)px/.exec(ctx.font)![1]);
+    expect(px).toBeLessThan(15);
+    expect(ctx.measureText('300A Positive Distribution Bus').width).toBeLessThanOrEqual(200);
+  });
+
+  it('stops shrinking at a readable floor', () => {
+    const ctx = fakeCtx();
+    fitText(ctx as any, 'x'.repeat(400), 100, 15, false);
+    expect(ctx.font).toBe('8px sans-serif');
+  });
+
+  it('still renders a schematic containing a very long name', () => {
+    const out = renderSchematicPng(
+      [{ id: 'bus1', type: 'busbar-positive', name: '300A Positive Distribution Bus', x: 200, y: 200, properties: {} } as any],
+      [],
+      { maxDimension: 900 }
+    );
+    expect(out.png.length).toBeGreaterThan(0);
   });
 });

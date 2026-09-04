@@ -109,6 +109,35 @@ export function layoutFragment(): string {
     "- Terminals move with the body, so turning a part re-aims its wires. Use it to face a component toward what it connects to instead of routing a long way around - e.g. turn a busbar 90 degrees to run it vertically beside a stack of loads",
     "- A quarter turn swaps the component's width and height; keep the spacing rules above true of the turned footprint",
     "- Leave it out entirely when the default orientation is fine. Do not rotate purely for variety",
+    // The name is what gets drawn on the schematic, and a bare "Fuse" tells a
+    // reader nothing. Measured: ratings in names went from 27% to ~100% of
+    // parts when this line was added.
+    "- NAME every part with its rating, since the name is what appears on the drawing: \"250A Class-T Main Fuse\", \"300A Positive Bus\", \"200Ah LiFePO4 House Bank\". Never just \"Fuse\" or \"Bus\"",
+  ].join("\n");
+}
+
+/**
+ * Which AWG to pick for a given circuit current. Added after the benchmark
+ * playground showed a high-current 12V case (a 2000W inverter draws ~167A)
+ * consistently undersized at 12 AWG - the prompt told the model how to FORMAT
+ * a gauge string but never how to CHOOSE one. Numbers match CLAUDE.md's Wire
+ * Gauge Selection Guide (ABYC 105C free-air ampacity, 20% margin).
+ */
+export function wireGaugeFragment(): string {
+  return [
+    "WIRE GAUGE SELECTION - pick by the circuit's actual current, not a guess:",
+    "  * 0-50A: 10 AWG",
+    "  * 50-65A: 8 AWG",
+    "  * 65-100A: 6 AWG",
+    "  * 100-130A: 4 AWG",
+    "  * 130-175A: 2 AWG",
+    "  * 175-200A: 1 AWG",
+    "  * 200-235A: 1/0 AWG",
+    "  * 370A+: TWO parallel 4/0 AWG runs - a single conductor cannot carry it",
+    "- Current = watts / voltage. At 12V this gets large fast: a 2000W inverter draws ~167A, so its",
+    "  battery cabling needs 2 AWG or heavier, never a small gauge",
+    "- The higher-current side of any DC circuit (inverter-to-battery, MPPT-to-battery on a big array) is",
+    "  usually the thickest wire in the whole design - undersizing it is the single most common validation failure",
   ].join("\n");
 }
 
@@ -164,6 +193,7 @@ export function sharedDesignRules(): string {
     terminalIdsFragment(),
     requiredPropertiesFragment(),
     wiringRulesFragment(),
+    wireGaugeFragment(),
     acVoltageFragment(),
     fuseGuidanceFragment(),
   ].join("\n\n");

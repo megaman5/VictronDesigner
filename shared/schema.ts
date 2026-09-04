@@ -190,6 +190,16 @@ export const benchmarkRuns = pgTable("benchmark_runs", {
   status: varchar("status").notNull().default("running"), // running | completed | failed
   label: text("label"),
   triggeredBy: varchar("triggered_by"),
+  // Hash of the rendered prompt content. Version strings are bumped by hand
+  // and go stale; this is what proves two runs used the same (or different)
+  // prompt text. Null on runs from before it existed.
+  promptHash: varchar("prompt_hash"),
+  gitRev: varchar("git_rev"),
+  gitDirty: boolean("git_dirty"),
+  // Judge panel used, e.g. ["gpt-5-mini", "claude-haiku-4-5"]. Null = unjudged.
+  judges: jsonb("judges"),
+  meanJudgeScore: numeric("mean_judge_score", { precision: 6, scale: 2 }),
+  totalJudgeCostUsd: numeric("total_judge_cost_usd", { precision: 12, scale: 6 }),
   caseCount: integer("case_count").notNull().default(0),
   completedCount: integer("completed_count").notNull().default(0),
   meanScore: numeric("mean_score", { precision: 6, scale: 2 }),
@@ -237,9 +247,35 @@ export const benchmarkResults = pgTable("benchmark_results", {
   errorMessage: text("error_message"),
   issues: jsonb("issues"),
   output: jsonb("output"),
+  // Vision-judge grading of the rendered design. judgeScore is the panel
+  // median; stddev is the disagreement, so a noisy verdict is visible.
+  judgeScore: integer("judge_score"),
+  judgeStdDev: numeric("judge_std_dev", { precision: 6, scale: 2 }),
+  judgeCostUsd: numeric("judge_cost_usd", { precision: 12, scale: 6 }),
+  judgeDetails: jsonb("judge_details"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   runIdx: index("benchmark_results_run_idx").on(table.runId),
+}));
+
+/**
+ * One hand-picked high-quality solution per benchmark case, produced by a top
+ * model (Fable) once and reused forever. Judges see its rendering alongside a
+ * candidate as a calibration anchor, so cheap judge models grade against a
+ * concrete quality bar instead of their own drifting notion of "good".
+ */
+export const benchmarkExemplars = pgTable("benchmark_exemplars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  caseId: varchar("case_id").notNull(),
+  suiteId: varchar("suite_id").notNull(),
+  model: varchar("model").notNull(),
+  validatorScore: integer("validator_score"),
+  design: jsonb("design").notNull(),
+  notes: text("notes"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  caseIdx: uniqueIndex("benchmark_exemplars_case_idx").on(table.caseId),
 }));
 
 /**

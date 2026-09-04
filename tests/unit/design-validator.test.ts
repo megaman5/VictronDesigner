@@ -113,6 +113,71 @@ describe('Design Validator', () => {
     });
   });
 
+  /**
+   * A fused branch off a bus bar is the pattern the AI prompt recommends, and
+   * it used to be charged with the whole system's current: a 60W fridge was
+   * told it needed to carry 157A and failed for "insufficient gauge".
+   */
+  describe('Branch circuit current attribution', () => {
+    // battery -> main fuse -> +bus, with a big inverter branch and a small
+    // fused load branch hanging off the same bus.
+    const buildSystem = (branchGauge: string, branchWatts = 60, trunkGauge = '4/0 AWG') => {
+      const components = [
+        createComponent('battery1', 'battery', 100, 100, { voltage: 12, capacity: 200 }),
+        createComponent('fuseMain', 'fuse', 500, 100, { fuseType: 'class-t', fuseRating: 250 }),
+        createComponent('shunt1', 'smartshunt', 500, 500, {}),
+        createComponent('busPos', 'busbar-positive', 900, 100, {}),
+        createComponent('busNeg', 'busbar-negative', 900, 500, {}),
+        createComponent('fuseInv', 'fuse', 1300, 100, { fuseType: 'class-t', fuseRating: 250 }),
+        createComponent('inverter1', 'inverter', 1700, 100, { powerRating: 2000, acOutputVoltage: '120' }),
+        createComponent('fuseBranch', 'fuse', 1300, 900, { fuseType: 'blade', fuseRating: 15 }),
+        createComponent('loadBranch', 'dc-load', 1700, 900, { watts: branchWatts, voltage: 12 }),
+      ];
+      const wires = [
+        createWire('w1', 'battery1', 'fuseMain', 'positive', trunkGauge, 2),
+        createWire('w2', 'fuseMain', 'busPos', 'positive', trunkGauge, 2),
+        createWire('w3', 'battery1', 'shunt1', 'negative', trunkGauge, 2),
+        createWire('w4', 'shunt1', 'busNeg', 'negative', trunkGauge, 2),
+        createWire('w5', 'busPos', 'fuseInv', 'positive', '4/0 AWG', 2),
+        createWire('w6', 'fuseInv', 'inverter1', 'positive', '4/0 AWG', 2),
+        createWire('w7', 'inverter1', 'busNeg', 'negative', '4/0 AWG', 2),
+        createWire('w8', 'busPos', 'fuseBranch', 'positive', branchGauge, 2),
+        createWire('w9', 'fuseBranch', 'loadBranch', 'positive', branchGauge, 2),
+        createWire('w10', 'loadBranch', 'busNeg', 'negative', branchGauge, 2),
+      ];
+      return new DesignValidator(components, wires, 12).validate();
+    };
+
+    const gaugeErrors = (result: ReturnType<DesignValidator['validate']>) =>
+      result.issues.filter(i => /gauge .* insufficient|Excessive voltage drop/i.test(i.message));
+
+    it('sizes a fused branch by its own load, not the whole system', () => {
+      // 60W / 12V = 5A. 10 AWG is ample; before the fix this was told 157A.
+      expect(gaugeErrors(buildSystem('10 AWG'))).toHaveLength(0);
+    });
+
+    it('still flags a branch that is genuinely undersized for its own load', () => {
+      // 600W / 12V = 50A through 18 AWG (20A max) - a real fault, still caught.
+      const errors = gaugeErrors(buildSystem('18 AWG', 600));
+      expect(errors.length).toBeGreaterThan(0);
+      // Reported against the branch's own 50A, not the system's ~157A.
+      expect(errors.some(i => i.message.includes('50.0A'))).toBe(true);
+      expect(errors.some(i => i.message.includes('157'))).toBe(false);
+    });
+
+    it('still charges the trunk with whole-system current', () => {
+      // Battery-to-bus wiring carries the inverter plus every branch, so an
+      // undersized trunk must still fail even though branches are fine.
+      const errors = gaugeErrors(buildSystem('10 AWG', 60, '10 AWG'));
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some(i => /1[0-9][0-9]\.[0-9]A/.test(i.message))).toBe(true);
+    });
+
+    it('sizes a correctly-specified heavy branch without complaint', () => {
+      expect(gaugeErrors(buildSystem('6 AWG', 600))).toHaveLength(0);
+    });
+  });
+
   describe('MPPT Solar Panel Validation', () => {
     it('should flag MPPT without solar panel connection', () => {
       const components = [

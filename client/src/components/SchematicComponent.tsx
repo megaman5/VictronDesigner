@@ -1076,8 +1076,11 @@ export function SchematicComponent({
           );
         }
 
-        const w = dims.width;
-        const h = dims.height;
+        // Drawn at the natural (unrotated) size, like every other case in
+        // this switch - the .component-artwork wrapper below is what turns
+        // it, once. Using the rotated dims here would rotate this box twice.
+        const w = baseDims.width;
+        const h = baseDims.height;
         const bodyColor = (properties.appearance as { bodyColor?: string } | undefined)?.bodyColor;
         const labelY = subtitle ? h / 2 - 6 : h / 2;
         // The colour presets are all dark, so switch to white text on them the
