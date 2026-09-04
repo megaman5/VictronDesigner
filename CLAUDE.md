@@ -674,12 +674,19 @@ Required for full functionality:
 
 ## Recent Changes
 
-**Production model switched to gemini-3.1-pro-preview** - benchmarked against
-the previous default on the same suite and prompt hash, 12 designs each:
-gpt-5.4 scored 65.6 with a 58% pass rate and 28 normalizer repairs, against
-90.6 / 100% / 2 for Gemini. gpt-5.4 was also wildly inconsistent (stddev 31
-vs 10) and produced one design scoring zero. Routing added so a non-OpenAI id
-actually reaches its vendor.
+**Production model is now gemini-3.8-flash** - benchmarked on the same suite
+and prompt hash, 12 designs each:
+
+| model | validator | pass | judge | repairs | cost/12 |
+|---|---|---|---|---|---|
+| gpt-5.4 (the old default) | 65.6 (stddev 31) | 58% | 52.8 | 28 | $1.35 |
+| gemini-3.1-pro-preview | 90.6 | 100% | 57.6 | 2 | $1.98 |
+| gemini-3.8-flash | 92.0 (stddev 7.4) | 100% | 61.5 | 0 | $0.70 |
+
+gpt-5.4 was not merely lower but erratic, and produced one design scoring
+zero. 3.8-flash then beat 3.1-pro on three of the four cases at a third of
+the price, so it took over. `DEFAULT_AI_MODEL` is kept in step with the
+setting so a fresh database does not fall back to the rejected model.
 
 **Prompt A/B: name every part with its rating** - the vision judges kept
 noting that parts were unlabelled, and measurement agreed: only ~30% of fuses,

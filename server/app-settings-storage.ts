@@ -2,7 +2,11 @@ import { db } from "./db";
 import { appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-export const DEFAULT_AI_MODEL = "gpt-5.4";
+// Fallback when the ai_model setting is absent (a fresh database). Kept in
+// step with the configured default so a new deployment does not quietly run
+// the model the benchmarks rejected - gpt-5.4 scored 65.6 with a 58% pass
+// rate against this one's 92.0 / 100%.
+export const DEFAULT_AI_MODEL = "gemini-3.8-flash";
 export const DEFAULT_WIRE_ROUTING_STYLE = "orthogonal";
 export const WIRE_ROUTING_STYLE_VALUES = ["orthogonal", "rounded", "curved", "straight"];
 
