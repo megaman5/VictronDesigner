@@ -99,6 +99,7 @@ export const MODEL_PRICING: Record<string, ModelPrice> = {
   // --- Google Gemini ---
   // 3.5/3.6 rates from OpenRouter's feed, checked 2026-08-31 (Google retired
   // gemini-2.5-flash for new API users that month).
+  "gemini-3.8-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
   "gemini-3.7-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
   "gemini-3.6-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
   "gemini-3.5-flash": { inputPerMTok: 1.5, outputPerMTok: 9 },

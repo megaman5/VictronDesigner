@@ -7,6 +7,10 @@ afterEach(() => {
   cleanup();
 });
 
+// The browser shims below only apply to jsdom suites. Server-side tests opt
+// into the node environment, where `window` does not exist and touching it
+// here would fail the file before any test runs.
+if (typeof window !== 'undefined') {
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -36,3 +40,5 @@ global.IntersectionObserver = class IntersectionObserver {
   unobserve() {}
   disconnect() {}
 };
+
+}
