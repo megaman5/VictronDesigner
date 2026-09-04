@@ -2614,10 +2614,12 @@ export class DesignValidator {
       }
     }
 
-    // Check canvas boundaries
+    // Edge margin only - not a hard canvas size. The canvas has no real
+    // bound (SchematicCanvas pans/zooms freely), so there is nothing to warn
+    // about on the far side; only the near side (x/y close to 0) matters,
+    // since the PNG renderer's content-bounds margin clamps to 0 and a
+    // component sitting right at the origin loses that margin on export.
     this.components.forEach(comp => {
-      const dims = getComponentDimensions(comp.type, comp.properties);
-
       if (comp.x < 50 || comp.y < 50) {
         this.issues.push({
           severity: "warning",
@@ -2625,16 +2627,6 @@ export class DesignValidator {
           message: `Component "${comp.name}" too close to canvas edge`,
           componentIds: [comp.id],
           suggestion: "Move component at least 50px from edges",
-        });
-      }
-
-      if (comp.x + dims.width > 1950 || comp.y + dims.height > 1450) {
-        this.issues.push({
-          severity: "warning",
-          category: "layout",
-          message: `Component "${comp.name}" near or beyond canvas boundary`,
-          componentIds: [comp.id],
-          suggestion: "Keep components within 2000×1500px canvas",
         });
       }
     });
