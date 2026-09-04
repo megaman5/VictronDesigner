@@ -214,6 +214,33 @@ describe('rotated components render', () => {
     );
     expect(container.innerHTML).toContain('scale(-1, 1)');
   });
+
+  it('draws a rotated custom component artwork at its base size, not the swapped footprint', async () => {
+    const { render } = await import('@testing-library/react');
+    const { SchematicComponent } = await import('@/components/SchematicComponent');
+
+    // A 400x40 bar, rotated 90 - getComponentDimensions swaps this to 40x400,
+    // but the artwork itself must stay 400x40 since the CSS wrapper (sized to
+    // the base footprint) is what performs the turn. Using the swapped size
+    // here would rotate the box twice.
+    const { container } = render(
+      <SchematicComponent
+        id="c1"
+        type="custom"
+        name="Bar thingy"
+        properties={{
+          width: 400,
+          height: 40,
+          rotation: 90,
+          terminals: [term({ x: 0, y: 20, orientation: 'left' })],
+        }}
+        selected={false}
+      />
+    );
+    const svg = container.querySelector('.component-artwork svg')!;
+    expect(svg.getAttribute('width')).toBe('400');
+    expect(svg.getAttribute('height')).toBe('40');
+  });
 });
 
 describe('label readability under transform', () => {
