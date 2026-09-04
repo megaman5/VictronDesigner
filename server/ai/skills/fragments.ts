@@ -95,7 +95,7 @@ export function acVoltageFragment(): string {
 
 export function layoutFragment(): string {
   return [
-    "CANVAS: 2000px wide × 1500px tall",
+    "CANVAS: 2560px wide × 1440px tall",
     "LAYOUT RULES:",
     "- Minimum 300px horizontal and 250px vertical between component centres - components must not overlap",
     "- Snap all positions to the 20px grid",

@@ -11,7 +11,7 @@
 - **Main Entry**: `server/index.ts` (Express backend)
 - **Frontend Entry**: `client/src/main.tsx` (React + Vite)
 - **Schema**: `shared/schema.ts` (TypeScript types & Drizzle ORM)
-- **Canvas Dimensions**: 2000px × 1500px
+- **Canvas Dimensions**: 2560px × 1440px (a soft frame of reference for the AI prompt and its vision renders - the real canvas is unbounded)
 - **Grid Size**: 20px snap grid
 - **Design Guidelines**: `design_guidelines.md` (Material Design 3 adapted for technical tools)
 

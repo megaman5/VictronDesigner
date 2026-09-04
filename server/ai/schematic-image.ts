@@ -24,8 +24,11 @@ const WIRE_COLORS: Record<string, string> = {
   neutral: "#9ca3af",
 };
 
-const CANVAS_W = 2000;
-const CANVAS_H = 1500;
+// Not a hard limit on the design (the real canvas pans/zooms freely) - this
+// is just the clamp for content-bounds cropping below, so a very large design
+// isn't cut off in the image the model actually sees.
+const CANVAS_W = 2560;
+const CANVAS_H = 1440;
 
 export interface RenderOptions {
   /** Longest edge of the output image. Smaller costs fewer input tokens. */
@@ -45,7 +48,7 @@ export interface RenderedSchematic {
 
 /**
  * Crop to the content plus a margin, so a design using one corner of the
- * 2000x1500 canvas does not render as a stamp in the middle of white space.
+ * 2560x1440 canvas does not render as a stamp in the middle of white space.
  */
 function contentBounds(components: SchematicComponent[]) {
   if (components.length === 0) {

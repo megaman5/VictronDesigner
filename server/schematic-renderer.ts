@@ -8,8 +8,10 @@ export function renderSchematicToPNG(
   components: SchematicComponent[],
   wires: Wire[]
 ): Buffer {
-  const width = 2000;
-  const height = 1500;
+  // Matches server/ai/schematic-image.ts's clamp - kept in sync so a design
+  // large enough to need that renderer's larger canvas isn't cut off here.
+  const width = 2560;
+  const height = 1440;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
 
