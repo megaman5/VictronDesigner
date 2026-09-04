@@ -177,6 +177,71 @@ describe('Design Validator', () => {
       expect(gaugeErrors(buildSystem('6 AWG', 600))).toHaveLength(0);
     });
   });
+  /**
+   * A wire straight from shore power to the main AC breaker had no branch at
+   * all - neither endpoint is an ac-load/ac-panel/inverter - so current
+   * stayed 0 and "Cannot determine current for wire" fired on the one wire
+   * carrying the whole shore feed, skipping gauge validation on it entirely.
+   */
+  describe('AC pass-through current (breakers and switches)', () => {
+    const acWire = (
+      id: string, from: string, to: string, polarity: string,
+      fromTerminal: string, toTerminal: string, gauge: string, length = 3
+    ): Wire => ({
+      id, fromComponentId: from, toComponentId: to, fromTerminal, toTerminal, polarity, gauge, length,
+    });
+
+    const buildSystem = (gauge: string, loadWatts = 1000) => {
+      const components = [
+        createComponent('shoreInlet', 'shore-power', 400, 100, { voltage: 120, maxAmps: 30 }),
+        createComponent('acBreaker', 'ac-breaker', 700, 100, { amps: 30, rating: 30, poles: 2, acVoltage: 120 }),
+        createComponent('multiplus', 'multiplus', 1000, 100, { powerRating: 3000, watts: 3000, voltage: 12, acOutputVoltage: '120' }),
+        createComponent('acPanel', 'ac-panel', 1300, 100, {}),
+        createComponent('load1', 'ac-load', 1600, 60, { watts: loadWatts, acVoltage: 120 }),
+        createComponent('load2', 'ac-load', 1600, 300, { watts: 1002, acVoltage: 120 }),
+      ];
+      const wires = [
+        acWire('w1', 'shoreInlet', 'acBreaker', 'hot', 'ac-out-hot', 'in-hot', gauge),
+        acWire('w1n', 'shoreInlet', 'acBreaker', 'neutral', 'ac-out-neutral', 'in-neutral', gauge),
+        acWire('w2', 'acBreaker', 'multiplus', 'hot', 'out-hot', 'ac-in-hot', gauge),
+        acWire('w2n', 'acBreaker', 'multiplus', 'neutral', 'out-neutral', 'ac-in-neutral', gauge),
+        acWire('w3', 'multiplus', 'acPanel', 'hot', 'ac-out-hot', 'main-in-hot', gauge),
+        acWire('w3n', 'multiplus', 'acPanel', 'neutral', 'ac-out-neutral', 'main-in-neutral', gauge),
+        acWire('w4', 'acPanel', 'load1', 'hot', 'load-1-hot', 'hot', gauge),
+        acWire('w5', 'acPanel', 'load2', 'hot', 'load-2-hot', 'hot', gauge),
+      ];
+      return new DesignValidator(components, wires, 12).validate();
+    };
+
+    const wireSizingIssues = (result: ReturnType<DesignValidator['validate']>, wireId: string) =>
+      result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === wireId);
+
+    it('determines current on the shore-power-to-breaker wire instead of skipping gauge validation', () => {
+      const result = buildSystem('10 AWG');
+      const issues = wireSizingIssues(result, 'w1');
+      expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
+      expect(issues.filter(i => i.severity === 'error')).toHaveLength(0);
+    });
+
+    it('still flags that same wire when it is genuinely undersized', () => {
+      const result = buildSystem('18 AWG', 3000);
+      const issues = wireSizingIssues(result, 'w1');
+      expect(issues.some(i => i.severity === 'error' && /insufficient/.test(i.message))).toBe(true);
+    });
+
+    it('traces through a breaker even with no shore-power component upstream', () => {
+      // A generator or unmodelled source feeding straight into a breaker.
+      const components = [
+        createComponent('acBreaker', 'ac-breaker', 400, 100, { amps: 30, rating: 30, poles: 2, acVoltage: 120 }),
+        createComponent('load1', 'ac-load', 700, 100, { watts: 1000, acVoltage: 120 }),
+      ];
+      const wires = [acWire('w1', 'acBreaker', 'load1', 'hot', 'out-hot', 'hot', '10 AWG')];
+      const result = new DesignValidator(components, wires, 12).validate();
+      const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === 'w1');
+      expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
+    });
+  });
+
 
   describe('MPPT Solar Panel Validation', () => {
     it('should flag MPPT without solar panel connection', () => {
