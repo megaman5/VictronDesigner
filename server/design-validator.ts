@@ -1657,6 +1657,21 @@ export class DesignValidator {
                 const tsOutputCurrent = this.calculateTransferSwitchOutputCurrent(toComp.id);
                 current = (wire.polarity === "hot" || wire.polarity === "neutral") ? tsOutputCurrent : 0;
               }
+              // For shore power → main breaker (or a switch), trace past it
+              else if (toComp.type === "ac-breaker" || toComp.type === "switch") {
+                const passThroughCurrent = this.calculatePassThroughAcCurrent(toComp.id, wire.id);
+                current = (wire.polarity === "hot" || wire.polarity === "neutral") ? passThroughCurrent : 0;
+              }
+            }
+            // An AC breaker or switch with a source other than shore power - a
+            // genset, a second shore inlet, or nothing modelled upstream at
+            // all. Trace past it the same way regardless of what feeds it.
+            else if (
+              (fromComp?.type === "ac-breaker" || fromComp?.type === "switch") &&
+              (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground")
+            ) {
+              const passThroughCurrent = this.calculatePassThroughAcCurrent(fromComp!.id, wire.id);
+              current = (wire.polarity === "hot" || wire.polarity === "neutral") ? passThroughCurrent : 0;
             }
             // For inverter → transfer switch wires
             else if (fromComp && (fromComp.type === "inverter" || fromComp.type === "multiplus" || fromComp.type === "phoenix-inverter" || fromComp.type === "quattro") && 
@@ -3243,6 +3258,67 @@ export class DesignValidator {
    * Calculate total current through transfer switch output
    * by tracing downstream to AC panel and its loads
    */
+  /**
+   * Current through an AC pass-through device (breaker or switch) - traces to
+   * whichever load-bearing component sits on the other side and reuses the
+   * same per-type logic used when that component is evaluated directly.
+   *
+   * Added because a wire straight from shore power to the main AC breaker had
+   * no branch at all: neither endpoint is an ac-load/ac-panel/inverter, so
+   * current stayed 0 and gauge validation was silently skipped on the one
+   * wire carrying the whole shore-power feed. Breakers and switches are the
+   * common thing between a source and everything else, so this treats them
+   * as transparent the way fuses and switches already are on the DC side.
+   */
+  private calculatePassThroughAcCurrent(
+    passThroughId: string,
+    excludeWireId: string,
+    depth: number = 0
+  ): number {
+    if (depth > 4) return 0; // breaker->breaker chains are rare; don't loop forever
+
+    const continuingWires = this.wires.filter(
+      w =>
+        w.id !== excludeWireId &&
+        (w.fromComponentId === passThroughId || w.toComponentId === passThroughId) &&
+        (w.polarity === "hot" || w.polarity === "neutral")
+    );
+
+    let totalCurrent = 0;
+    const visited = new Set<string>();
+
+    for (const wire of continuingWires) {
+      const otherId = wire.fromComponentId === passThroughId ? wire.toComponentId : wire.fromComponentId;
+      if (visited.has(otherId)) continue;
+      visited.add(otherId);
+
+      const otherComp = this.components.find(c => c.id === otherId);
+      if (!otherComp) continue;
+
+      if (
+        otherComp.type === "inverter" ||
+        otherComp.type === "multiplus" ||
+        otherComp.type === "phoenix-inverter" ||
+        otherComp.type === "quattro"
+      ) {
+        const inverterDC = calculateInverterDCInput(otherComp.id, this.components, this.wires, this.systemVoltage);
+        if (inverterDC.acLoadWatts > 0) totalCurrent += inverterDC.acLoadWatts / inverterDC.acVoltage;
+      } else if (otherComp.type === "ac-panel") {
+        totalCurrent += this.calculateACPanelTotalCurrent(otherComp.id);
+      } else if (otherComp.type === "ac-load") {
+        const loadWatts = (otherComp.properties?.watts || otherComp.properties?.power || 0) as number;
+        const acVoltage = getACVoltage(otherComp) || 120;
+        if (loadWatts > 0) totalCurrent += loadWatts / acVoltage;
+      } else if (otherComp.type === "transfer-switch") {
+        totalCurrent += this.calculateTransferSwitchOutputCurrent(otherComp.id);
+      } else if (otherComp.type === "ac-breaker" || otherComp.type === "switch") {
+        totalCurrent += this.calculatePassThroughAcCurrent(otherComp.id, wire.id, depth + 1);
+      }
+    }
+
+    return totalCurrent;
+  }
+
   private calculateTransferSwitchOutputCurrent(transferSwitchId: string): number {
     // Find wires from transfer switch output to AC panel
     const outputWires = this.wires.filter(
