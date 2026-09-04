@@ -154,3 +154,21 @@ describe('Component labels', () => {
     expect(out.png.length).toBeGreaterThan(0);
   });
 });
+
+describe('Canvas headroom for large designs', () => {
+  // Regression for the 2000x1500 clamp cutting off designs that legitimately
+  // sprawl past it - the validator no longer nags about that boundary (there
+  // is no real one), so this renderer's clamp must not silently reintroduce
+  // it by cropping the model's own view of the design.
+  it('does not clamp content to the old 2000x1500 box', () => {
+    // Right edge at 2350+160=2510 - past the old 2000px limit, inside the
+    // current 2560px one. Content is ~350px tall regardless (both components
+    // at y=200), so at maxDimension=1024 the rendered height is purely a
+    // function of how wide the renderer thinks the content is: ~145px if it
+    // correctly sees ~2480px of width, ~187px if a reintroduced 2000px clamp
+    // shrinks that to ~1920px. The two are far enough apart that this is a
+    // real regression check, not a rounding coin flip.
+    const r = renderSchematicPng([comp('a', 200, 200), comp('b', 2350, 200)], []);
+    expect(r.height).toBeLessThan(165);
+  });
+});
