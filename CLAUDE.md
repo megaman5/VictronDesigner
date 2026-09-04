@@ -328,6 +328,21 @@ in one copy and not the other.
 picks the change up. Preview the rendered prompt without spending a model call:
 `GET /api/admin/ai/skills/:id/preview`.
 
+### Which vendor serves the configured model
+The production endpoints call the OpenAI SDK directly (they need streaming,
+which `server/ai/providers` does not expose), so `server/ai/model-client.ts`
+picks the base URL and key from the model id:
+
+- `gemini-*` -> Google's OpenAI-compatible endpoint, `GEMINI_API_KEY`
+- `vendor/model` -> OpenRouter, `OPENROUTER_API_KEY`
+- anything else -> OpenAI, `OPENAI_API_KEY`
+
+Before this, every id went to OpenAI, so the admin "AI model" setting could
+name a model it could not actually reach - it 404'd at request time rather
+than being rejected at configuration time. Prefer a bare `gemini-*` id over
+`google/gemini-*`: same model, but billed to our own Google key instead of a
+reseller balance that can run dry.
+
 ### AI access control
 The AI endpoints spend real money on the platform key, so they are **not open**:
 - All four (`ai-generate-system`, `-wire-components`, `-iterative`, `-stream`)
@@ -658,6 +673,13 @@ Required for full functionality:
 5. **Community Component Sharing**: Not supported (custom components are private to their owner)
 
 ## Recent Changes
+
+**Production model switched to gemini-3.1-pro-preview** - benchmarked against
+the previous default on the same suite and prompt hash, 12 designs each:
+gpt-5.4 scored 65.6 with a 58% pass rate and 28 normalizer repairs, against
+90.6 / 100% / 2 for Gemini. gpt-5.4 was also wildly inconsistent (stddev 31
+vs 10) and produced one design scoring zero. Routing added so a non-OpenAI id
+actually reaches its vendor.
 
 **Prompt A/B: name every part with its rating** - the vision judges kept
 noting that parts were unlabelled, and measurement agreed: only ~30% of fuses,

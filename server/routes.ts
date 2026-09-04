@@ -17,6 +17,7 @@ import { generateShoppingList, generateWireLabels, generateCSV, generateSystemRe
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import OpenAI from "openai";
+import { clientForModel, hasKeyForModel } from "./ai/model-client";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
 import { checkQuota } from "./ai/usage-limits";
 import { buildIterationUserMessage } from "./ai/schematic-image";
@@ -41,9 +42,6 @@ function getClientIP(req: Request): string {
     || "unknown";
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 // Authentication middleware
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -296,7 +294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       aiModel = await getAIModel();
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
-      if (!process.env.OPENAI_API_KEY) {
+      if (!hasKeyForModel(aiModel)) {
         console.log("No OpenAI API key found, returning mock response");
         const mockResponse = {
           components: [
@@ -330,7 +328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(mockResponse);
       }
 
-      const completion = await openai.chat.completions.create({
+      const completion = await clientForModel(aiModel).chat.completions.create({
         model: aiModel,
         messages: [
           {
@@ -448,7 +446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Components array is required" });
       }
 
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const openai = clientForModel(aiModel);
       let bestWires: any[] = [];
       let bestScore = 0;
       let bestValidation: any = null;
@@ -669,7 +667,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? wireCalculationIssues 
           : currentWireCalculationIssues;
 
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const openai = clientForModel(aiModel);
 
         // Build iteration feedback if not first iteration
         let iterationFeedback = "";
@@ -826,7 +824,7 @@ QUALITY IMPROVEMENT GUIDELINES:
 `;
         }
 
-      const completion = await openai.chat.completions.create({
+      const completion = await clientForModel(aiModel).chat.completions.create({
         model: aiModel,
         messages: [
           {
@@ -1249,7 +1247,7 @@ CRITICAL FIXES NEEDED:
         // From the second round on, show the model what it just built.
         const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
 
-        const completion = await openai.chat.completions.create({
+        const completion = await clientForModel(aiModel).chat.completions.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
@@ -1619,7 +1617,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         }
 
         // Stream the AI response
-        const stream = await openai.chat.completions.create({
+        const stream = await clientForModel(aiModel).chat.completions.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
