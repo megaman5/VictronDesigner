@@ -85,7 +85,24 @@ export const MODEL_PRICING: Record<string, ModelPrice> = {
   "gpt-4o": { inputPerMTok: 2.5, outputPerMTok: 10 , longContext: OPENAI_LONG_CONTEXT },
   "gpt-4o-mini": { inputPerMTok: 0.15, outputPerMTok: 0.6 , longContext: OPENAI_LONG_CONTEXT },
 
+  // --- Frontier models reached via OpenRouter (rates from its /models feed,
+  // checked 2026-09-01). lookupPrice strips the vendor prefix, so these also
+  // cover the bare ids. ---
+  "grok-4.6": { inputPerMTok: 2, outputPerMTok: 6 },
+  "grok-4.5": { inputPerMTok: 2, outputPerMTok: 6 },
+  "kimi-k3": { inputPerMTok: 3, outputPerMTok: 15 },
+  "qwen3.8-max": { inputPerMTok: 2, outputPerMTok: 6 },
+  "mistral-medium-3-5": { inputPerMTok: 1.5, outputPerMTok: 7.5 },
+  "nova-premier-v1": { inputPerMTok: 2.5, outputPerMTok: 12.5 },
+  "glm-5v-turbo": { inputPerMTok: 1.2, outputPerMTok: 4 },
+
   // --- Google Gemini ---
+  // 3.5/3.6 rates from OpenRouter's feed, checked 2026-08-31 (Google retired
+  // gemini-2.5-flash for new API users that month).
+  "gemini-3.7-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
+  "gemini-3.6-flash": { inputPerMTok: 0.75, outputPerMTok: 3.75 },
+  "gemini-3.5-flash": { inputPerMTok: 1.5, outputPerMTok: 9 },
+  "gemini-3.5-flash-lite": { inputPerMTok: 0.3, outputPerMTok: 2.5 },
   "gemini-3.1-pro-preview": { inputPerMTok: 2, outputPerMTok: 12 },
   "gemini-3.1-flash-lite": { inputPerMTok: 0.25, outputPerMTok: 1.5 },
   "gemini-3-flash-preview": { inputPerMTok: 0.5, outputPerMTok: 3 },
@@ -96,17 +113,10 @@ export const MODEL_PRICING: Record<string, ModelPrice> = {
 
 export const PRICING_AS_OF = ASOF;
 
-/**
- * Cost in USD for a request, or null when the model is not in the table.
- * Null means "unknown", never "free" - callers must not treat it as zero.
- */
-export function estimateCostUsd(
-  model: string,
+function costFromPrice(
+  price: ModelPrice,
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number }
-): number | null {
-  const price = lookupPrice(model);
-  if (!price) return null;
-
+): number {
   const cached = usage.cachedInputTokens ?? 0;
   const uncachedInput = Math.max(0, usage.inputTokens - cached);
 
@@ -122,6 +132,44 @@ export function estimateCostUsd(
     (cached / 1_000_000) * cachedRate * inMul +
     (usage.outputTokens / 1_000_000) * price.outputPerMTok * outMul
   );
+}
+
+/**
+ * Cost in USD for a request, or null when the model is not in the table.
+ * Null means "unknown", never "free" - callers must not treat it as zero.
+ */
+export function estimateCostUsd(
+  model: string,
+  usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number }
+): number | null {
+  const price = lookupPrice(model);
+  if (!price) return null;
+  return costFromPrice(price, usage);
+}
+
+/**
+ * Flat token assumption for rows with no recorded token usage - every ai_logs
+ * row from before cost tracking actually shipped (see routes.ts "Recent
+ * Changes" - cost_usd was null for all of them, not just unpriced models).
+ * Sized to the one platform-billed request that does have real counts
+ * (27,018 in / 5,544 out on a wire-components call).
+ */
+export const FALLBACK_ESTIMATE_TOKENS = { inputTokens: 25_000, outputTokens: 5_500 };
+
+/** Stand-in for a model name pricing has never heard of. Mid-tier GPT-5 rates. */
+const GENERIC_FALLBACK_PRICE: ModelPrice = { inputPerMTok: 2, outputPerMTok: 12 };
+
+/**
+ * Baseline cost estimate for a request with no recorded cost - used only for
+ * admin reporting (the AI Usage dashboard), never for quota enforcement.
+ * Always returns a number: a known model uses its real per-token rate against
+ * the flat token assumption above; an unrecognized model falls back further
+ * to a generic mid-tier rate, so the dashboard always has a number to sum
+ * instead of an unpriced gap.
+ */
+export function estimateFallbackCostUsd(model: string | null): number {
+  const price = (model ? lookupPrice(model) : null) ?? GENERIC_FALLBACK_PRICE;
+  return costFromPrice(price, FALLBACK_ESTIMATE_TOKENS);
 }
 
 /**
