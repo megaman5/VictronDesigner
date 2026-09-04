@@ -1075,6 +1075,108 @@ export class DesignValidator {
     });
   }
 
+  /**
+   * Current through a DC wire, derived from what actually sits downstream of it.
+   *
+   * A DC circuit is a loop (battery -> + path -> load -> - path -> battery), but
+   * each polarity on its own is a radial tree. So: drop this wire from the
+   * same-polarity graph, see which side still reaches a battery, and the other
+   * side is everything this wire feeds. Its net load is the current the wire has
+   * to carry.
+   *
+   * This replaces a type-based guess that treated every fuse and switch as part
+   * of the main trunk, which handed a small fused branch (the `busbar -> fuse ->
+   * load` pattern the AI prompt recommends) the entire system's current and then
+   * failed it for "insufficient gauge" - a 60W fridge told to carry 157A.
+   *
+   * Returns null when the cut is ambiguous - no battery on either side, or a
+   * battery on both (series links, parallel banks) - so the caller can fall back
+   * to the older whole-system estimate rather than trust a bad number.
+   */
+  private calculateWireCurrentByCut(wire: Wire): number | null {
+    if (wire.polarity !== "positive" && wire.polarity !== "negative") return null;
+
+    const samePolarity = this.wires.filter(
+      w => w.polarity === wire.polarity && isDifferentWire(w, wire)
+    );
+
+    const reachableFrom = (startId: string): Set<string> => {
+      const seen = new Set<string>([startId]);
+      const queue = [startId];
+      while (queue.length) {
+        const id = queue.shift()!;
+        for (const w of samePolarity) {
+          let next: string | null = null;
+          if (w.fromComponentId === id) next = w.toComponentId;
+          else if (w.toComponentId === id) next = w.fromComponentId;
+          if (next && !seen.has(next)) {
+            seen.add(next);
+            queue.push(next);
+          }
+        }
+      }
+      return seen;
+    };
+
+    const fromSide = reachableFrom(wire.fromComponentId);
+    const toSide = reachableFrom(wire.toComponentId);
+
+    // A wire whose ends are still connected around some other path is not a
+    // clean cut - refuse rather than guess.
+    if (fromSide.has(wire.toComponentId) || toSide.has(wire.fromComponentId)) return null;
+
+    const hasBattery = (side: Set<string>) =>
+      this.components.some(c => c.type === "battery" && side.has(c.id));
+
+    const fromHasBattery = hasBattery(fromSide);
+    const toHasBattery = hasBattery(toSide);
+    if (fromHasBattery === toHasBattery) return null; // both or neither - ambiguous
+
+    const loadSide = fromHasBattery ? toSide : fromSide;
+
+    let loadA = 0;
+    let sourceA = 0;
+    for (const c of this.components) {
+      if (!loadSide.has(c.id)) continue;
+
+      if (
+        c.type === "inverter" ||
+        c.type === "multiplus" ||
+        c.type === "phoenix-inverter" ||
+        c.type === "quattro"
+      ) {
+        loadA += calculateInverterDCInput(
+          c.id,
+          this.components,
+          this.wires,
+          this.systemVoltage
+        ).dcInputCurrent;
+      } else if (c.type === "dc-load") {
+        const w = (c.properties?.watts || c.properties?.power || 0) as number;
+        const v = (c.properties?.voltage as number) || this.systemVoltage;
+        if (w > 0 && v > 0) loadA += w / v;
+        else if (c.properties?.current || c.properties?.amps) {
+          loadA += (c.properties?.current || c.properties?.amps || 0) as number;
+        }
+      } else if (
+        c.type === "mppt" ||
+        c.type === "blue-smart-charger" ||
+        c.type === "orion-dc-dc" ||
+        c.type === "alternator"
+      ) {
+        sourceA += (c.type === "mppt"
+          ? c.properties?.maxCurrent || c.properties?.amps || c.properties?.current || 0
+          : c.properties?.amps || c.properties?.current || 0) as number;
+      }
+    }
+
+    // A branch that only feeds a charger carries that charger's output; the
+    // caller's existing source handling covers it, so report nothing here.
+    if (loadA === 0) return null;
+
+    return Math.max(0, loadA - sourceA);
+  }
+
   private validateWireSizing(): void {
     // Import wire data for validation
     // maxCurrent per ABYC E-11 Table VI: 105°C insulation, free air, 30°C ambient
@@ -1201,11 +1303,19 @@ export class DesignValidator {
       // Calculate current from connected components if not set
       let current = wire.current || 0;
 
-      // DC "trunk": battery bank (incl. series links), fuses, switches, shunt,
-      // and the main +/- bus bars form one series loop, so every wire on it
-      // carries the same whole-system current. Compute it so pass-through parts
-      // (fuses, switches, series links) get a real current and gauge validation
-      // isn't skipped for them.
+      // What this wire actually feeds, by cutting it out of the same-polarity
+      // graph. Precise for the radial branches a real design is made of, and
+      // the reason a fused branch circuit is no longer charged with the whole
+      // system's current.
+      if (current === 0) {
+        const cut = this.calculateWireCurrentByCut(wire);
+        if (cut !== null) current = cut;
+      }
+
+      // Fallback for cuts that came back ambiguous - series battery links and
+      // parallel banks put a battery on both sides. The DC "trunk" (battery
+      // bank, fuses, switches, shunt and the main +/- bus bars) is one series
+      // loop, so every wire on it carries the same whole-system current.
       if (current === 0 && (wire.polarity === "positive" || wire.polarity === "negative")) {
         const fromCompT = this.components.find(c => c.id === wire.fromComponentId);
         const toCompT = this.components.find(c => c.id === wire.toComponentId);
@@ -3118,7 +3228,10 @@ export class DesignValidator {
     // Bonus for good layout efficiency
     score += (metrics.layoutEfficiency - 50) * 0.3;
 
-    return Math.max(0, Math.min(100, score));
+    // Every consumer treats this as a whole-number 0-100 score (thresholds in
+    // benchmark cases, the integer DB columns it's stored in) - round once
+    // here rather than truncating unpredictably at each call site.
+    return Math.round(Math.max(0, Math.min(100, score)));
   }
 
   private getComponentName(id: string): string {
