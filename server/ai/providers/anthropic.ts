@@ -5,7 +5,7 @@ import type {
   Provider,
   ProviderCredentials,
 } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, messageText, toAnthropicContent } from "./types";
 
 /**
  * Native Anthropic adapter.
@@ -14,6 +14,16 @@ import { ProviderError } from "./types";
  * is a top-level field rather than a message, and current models reject
  * sampling parameters (temperature/top_p) outright with a 400 - so we never
  * send them and report samplingApplied: false.
+ *
+ * The system prompt is marked as an ephemeral cache breakpoint. Every skill
+ * (system-design, wire-components) and the benchmark judge send a large,
+ * mostly-static system prompt on every call - a fresh request each time, not
+ * an accumulated conversation, but Anthropic's cache keys on the request
+ * prefix itself, so repeats/iterations of the same case (and the judge's
+ * fully-static rubric) still hit. Below the model's minimum cacheable prefix
+ * (1024-4096 tokens depending on tier) the breakpoint is simply a no-op, so
+ * this is safe to always send. Reported via usage.cache_read_input_tokens,
+ * already mapped to cachedInputTokens below.
  */
 export class AnthropicProvider implements Provider {
   readonly id = "anthropic" as const;
@@ -36,16 +46,16 @@ export class AnthropicProvider implements Provider {
       ...(creds.baseUrl ? { baseURL: creds.baseUrl } : {}),
     });
 
-    const system = req.messages
+    const systemText = req.messages
       .filter(m => m.role === "system")
-      .map(m => m.content)
+      .map(m => messageText(m.content))
       .join("\n\n");
 
     const messages = req.messages
       .filter(m => m.role !== "system")
       .map(m => ({
         role: m.role as "user" | "assistant",
-        content: m.content,
+        content: toAnthropicContent(m.content) as any,
       }));
 
     if (messages.length === 0) {
@@ -55,19 +65,28 @@ export class AnthropicProvider implements Provider {
     // JSON mode has no dedicated flag here; the instruction goes in the system
     // prompt and the response is parsed by the caller.
     const systemPrompt = req.json
-      ? `${system}\n\nRespond with a single valid JSON object and nothing else. No markdown fences, no prose.`
-      : system;
+      ? `${systemText}\n\nRespond with a single valid JSON object and nothing else. No markdown fences, no prose.`
+      : systemText;
+
+    const system: Anthropic.TextBlockParam[] | undefined = systemPrompt
+      ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
+      : undefined;
 
     try {
-      const response = await client.messages.create(
+      // Streaming, not create(): the SDK rejects non-streaming requests it
+      // estimates could run past 10 minutes, which Fable's long reasoning
+      // turns hit even at moderate max_tokens. finalMessage() still returns
+      // the same shape as create() once the stream completes.
+      const stream = client.messages.stream(
         {
           model: req.model,
           max_tokens: req.maxOutputTokens ?? 16000,
-          ...(systemPrompt ? { system: systemPrompt } : {}),
+          ...(system ? { system } : {}),
           messages,
         },
         { signal: req.signal }
       );
+      const response = await stream.finalMessage();
 
       // content is a discriminated union - narrow before reading .text
       const text = response.content

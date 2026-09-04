@@ -5,7 +5,7 @@ import type {
   Provider,
   ProviderCredentials,
 } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, messageText, toGeminiParts } from "./types";
 
 /**
  * Native Google Gemini adapter.
@@ -13,6 +13,11 @@ import { ProviderError } from "./types";
  * Gemini keeps the system prompt in `config.systemInstruction` and asks for
  * JSON via `responseMimeType`, so the mapping is mechanical but not the same
  * as either OpenAI or Anthropic.
+ *
+ * Prompt caching, like OpenAI's, is implicit for 2.5+ generation Gemini
+ * models (which includes every gemini-3.x id this app calls) - a matching
+ * prefix is cached and discounted automatically, no request field to set.
+ * Already reported below via usageMetadata.cachedContentTokenCount.
  */
 export class GeminiProvider implements Provider {
   readonly id = "gemini" as const;
@@ -21,9 +26,12 @@ export class GeminiProvider implements Provider {
 
   listKnownModels(): string[] {
     return [
+      "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      // Retired for new API users as of 2026-08; kept for grandfathered keys.
       "gemini-2.5-pro",
       "gemini-2.5-flash",
-      "gemini-2.0-flash",
     ];
   }
 
@@ -32,7 +40,7 @@ export class GeminiProvider implements Provider {
 
     const systemInstruction = req.messages
       .filter(m => m.role === "system")
-      .map(m => m.content)
+      .map(m => messageText(m.content))
       .join("\n\n");
 
     // Gemini expects alternating user/model turns; our skills only ever send a
@@ -41,7 +49,7 @@ export class GeminiProvider implements Provider {
       .filter(m => m.role !== "system")
       .map(m => ({
         role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
+        parts: toGeminiParts(m.content),
       }));
 
     if (contents.length === 0) {

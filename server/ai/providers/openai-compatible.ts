@@ -6,12 +6,21 @@ import type {
   ProviderCredentials,
   ProviderId,
 } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, toOpenAIContent } from "./types";
 
 /**
  * Adapter for every OpenAI-compatible endpoint: OpenAI itself, OpenRouter,
  * and self-hosted servers such as Ollama or vLLM. They differ only in base
  * URL, extra headers, and which models they expose.
+ *
+ * Prompt caching needs no request changes here, unlike the Anthropic adapter:
+ * OpenAI (gpt-4o and later, which covers every GPT-5.x model this app uses)
+ * caches automatically once a request's prefix exceeds ~1024 tokens - no
+ * opt-in field. OpenRouter passes that straight through for OpenAI-family
+ * models; for a Claude model reached via OpenRouter, caching is whatever the
+ * upstream Anthropic route negotiates without help from this adapter, since
+ * OpenRouter's OpenAI-compatible surface has no cache_control field to set.
+ * Already reported below via usage.prompt_tokens_details.cached_tokens.
  */
 export class OpenAICompatibleProvider implements Provider {
   constructor(
@@ -41,7 +50,7 @@ export class OpenAICompatibleProvider implements Provider {
 
     const body: Record<string, unknown> = {
       model: req.model,
-      messages: req.messages.map(m => ({ role: m.role, content: m.content })),
+      messages: req.messages.map(m => ({ role: m.role, content: toOpenAIContent(m.content) })),
     };
     if (req.json) body.response_format = { type: "json_object" };
     if (req.maxOutputTokens) body.max_completion_tokens = req.maxOutputTokens;
