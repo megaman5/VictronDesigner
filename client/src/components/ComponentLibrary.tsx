@@ -207,11 +207,16 @@ export function ComponentLibrary({
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-3 mt-2">
+                  {/* Saving needs an account. Leaving this enabled let a
+                      signed-out user fill in the whole editor and lose it to a
+                      401 on save - the second most common error in the logs. */}
                   <Button
                     variant="outline"
                     size="sm"
                     className="w-full gap-2"
                     onClick={onCreateCustomDefinition}
+                    disabled={!isAuthenticated}
+                    title={isAuthenticated ? undefined : "Sign in to build your own components"}
                     data-testid="button-create-custom-definition"
                   >
                     <Plus className="h-4 w-4" />

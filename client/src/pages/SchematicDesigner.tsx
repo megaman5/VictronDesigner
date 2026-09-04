@@ -162,12 +162,16 @@ export default function SchematicDesigner() {
     setCookie(DISCLAIMER_COOKIE, DISCLAIMER_VERSION);
     setDisclaimerOpen(false);
     setDisclaimerReviewOnly(false);
-    // Persist to the account too when logged in, so it carries across devices.
-    fetch("/api/user/disclaimer", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version: DISCLAIMER_VERSION }),
-    }).catch(() => { /* not logged in / offline: cookie still covers this browser */ });
+    // Persist to the account too, so it carries across devices. Signed-out
+    // visitors are covered by the cookie alone - calling this without a session
+    // just returns 401, which was the single most common error in the logs.
+    if (user) {
+      fetch("/api/user/disclaimer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: DISCLAIMER_VERSION }),
+      }).catch(() => { /* offline: the cookie still covers this browser */ });
+    }
   };
 
   const showDisclaimer = () => {

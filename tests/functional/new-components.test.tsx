@@ -9,16 +9,40 @@ vi.mock('@/lib/tracking', () => ({ trackAction: vi.fn() }));
 
 // ComponentLibrary fetches the signed-in user's saved custom components with
 // useQuery, so it needs a query client in context even when signed out.
-function renderLibrary() {
+function renderLibrary(props: Partial<React.ComponentProps<typeof ComponentLibrary>> = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ComponentLibrary />
+      <ComponentLibrary {...props} />
     </QueryClientProvider>
   );
 }
+
+describe('Custom component gating', () => {
+  // Saving a custom component needs an account. When the button stayed live
+  // while signed out, a visitor could fill in the whole editor and lose it to
+  // a 401 on save - which is what the production logs were showing.
+  it('disables "Build a Component" when signed out', () => {
+    renderLibrary({ isAuthenticated: false });
+    const button = screen.getByTestId('button-create-custom-definition');
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', expect.stringContaining('Sign in'));
+  });
+
+  it('enables it once signed in', () => {
+    renderLibrary({ isAuthenticated: true });
+    expect(screen.getByTestId('button-create-custom-definition')).toBeEnabled();
+  });
+
+  it('does not open the editor from a signed-out click', () => {
+    const onCreate = vi.fn();
+    renderLibrary({ isAuthenticated: false, onCreateCustomDefinition: onCreate });
+    fireEvent.click(screen.getByTestId('button-create-custom-definition'));
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+});
 
 describe('Component library entries', () => {
   // The niche parts sit behind "Show more" so the list opens at a usable
