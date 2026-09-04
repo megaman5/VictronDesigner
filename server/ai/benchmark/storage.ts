@@ -1,7 +1,8 @@
 import { db } from "../../db";
-import { benchmarkRuns, benchmarkResults } from "@shared/schema";
+import { benchmarkRuns, benchmarkResults, benchmarkExemplars } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import type { CaseResult, RunStats } from "./runner";
+import type { JudgePanelResult } from "./judge";
 
 /** Persistence for benchmark runs so results can be compared over time. */
 
@@ -17,6 +18,10 @@ export interface CreateRunInput {
   label?: string;
   triggeredBy?: string;
   caseCount: number;
+  promptHash?: string | null;
+  gitRev?: string | null;
+  gitDirty?: boolean | null;
+  judges?: string[] | null;
 }
 
 const money = (n: number | null | undefined) =>
@@ -40,6 +45,10 @@ export const benchmarkStorage = {
         label: input.label ?? null,
         triggeredBy: input.triggeredBy ?? null,
         caseCount: input.caseCount,
+        promptHash: input.promptHash ?? null,
+        gitRev: input.gitRev ?? null,
+        gitDirty: input.gitDirty ?? null,
+        judges: input.judges?.length ? input.judges : null,
         status: "running",
       })
       .returning({ id: benchmarkRuns.id });
@@ -66,6 +75,10 @@ export const benchmarkStorage = {
       outputTokens: result.outputTokens,
       costUsd: money(result.costUsd),
       durationMs: result.durationMs,
+      judgeScore: result.judgeScore,
+      judgeStdDev: decimal(result.judgeStdDev),
+      judgeCostUsd: money(result.judgeCostUsd),
+      judgeDetails: result.judgeDetails ?? null,
       errorMessage: result.errorMessage ?? null,
       issues: result.issues ?? null,
       output: result.output ?? null,
@@ -105,9 +118,100 @@ export const benchmarkStorage = {
         totalInputTokens: stats.totalInputTokens,
         totalOutputTokens: stats.totalOutputTokens,
         meanDurationMs: stats.meanDurationMs,
+        meanJudgeScore: decimal(stats.meanJudgeScore),
+        totalJudgeCostUsd: money(stats.totalJudgeCostUsd),
         samplingApplied,
       })
       .where(eq(benchmarkRuns.id, runId));
+  },
+
+  /** Attach (or replace) a judge verdict on a stored result - retro-judging. */
+  async recordJudgement(resultId: string, panel: JudgePanelResult): Promise<void> {
+    await db
+      .update(benchmarkResults)
+      .set({
+        judgeScore: panel.score,
+        judgeStdDev: decimal(panel.stdDev),
+        judgeCostUsd: money(panel.costUsd),
+        judgeDetails: {
+          verdicts: panel.verdicts,
+          lowConfidence: panel.lowConfidence,
+          usedExemplar: panel.usedExemplar,
+        },
+      })
+      .where(eq(benchmarkResults.id, resultId));
+  },
+
+  /** Recompute a run's judge aggregates from its result rows after retro-judging. */
+  async refreshRunJudgeStats(runId: string, judges: string[]): Promise<void> {
+    const rows = await db
+      .select({ judgeScore: benchmarkResults.judgeScore, judgeCostUsd: benchmarkResults.judgeCostUsd })
+      .from(benchmarkResults)
+      .where(eq(benchmarkResults.runId, runId));
+
+    const scores = rows.map(r => r.judgeScore).filter((s): s is number => typeof s === "number");
+    const costs = rows
+      .map(r => (r.judgeCostUsd === null ? null : Number(r.judgeCostUsd)))
+      .filter((c): c is number => typeof c === "number" && Number.isFinite(c));
+
+    await db
+      .update(benchmarkRuns)
+      .set({
+        judges,
+        meanJudgeScore: decimal(scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null),
+        totalJudgeCostUsd: money(costs.length ? costs.reduce((a, b) => a + b, 0) : null),
+      })
+      .where(eq(benchmarkRuns.id, runId));
+  },
+
+  /** One exemplar per case; a new one replaces the old. */
+  async saveExemplar(input: {
+    caseId: string;
+    suiteId: string;
+    model: string;
+    validatorScore: number | null;
+    design: { components: any[]; wires: any[] };
+    notes?: string | null;
+    createdBy?: string | null;
+  }): Promise<void> {
+    await db
+      .insert(benchmarkExemplars)
+      .values({
+        caseId: input.caseId,
+        suiteId: input.suiteId,
+        model: input.model,
+        validatorScore: input.validatorScore,
+        design: input.design,
+        notes: input.notes ?? null,
+        createdBy: input.createdBy ?? null,
+      })
+      .onConflictDoUpdate({
+        target: benchmarkExemplars.caseId,
+        set: {
+          suiteId: input.suiteId,
+          model: input.model,
+          validatorScore: input.validatorScore,
+          design: input.design,
+          notes: input.notes ?? null,
+          createdBy: input.createdBy ?? null,
+          createdAt: new Date(),
+        },
+      });
+  },
+
+  async listExemplars() {
+    return db.select().from(benchmarkExemplars).orderBy(benchmarkExemplars.caseId);
+  },
+
+  /** Exemplar designs keyed by caseId, the shape the runner wants. */
+  async exemplarsByCase(): Promise<Record<string, { components: any[]; wires: any[] }>> {
+    const rows = await this.listExemplars();
+    const out: Record<string, { components: any[]; wires: any[] }> = {};
+    for (const row of rows) {
+      const design = row.design as any;
+      if (design?.components?.length) out[row.caseId] = design;
+    }
+    return out;
   },
 
   async failRun(runId: string, message: string): Promise<void> {
