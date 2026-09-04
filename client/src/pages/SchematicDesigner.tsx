@@ -16,6 +16,9 @@ import { CustomComponentEditor } from "@/components/CustomComponentEditor";
 import { toPlacedProperties, type CustomComponentDefinition } from "@/lib/custom-components";
 import { DisclaimerDialog } from "@/components/DisclaimerDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -187,6 +190,37 @@ export default function SchematicDesigner() {
   const [wireConnectionMode, setWireConnectionMode] = useState(false);
   const [wireStartComponent, setWireStartComponent] = useState<string | null>(null);
   const [showWireLabels, setShowWireLabels] = useState<boolean>(true);
+  // Collapsible side panels, so a small screen (or someone wiring a big design)
+  // can reclaim the width for the canvas. Persisted per-browser like the other
+  // display toggles above - there is no per-account reason to sync it.
+  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("leftPanelOpen") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rightPanelOpen") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleLeftPanel = () => {
+    setLeftPanelOpen((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("leftPanelOpen", next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  };
+  const toggleRightPanel = () => {
+    setRightPanelOpen((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("rightPanelOpen", next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  };
   const [wireGaugeFormat, setWireGaugeFormat] = useState<WireGaugeFormat>("awg");
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>("ft");
   const validRoutingStyles = WIRE_ROUTING_STYLES.map((s) => s.value);
@@ -2187,21 +2221,38 @@ export default function SchematicDesigner() {
       />
 
       <div className="flex-1 flex overflow-hidden">
-        <ComponentLibrary
-          onDragStart={(comp) => setDraggedComponentType(comp.id)}
-          onAddCustom={() => setCustomDialogOpen(true)}
-          isAuthenticated={!!user}
-          onDragStartCustomDefinition={(def) => setDraggedCustomDefinition(def)}
-          onCreateCustomDefinition={() => {
-            setEditingCustomDefinition(null);
-            setCustomComponentEditorOpen(true);
-          }}
-          onEditCustomDefinition={(def) => {
-            setEditingCustomDefinition(def);
-            setCustomComponentEditorOpen(true);
-          }}
-          onDeleteCustomDefinition={(def) => setDeleteCustomTarget(def)}
-        />
+        {leftPanelOpen && (
+          <ComponentLibrary
+            onDragStart={(comp) => setDraggedComponentType(comp.id)}
+            onAddCustom={() => setCustomDialogOpen(true)}
+            isAuthenticated={!!user}
+            onDragStartCustomDefinition={(def) => setDraggedCustomDefinition(def)}
+            onCreateCustomDefinition={() => {
+              setEditingCustomDefinition(null);
+              setCustomComponentEditorOpen(true);
+            }}
+            onEditCustomDefinition={(def) => {
+              setEditingCustomDefinition(def);
+              setCustomComponentEditorOpen(true);
+            }}
+            onDeleteCustomDefinition={(def) => setDeleteCustomTarget(def)}
+          />
+        )}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-5 shrink-0 self-center rounded-none rounded-r-md border border-l-0 bg-card"
+              onClick={toggleLeftPanel}
+              data-testid="button-toggle-left-panel"
+            >
+              {leftPanelOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{leftPanelOpen ? "Hide component library" : "Show component library"}</TooltipContent>
+        </Tooltip>
 
         <SchematicCanvas
           components={components}
@@ -2233,6 +2284,22 @@ export default function SchematicDesigner() {
           showWireRoutingSelector={wireRoutingSelectorEnabled}
         />
 
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-5 shrink-0 self-center rounded-none rounded-l-md border border-r-0 bg-card"
+              onClick={toggleRightPanel}
+              data-testid="button-toggle-right-panel"
+            >
+              {rightPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">{rightPanelOpen ? "Hide properties panel" : "Show properties panel"}</TooltipContent>
+        </Tooltip>
+
+        {rightPanelOpen && (
         <PropertiesPanel
           selectedComponent={selectedComponent || undefined}
           selectedWire={selectedWire ? {
@@ -2301,6 +2368,7 @@ export default function SchematicDesigner() {
             }
           }}
         />
+        )}
       </div>
 
       <AIPromptDialog
