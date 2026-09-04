@@ -338,6 +338,64 @@ The AI endpoints spend real money on the platform key, so they are **not open**:
 - Cost is derived in `observability-storage.ts` from token usage. A model with
   no price entry logs `null`, which means *unknown* - never treat it as zero
 
+### AI benchmark playground (`npm run bench`)
+The harness in `server/ai/benchmark/` tests, compares and grades prompt/model
+changes. The CLI is the intended interface (admin API exists too, at
+`/api/admin/ai/benchmarks`); on a production checkout the `.env` is root-owned,
+so run it with sudo:
+
+```bash
+sudo npm run bench -- suites          # what exists + which provider keys are set
+sudo npm run bench -- run --suite core-designs --model gpt-5.2 --judge --label "why"
+sudo npm run bench -- list            # recent runs
+sudo npm run bench -- compare <a> <b> # case-by-case diff of two runs (8-char ids ok)
+sudo npm run bench -- judge <runId>   # grade a stored run's outputs, no regeneration
+sudo npm run bench -- exemplar --case van-12v --models a,b,c --judge
+sudo npm run bench -- report --out review.html  # visual review of every exemplar
+```
+
+How grading works, and the traps:
+- The **validator score** (`design-validator.ts`) is the primary metric; each
+  case also has machine-checked expectations. Both run on the *normalized*
+  design, same as production.
+- `--judge` adds a **vision-judge panel**: cheap models (default gpt-5-mini,
+  claude-haiku-4-5, gemini-3.6-flash, filtered to keys in `.env`) grade the
+  rendered PNG on layout/routing/correctness/completeness. The stored score is
+  the panel **median**; stddev is kept because judges disagree - a
+  `lowConfidence` flag marks single-judge or split verdicts. Never act on a
+  low-confidence judge number without reading the notes.
+- **Exemplars** (`bench exemplar`) are one-off reference designs per case,
+  stored in `benchmark_exemplars` and shown to judges as a calibration anchor.
+  Generate them once; they're reused free. `--models a,b,c` runs several and
+  keeps the best (validator score first, judge panel breaks ties) - no single
+  vendor wins every case, so a best-of sweep beats trusting one model.
+- **`bench report`** writes a self-contained HTML file (renders, validator
+  issues, per-judge notes) for human review of the reference set.
+- Every run records a **prompt content hash** (`skillFingerprint`) plus git
+  rev/dirty. Version strings are hand-bumped and lie; the hash is what proves
+  two runs used the same prompt. `compare` says so explicitly.
+- LLM output is not reproducible: use `--repeats` and read stddev instead of
+  trusting one sample. Runs cost real money on the platform keys; costs are
+  printed and persisted (null = unpriced model, never "free").
+- A low validator score is evidence, not proof - read the issues before
+  blaming the model. The branch-current bug below was found exactly this way:
+  Fable's van-12v design scored 29 and was actually perfect.
+
+### AI prompt caching
+The Anthropic provider (`server/ai/providers/anthropic.ts`) marks the system
+prompt as an `ephemeral` cache breakpoint on every call, covering every native
+Claude model (Fable, Opus, Sonnet, Haiku) through the one adapter. Verified
+against the real API: a call wrote ~4.7k tokens to cache, the next call read
+them back (input tokens for that portion dropped from full price to ~10%).
+Below a model's minimum cacheable prefix (Haiku's is higher than Opus/Sonnet's)
+the breakpoint is a harmless no-op. OpenAI and Gemini cache automatically
+server-side with no request field to set - already confirmed via
+`usage.prompt_tokens_details.cached_tokens` / `usageMetadata.cachedContentTokenCount`.
+
+Also: the Anthropic adapter uses `client.messages.stream()` +
+`.finalMessage()`, not `.create()` - Fable's long reasoning turns trip the
+SDK's "streaming required past 10 minutes" guard on the non-streaming call.
+
 ### AI vision on iteration
 From the second iteration, both iterating endpoints attach a rendered PNG of the
 current design (`server/ai/schematic-image.ts`, drawn with node-canvas). The
@@ -600,6 +658,55 @@ Required for full functionality:
 5. **Community Component Sharing**: Not supported (custom components are private to their owner)
 
 ## Recent Changes
+
+**Prompt A/B: name every part with its rating** - the vision judges kept
+noting that parts were unlabelled, and measurement agreed: only ~30% of fuses,
+bus bars and batteries had a rating in their name (the name is what the drawing
+shows). One line in `layoutFragment()` took that to 85%, with no validator
+regression. Skills bumped to 2026-09-03.3.
+
+Two lessons from running it, both worth repeating:
+- **Replicate the baseline before believing a delta.** The first baseline
+  (n=8) read 95.4 validator / 53.6 judge; re-running the *identical* prompt
+  hash at n=12 gave 92.5 / 57.2. The "regression" and the "judge improvement"
+  the first comparison showed were both that one lucky draw, not the change.
+- **Placement guidance in prose did nothing.** Instructions to put the main
+  fuse beside the battery and keep wire runs short moved their own metrics not
+  at all (battery-to-fuse 318px -> 321px, spans unchanged), so they were
+  removed rather than left in as decoration. Layout quality appears to need the
+  vision feedback loop, not more text.
+
+**Reference designs regenerated best-of-5, and a renderer fix** - exemplars are
+now chosen across claude-fable-5, gpt-5.5, gemini-3.1-pro, grok-4.6 and kimi-k3;
+all six cases validate at 100. The PNG renderer shrinks a long component name
+to fit instead of clipping it - vision judges were reading "300A Posit..." as a
+design fault, and that complaint appeared in 5 of 19 judge notes before the fix
+and 0 after.
+
+**Branch-circuit wire current, fixed** - `design-validator.ts` sized every
+wire between two "trunk-ish" component *types* (battery, fuse, switch, shunt,
+bus bar) at the whole system's current. A fused branch off a bus bar - the
+pattern `fuseGuidanceFragment()` tells the AI to use - therefore had its 5A
+fridge wire failed for not carrying 157A. Real users saw bogus ABYC errors on
+correct designs, and it deflated every benchmark score.
+
+`calculateWireCurrentByCut()` replaces the type guess: cut the wire out of the
+same-polarity graph (each polarity alone is a tree, though the DC circuit as a
+whole is a loop), see which side still reaches a battery, and the other side is
+what the wire feeds. Ambiguous cuts - series links and parallel banks put a
+battery on both sides - fall back to the old whole-system estimate. Fable's
+van-12v exemplar went 29 -> 100 on the same unchanged design.
+
+**Prompt caching** - Anthropic requests now cache the system prompt (verified
+live: cache write then cache read on repeat calls); OpenAI/Gemini confirmed
+already automatic. Added the missing AWG-by-current table to the system prompt
+(`wireGaugeFragment`, skills bumped to 2026-08-31.1) after benchmark exemplars
+showed 12 AWG on 150A+ circuits.
+
+**Benchmark playground with vision judging** - `npm run bench` CLI over the
+existing harness; multi-judge PNG grading with median + disagreement, Fable
+exemplars as calibration anchors, prompt content hashes for honest A/B runs.
+Providers now accept image content parts (OpenAI, Anthropic, Gemini).
 
 **AI access control and spend caps**
 - All four AI endpoints now require sign-in (they previously served anonymous
