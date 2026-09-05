@@ -1319,6 +1319,12 @@ export class DesignValidator {
       if (current === 0 && (wire.polarity === "positive" || wire.polarity === "negative")) {
         const fromCompT = this.components.find(c => c.id === wire.fromComponentId);
         const toCompT = this.components.find(c => c.id === wire.toComponentId);
+        // cyrix-ct/argofet are deliberately NOT here: unlike a fuse or switch,
+        // a combiner splits into separately-rated battery banks rather than
+        // carrying one common series current, so folding them into "the
+        // trunk" computed the wrong number (whole-system load minus source,
+        // which is 0 in a design with no loads yet) instead of falling
+        // through to the branch below that reads the combiner's own rating.
         const TRUNK_INFRA = new Set(["battery", "fuse", "switch", "smartshunt", "battery-protect", "lynx-distributor", "lynx-power-in", "lynx-shunt", "lynx-smart-bms"]);
         const isTrunkComp = (t?: string) => !!t && (TRUNK_INFRA.has(t) || t.includes("busbar"));
         if (isTrunkComp(fromCompT?.type) && isTrunkComp(toCompT?.type)) {
@@ -1331,7 +1337,7 @@ export class DesignValidator {
               const w = (c.properties?.watts || c.properties?.power || 0) as number;
               const v = (c.properties?.voltage as number) || this.systemVoltage;
               if (w > 0 && v > 0) loadA += w / v;
-            } else if (c.type === "mppt" || c.type === "blue-smart-charger" || c.type === "orion-dc-dc" || c.type === "alternator") {
+            } else if (c.type === "mppt" || c.type === "blue-smart-charger" || c.type === "orion-dc-dc" || c.type === "alternator" || c.type === "cyrix-ct" || c.type === "argofet") {
               sourceA += (c.type === "mppt"
                 ? (c.properties?.maxCurrent || c.properties?.amps || c.properties?.current || 0)
                 : (c.properties?.amps || c.properties?.current || 0)) as number;
@@ -1423,7 +1429,7 @@ export class DesignValidator {
                 }
               }
               // For MPPT/chargers, get their output current
-              else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
+              else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator" || otherComp.type === "cyrix-ct" || otherComp.type === "argofet") {
                 // MPPT uses maxCurrent, chargers use amps/current
                 const chargeCurrent = otherComp.type === "mppt"
                   ? (otherComp.properties?.maxCurrent || otherComp.properties?.amps || otherComp.properties?.current || 0) as number
@@ -1506,7 +1512,7 @@ export class DesignValidator {
               if (!otherComp) continue;
               
               // Skip sources (MPPT, chargers) - they don't draw from battery
-              if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
+              if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator" || otherComp.type === "cyrix-ct" || otherComp.type === "argofet") {
                 continue;
               }
               
@@ -1760,9 +1766,14 @@ export class DesignValidator {
               // Wire from alternator to Orion carries what Orion draws, not alternator's full output
               const orionAmps = (toComp.properties?.amps || toComp.properties?.current || 20) as number;
               current = orionAmps;
-            } else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc") {
-              // For MPPT/chargers, use their output current
-              // MPPT uses maxCurrent, chargers use amps/current
+            } else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc" || fromComp?.type === "cyrix-ct" || fromComp?.type === "argofet") {
+              // For MPPT/chargers/combiners, use their own output current
+              // regardless of what the wire's other end is (battery, bus bar,
+              // anything) - alternator has its own equivalent fallback right
+              // below; cyrix-ct/argofet did not, so a wire straight from a
+              // combiner to a battery always read 0 and skipped gauge
+              // validation on what is often the highest-current cable in the
+              // design. MPPT uses maxCurrent, everything else uses amps/current
               const chargeCurrent = fromComp.type === "mppt"
                 ? (fromComp.properties?.maxCurrent || fromComp.properties?.amps || fromComp.properties?.current || 0) as number
                 : (fromComp.properties?.amps || fromComp.properties?.current || 0) as number;
@@ -1774,6 +1785,20 @@ export class DesignValidator {
             else if (fromComp?.type === "alternator") {
               const altAmps = (fromComp.properties?.amps || fromComp.properties?.current || 60) as number;
               current = altAmps;
+            }
+            // Same as the fromComp branch above, but the wire was authored the
+            // other way round (source is toComp). Without this, a wire drawn
+            // battery -> MPPT instead of MPPT -> battery fell through to the
+            // "sources don't draw from battery" rule further below, which
+            // zeroes current for exactly this pairing - authoring direction
+            // should not change whether gauge validation runs.
+            else if (toComp?.type === "mppt" || toComp?.type === "blue-smart-charger" || toComp?.type === "orion-dc-dc" || toComp?.type === "cyrix-ct" || toComp?.type === "argofet") {
+              const chargeCurrent = toComp.type === "mppt"
+                ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
+                : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
+              if (chargeCurrent > 0) {
+                current = chargeCurrent;
+              }
             }
             // If wire is TO a bus bar FROM a fuse/battery/SmartShunt, calculate NET current (loads minus sources)
             // This applies to BOTH positive and negative bus bars
@@ -1847,7 +1872,7 @@ export class DesignValidator {
                   }
                 }
                 // For MPPT/chargers, get their output current (this is a source, subtract it)
-                else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
+                else if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator" || otherComp.type === "cyrix-ct" || otherComp.type === "argofet") {
                   const chargeCurrent = otherComp.type === "mppt"
                     ? (otherComp.properties?.maxCurrent || otherComp.properties?.amps || otherComp.properties?.current || 0) as number
                     : (otherComp.properties?.amps || otherComp.properties?.current || 0) as number;
@@ -1863,7 +1888,7 @@ export class DesignValidator {
             else if (fromComp?.type?.includes("busbar") && toComp) {
               // For MPPT/chargers FROM bus bar, use their output current (they're sources, not loads)
               // This handles wires like "bus-pos → mppt" where MPPT is charging the battery
-              if (toComp.type === "mppt" || toComp.type === "blue-smart-charger" || toComp.type === "orion-dc-dc" || toComp.type === "alternator") {
+              if (toComp.type === "mppt" || toComp.type === "blue-smart-charger" || toComp.type === "orion-dc-dc" || toComp.type === "alternator" || toComp.type === "cyrix-ct" || toComp.type === "argofet") {
                 const chargeCurrent = toComp.type === "mppt"
                   ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
                   : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
@@ -2047,7 +2072,7 @@ export class DesignValidator {
                         totalLoadCurrent += 1;
                       }
                       // For MPPT/chargers (sources - subtract)
-                      else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc" || connComp.type === "alternator") {
+                      else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc" || connComp.type === "alternator" || connComp.type === "cyrix-ct" || connComp.type === "argofet") {
                         const chargeCurrent = connComp.type === "mppt"
                           ? (connComp.properties?.maxCurrent || connComp.properties?.amps || connComp.properties?.current || 0) as number
                           : (connComp.properties?.amps || connComp.properties?.current || 0) as number;
@@ -2103,7 +2128,7 @@ export class DesignValidator {
                     totalLoadCurrent += 1; // Cerbo draws ~1A
                   }
                   // For MPPT/chargers (sources - subtract)
-                  else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc" || connComp.type === "alternator") {
+                  else if (connComp.type === "mppt" || connComp.type === "blue-smart-charger" || connComp.type === "orion-dc-dc" || connComp.type === "alternator" || connComp.type === "cyrix-ct" || connComp.type === "argofet") {
                     const chargeCurrent = connComp.type === "mppt"
                       ? (connComp.properties?.maxCurrent || connComp.properties?.amps || connComp.properties?.current || 0) as number
                       : (connComp.properties?.amps || connComp.properties?.current || 0) as number;
@@ -2121,7 +2146,7 @@ export class DesignValidator {
               
               if (batteryComp && otherComp) {
                 // For battery wires, only count loads (inverter, DC loads), not sources (MPPT, chargers)
-                if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator") {
+                if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc" || otherComp.type === "alternator" || otherComp.type === "cyrix-ct" || otherComp.type === "argofet") {
                   // Sources don't draw from battery, skip
                   current = 0;
                 } else if (otherComp.type === "fuse" || otherComp.type === "smartshunt") {
@@ -2205,7 +2230,7 @@ export class DesignValidator {
                           }
                         }
                         // For MPPT/chargers, get their output current (source - subtract it)
-                        else if (connectedComp.type === "mppt" || connectedComp.type === "blue-smart-charger" || connectedComp.type === "orion-dc-dc" || connectedComp.type === "alternator") {
+                        else if (connectedComp.type === "mppt" || connectedComp.type === "blue-smart-charger" || connectedComp.type === "orion-dc-dc" || connectedComp.type === "alternator" || connectedComp.type === "cyrix-ct" || connectedComp.type === "argofet") {
                           const chargeCurrent = connectedComp.type === "mppt"
                             ? (connectedComp.properties?.maxCurrent || connectedComp.properties?.amps || connectedComp.properties?.current || 0) as number
                             : (connectedComp.properties?.amps || connectedComp.properties?.current || 0) as number;
@@ -2389,12 +2414,12 @@ export class DesignValidator {
               current = inverterDC.dcInputCurrent;
             }
             // For MPPT/chargers (output negative), use their output current
-            else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc" || fromComp?.type === "alternator") {
+            else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger" || fromComp?.type === "orion-dc-dc" || fromComp?.type === "alternator" || fromComp?.type === "cyrix-ct" || fromComp?.type === "argofet") {
               const chargeCurrent = fromComp.type === "mppt"
                 ? (fromComp.properties?.maxCurrent || fromComp.properties?.amps || fromComp.properties?.current || 0) as number
                 : (fromComp.properties?.amps || fromComp.properties?.current || 0) as number;
               current = chargeCurrent;
-            } else if (toComp?.type === "mppt" || toComp?.type === "blue-smart-charger" || toComp?.type === "orion-dc-dc" || toComp?.type === "alternator") {
+            } else if (toComp?.type === "mppt" || toComp?.type === "blue-smart-charger" || toComp?.type === "orion-dc-dc" || toComp?.type === "alternator" || toComp?.type === "cyrix-ct" || toComp?.type === "argofet") {
               const chargeCurrent = toComp.type === "mppt"
                 ? (toComp.properties?.maxCurrent || toComp.properties?.amps || toComp.properties?.current || 0) as number
                 : (toComp.properties?.amps || toComp.properties?.current || 0) as number;
