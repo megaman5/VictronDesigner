@@ -94,6 +94,26 @@ const has240VLoad: BenchmarkExpectation = {
   },
 };
 
+/**
+ * orion-dc-dc, blue-smart-charger, alternator, cyrix-ct and argofet were
+ * missing from the AI prompt's required-properties list (only mppt,
+ * dc-breaker/ac-breaker and shore-power were documented needing a current
+ * rating). Found via a real design where an Orion-Tr charger with no amps
+ * set left its own output wire un-sized - not a wrong answer, just silently
+ * unchecked, which is worse.
+ */
+const chargeSourcesHaveAmps: BenchmarkExpectation = {
+  id: "charge-sources-have-amps",
+  description: "chargers, alternators and battery combiners declare a current rating",
+  check: design => {
+    const types = ["orion-dc-dc", "blue-smart-charger", "alternator", "cyrix-ct", "argofet"];
+    const bad = design.components.filter(
+      c => types.includes(c.type) && !(Number(c.properties?.amps) > 0 || Number(c.properties?.current) > 0)
+    );
+    return bad.length === 0 ? null : `${bad.length} charge source(s)/combiner(s) with no amps rating`;
+  },
+};
+
 const usesLynx: BenchmarkExpectation = {
   id: "uses-lynx",
   description: "Lynx distribution modules are used",
@@ -174,6 +194,24 @@ export const CORE_SUITE: BenchmarkSuite = {
         hasType("has-battery", "a battery bank is present", "battery"),
         appropriateFuseFamilies,
         everyLoadHasPower,
+      ],
+    },
+    {
+      id: "alternator-charging",
+      systemVoltage: 12,
+      minScore: 70,
+      // Mirrors a real design that surfaced the gap: engine charging into the
+      // house bank through a DC-DC charger, plus a second combined bank -
+      // exactly the two component types (orion-dc-dc, and a battery
+      // combiner) most likely to be generated with no current rating.
+      prompt:
+        "Design a 12V van system: 200Ah lithium house battery charged by the engine alternator through an Orion-Tr Smart DC-DC charger, plus 300W of solar and a 12V fridge. Also combine the house bank with a separate starter battery using a battery combiner.",
+      expectations: [
+        hasType("has-orion", "an Orion-Tr DC-DC charger is present", "orion-dc-dc"),
+        hasType("has-combiner", "a battery combiner is present", "cyrix-ct", "argofet"),
+        chargeSourcesHaveAmps,
+        everyLoadHasPower,
+        solarPanelsHaveVoltage,
       ],
     },
   ],

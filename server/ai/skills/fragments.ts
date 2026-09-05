@@ -180,6 +180,13 @@ export function requiredPropertiesFragment(): string {
     '- fuse: {"fuseType": "<family>", "fuseRating": <A within that family\'s range>}',
     '- dc-breaker: {"amps": <5-300>}   ac-breaker: {"amps": <5-100>, "poles": 1|2}',
     '- shore-power: {"voltage": 120|230|240, "maxAmps": 15|30|50}',
+    // These five all charge or combine batteries and need their own current
+    // rating - without it, wire sizing on the wire they feed cannot be
+    // checked at all (not a wrong answer, just silently un-checked, which is
+    // worse). Found via a design where an Orion-Tr charger with no amps set
+    // left its own output wire un-sized.
+    '- orion-dc-dc / blue-smart-charger / alternator: {"amps": <A, e.g. 12-50>}',
+    '- cyrix-ct / argofet: {"amps": <A, the combiner\'s own rated capacity, e.g. 100-160>}',
     "",
     "WIRE GAUGE FORMAT: \"10 AWG\" with a space. ❌ WRONG: \"10AWG\".",
   ].join("\n");

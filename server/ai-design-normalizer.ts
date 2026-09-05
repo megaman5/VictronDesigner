@@ -13,7 +13,7 @@ import { calculateWireSize, calculateInverterDCInput, getACVoltage } from "./wir
  */
 
 export interface DesignRepair {
-  kind: "terminal-remapped" | "wire-dropped" | "gauge-resized" | "orientation";
+  kind: "terminal-remapped" | "wire-dropped" | "gauge-resized" | "orientation" | "property-backfilled";
   wireId?: string;
   detail: string;
 }
@@ -149,6 +149,29 @@ export function normalizeAIDesign(
         detail: `${c.name || c.id}: rotation ${n} snapped to ${normalized}`,
       });
     }
+  }
+
+  // --- 0b. MPPT PV voltage backfill --------------------------------------
+  // The PV-overvoltage check silently skips any MPPT with no maxPVVoltage
+  // set - not a warning, just a safety check that never runs. The prompt
+  // asks for "model": "100|20" (rated PV voltage | max charge current), so
+  // when maxPVVoltage is missing it is mechanically derivable from the model
+  // string already required for other reasons, rather than a second field
+  // asked of the model that could drift out of sync with the first.
+  for (const c of components) {
+    if (c.type !== "mppt") continue;
+    if (Number(c.properties?.maxPVVoltage) > 0) continue;
+
+    const model = String(c.properties?.model ?? "");
+    const match = model.match(/^(\d+)\s*\|\s*\d+$/);
+    if (!match) continue;
+
+    const derived = Number(match[1]);
+    c.properties = { ...c.properties, maxPVVoltage: derived };
+    repairs.push({
+      kind: "property-backfilled",
+      detail: `${c.name || c.id}: maxPVVoltage set to ${derived} from model "${model}"`,
+    });
   }
 
   const byId = new Map(components.map(c => [c.id, c]));

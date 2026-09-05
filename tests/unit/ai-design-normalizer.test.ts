@@ -233,3 +233,48 @@ describe('orientation normalization', () => {
     expect(out.repairs.filter(r => r.kind === 'orientation')).toHaveLength(0);
   });
 });
+
+describe('MPPT PV voltage backfill', () => {
+  // The PV-overvoltage safety check silently skips any MPPT with no
+  // maxPVVoltage - not a warning, just a check that never runs. The prompt
+  // requires "model": "<PV voltage>|<max current>" for other reasons, so the
+  // rating is already there for the taking rather than a second field the
+  // model has to remember and could get out of sync with the first.
+  it('derives maxPVVoltage from the model string when missing', () => {
+    const out = normalizeAIDesign(
+      [comp('m1', 'mppt', { model: '150|45', maxCurrent: 45 })],
+      [],
+      12
+    );
+    expect(out.components[0].properties.maxPVVoltage).toBe(150);
+    expect(out.repairs.some(r => r.kind === 'property-backfilled')).toBe(true);
+  });
+
+  it('does not override an already-set maxPVVoltage', () => {
+    const out = normalizeAIDesign(
+      [comp('m1', 'mppt', { model: '150|45', maxCurrent: 45, maxPVVoltage: 100 })],
+      [],
+      12
+    );
+    expect(out.components[0].properties.maxPVVoltage).toBe(100);
+    expect(out.repairs.some(r => r.kind === 'property-backfilled')).toBe(false);
+  });
+
+  it('leaves it unset rather than guessing when the model string is not parseable', () => {
+    const out = normalizeAIDesign(
+      [comp('m1', 'mppt', { model: 'SmartSolar 100/20', maxCurrent: 20 })],
+      [],
+      12
+    );
+    expect(out.components[0].properties.maxPVVoltage).toBeUndefined();
+  });
+
+  it('only applies to mppt components', () => {
+    const out = normalizeAIDesign(
+      [comp('c1', 'blue-smart-charger', { model: '150|45', amps: 45 })],
+      [],
+      12
+    );
+    expect(out.components[0].properties.maxPVVoltage).toBeUndefined();
+  });
+});

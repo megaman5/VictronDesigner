@@ -761,4 +761,99 @@ describe('Design Validator', () => {
     });
   });
 
+  /**
+   * cyrix-ct and argofet (battery combiners) had no current-tracing branch at
+   * all - any wire touching one always fell through to "cannot determine
+   * current", regardless of whether the combiner's own amps rating was set.
+   * They now join the same source-type list mppt/blue-smart-charger/
+   * orion-dc-dc/alternator already used, reading their own amps rating like
+   * the others do.
+   */
+  describe('Battery combiner current (cyrix-ct, argofet)', () => {
+    const battery = createComponent('batt1', 'battery', 600, 100, { voltage: 12, capacity: 200 });
+
+    it('reads a cyrix-ct wire current from its own amps rating', () => {
+      const cyrix = createComponent('cyrix1', 'cyrix-ct', 200, 100, { amps: 160 });
+      const wire: Wire = {
+        id: 'w1', fromComponentId: 'cyrix1', toComponentId: 'batt1',
+        fromTerminal: 'batt-1-positive', toTerminal: 'positive',
+        polarity: 'positive', gauge: '4/0 AWG', length: 3,
+      };
+      const result = new DesignValidator([cyrix, battery], [wire], 12).validate();
+      const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === 'w1');
+      expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
+    });
+
+    it('reads an argofet wire current from its own amps rating', () => {
+      const argofet = createComponent('arg1', 'argofet', 200, 100, { amps: 120 });
+      const wire: Wire = {
+        id: 'w1', fromComponentId: 'arg1', toComponentId: 'batt1',
+        fromTerminal: 'out-1-positive', toTerminal: 'positive',
+        polarity: 'positive', gauge: '2/0 AWG', length: 3,
+      };
+      const result = new DesignValidator([argofet, battery], [wire], 12).validate();
+      const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === 'w1');
+      expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
+    });
+
+    it('still flags a combiner wire that is genuinely undersized for its own rating', () => {
+      const cyrix = createComponent('cyrix1', 'cyrix-ct', 200, 100, { amps: 160 });
+      const wire: Wire = {
+        id: 'w1', fromComponentId: 'cyrix1', toComponentId: 'batt1',
+        fromTerminal: 'batt-1-positive', toTerminal: 'positive',
+        polarity: 'positive', gauge: '10 AWG', length: 3, // 160A needs far heavier than 10 AWG
+      };
+      const result = new DesignValidator([cyrix, battery], [wire], 12).validate();
+      const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === 'w1');
+      expect(issues.some(i => i.severity === 'error' && /insufficient/.test(i.message))).toBe(true);
+    });
+
+    // Reproduces the reported bug exactly: orion-dc-dc's negative wire to a
+    // bus bar (not a battery) also had no branch to resolve it.
+    it('resolves current on a combiner wire to a bus bar, not just a battery', () => {
+      const orion = createComponent('orion1', 'orion-dc-dc', 200, 100, { amps: 30 });
+      const negBus = createComponent('negbus1', 'busbar-negative', 600, 100, {});
+      const wire: Wire = {
+        id: 'w1', fromComponentId: 'orion1', toComponentId: 'negbus1',
+        fromTerminal: 'output-negative', toTerminal: 'neg-1',
+        polarity: 'negative', gauge: '10 AWG', length: 5,
+      };
+      const result = new DesignValidator([orion, negBus], [wire], 12).validate();
+      const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === 'w1');
+      expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
+    });
+  });
+
+  /**
+   * A wire authored battery -> source (rather than source -> battery) fell
+   * through to a rule that reads "sources don't draw FROM the battery, so
+   * this wire carries no load current" - true for that rule's own purpose,
+   * but it left current at 0 with nothing after it to correct that, so
+   * gauge validation silently never ran on the wire either way. Which end a
+   * wire happens to be authored from is not something a real design's
+   * safety depends on.
+   */
+  describe('Source current is direction-independent', () => {
+    it('resolves current the same way whether the source is fromComponent or toComponent', () => {
+      const battery = createComponent('batt1', 'battery', 200, 100, { voltage: 12, capacity: 200 });
+      const mppt = createComponent('m1', 'mppt', 600, 100, { maxCurrent: 30, model: '100|30' });
+
+      const sourceFirst: Wire = {
+        id: 'w1', fromComponentId: 'm1', toComponentId: 'batt1',
+        fromTerminal: 'batt-positive', toTerminal: 'positive',
+        polarity: 'positive', gauge: '4/0 AWG', length: 3,
+      };
+      const batteryFirst: Wire = {
+        id: 'w2', fromComponentId: 'batt1', toComponentId: 'm1',
+        fromTerminal: 'positive', toTerminal: 'batt-positive',
+        polarity: 'positive', gauge: '4/0 AWG', length: 3,
+      };
+
+      for (const wire of [sourceFirst, batteryFirst]) {
+        const result = new DesignValidator([battery, mppt], [wire], 12).validate();
+        const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === wire.id);
+        expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
+      }
+    });
+  });
 });

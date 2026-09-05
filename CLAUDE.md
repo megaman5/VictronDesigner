@@ -674,6 +674,56 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Audited every component type against what the validator actually reads** -
+triggered by a real design where an Orion-Tr DC-DC charger with no `amps` set
+left its own wire un-sized ("Cannot determine current... gauge validation
+skipped"). Grepped every `.properties?.` read in `design-validator.ts` against
+every type in `TERMINAL_CONFIGS`, cross-checked against
+`requiredPropertiesFragment()`. Found and fixed:
+
+- `orion-dc-dc`, `blue-smart-charger`, `alternator`, `cyrix-ct`, `argofet` were
+  never in the required-properties prompt - only `mppt`, `dc-breaker`/
+  `ac-breaker` and `shore-power` were told they need a current rating. Added.
+- `cyrix-ct`/`argofet` (battery combiners) had **no current-tracing branch at
+  all** - any wire touching one always hit "cannot determine current"
+  regardless of its own rating. Added to the same source-type list
+  mppt/blue-smart-charger/orion-dc-dc/alternator already use.
+- That fix first tried adding them to `TRUNK_INFRA` (the whole-system-current
+  fallback) - wrong, because a combiner splits into separately-rated battery
+  banks rather than carrying one common series current, so it computed
+  whole-system load minus source (0, in a design with no loads yet) instead of
+  reading the combiner's own rating. Reverted; fixed at the actual dedicated
+  "read my own output current" branch instead.
+- Found a second, pre-existing bug the same digging turned up: that dedicated
+  branch only checked `fromComponent`, not `toComponent` - a wire authored
+  battery → MPPT (rather than MPPT → battery) fell through to a rule that
+  zeroes current for "a source doesn't draw current from a battery" (true for
+  that rule's purpose, but nothing after it corrected the omission). Reproduced
+  with unmodified `mppt` as a control before fixing, confirming it predated
+  this session. Added the symmetric branch.
+- `mppt.maxPVVoltage` was never required either, so the PV-overvoltage safety
+  check silently never ran on AI-generated designs - not a warning, just a
+  check that never fired. Since the prompt already requires `"model":
+  "150|45"` (PV voltage | max current), `maxPVVoltage` is mechanically
+  derivable from the first number - backfilled in the normalizer instead of
+  asking the model for a second field that could drift out of sync with the
+  first.
+
+Added a benchmark case (`alternator-charging`, mirrors the real design that
+found this) and an expectation checking every charge source declares a
+rating. Measured before/after: the specific check went from failing on 2 of 3
+generations to passing on 3 of 3 - a clean, low-noise signal, not a fuzzy
+score. Skills bumped to 2026-09-05.1.
+
+**Not yet fixed, found while verifying the above**: a design with two separate
+battery banks joined by a combiner produces "cannot determine current" on
+several *ordinary* fuse/switch/bus-bar wires too - unrelated to the five types
+above. Looks like the same-polarity graph-cut current calculation
+(`calculateWireCurrentByCut`) treats "battery reachable on both sides" as
+ambiguous more often than it should once a design has two banks, and its
+fallback doesn't reliably resolve two-bank topologies either. Flagged for a
+follow-up session rather than expanded into here.
+
 **Production model is now gemini-3.8-flash** - benchmarked on the same suite
 and prompt hash, 12 designs each:
 
