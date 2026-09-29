@@ -703,17 +703,8 @@ export function getTerminalPosition(
   const terminal = getComponentTerminals(componentType, properties).find(t => t.id === terminalId);
   if (!terminal) return null;
 
-  // Grid size for snapping (must match wire-routing.ts)
-  const GRID_SIZE = 20;
-
-  // Calculate terminal position and snap to grid
-  const rawX = componentX + terminal.x;
-  const rawY = componentY + terminal.y;
-
-  return {
-    x: Math.round(rawX / GRID_SIZE) * GRID_SIZE,
-    y: Math.round(rawY / GRID_SIZE) * GRID_SIZE,
-  };
+  // Match the rendered terminal exactly. Only the route's interior is snapped.
+  return { x: componentX + terminal.x, y: componentY + terminal.y };
 }
 
 // Helper function to get terminal orientation
