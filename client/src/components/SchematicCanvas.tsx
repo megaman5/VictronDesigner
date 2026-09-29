@@ -6,6 +6,7 @@ import { SchematicComponent } from "./SchematicComponent";
 import type { SchematicComponent as SchematicComponentType, Wire } from "@shared/schema";
 import { Terminal, getTerminalPosition, getTerminalOrientation, findClosestTerminal, getComponentTerminals, getComponentDimensions } from "@/lib/terminal-config";
 import { snapPointToGrid, calculateRoute, GRID_SIZE, type Obstacle, type WireRoutingStyle, type WireRoutingOptions, type WireDirectionBias, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES } from "@/lib/wire-routing";
+import { constrainDragDelta } from "@/lib/canvas-placement";
 import { computeBusbarTerminalOverrides } from "@/lib/busbar-ordering";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -225,7 +226,9 @@ export function SchematicCanvas({
       const x = (e.clientX - rect.left + scrollLeft) / (zoom / 100);
       const y = (e.clientY - rect.top + scrollTop) / (zoom / 100);
 
-      setDragPreviewPos({ x: x - dragOffset.x, y: y - dragOffset.y });
+      const delta = constrainDragDelta(Array.from(draggedComponentPositions.values()),
+        x - dragOffset.x - dragStartPos.x, y - dragOffset.y - dragStartPos.y);
+      setDragPreviewPos({ x: dragStartPos.x + delta.x, y: dragStartPos.y + delta.y });
     }
   };
 
@@ -247,8 +250,8 @@ export function SchematicCanvas({
       // Component being repositioned - account for cursor offset
       const newX = dropX - dragOffset.x;
       const newY = dropY - dragOffset.y;
-      const deltaX = newX - dragStartPos.x;
-      const deltaY = newY - dragStartPos.y;
+      const { x: deltaX, y: deltaY } = constrainDragDelta(
+        Array.from(draggedComponentPositions.values()), newX - dragStartPos.x, newY - dragStartPos.y);
 
       // If the dragged component is part of a selection, move all selected components
       if (selectedIds.includes(draggedComponentId)) {
@@ -265,7 +268,7 @@ export function SchematicCanvas({
       setDraggedComponentPositions(new Map());
     } else {
       // New component from library
-      onDrop?.(dropX, dropY);
+      onDrop?.(Math.max(0, dropX), Math.max(0, dropY));
     }
   };
 
@@ -992,6 +995,21 @@ export function SchematicCanvas({
           </Button>
         </div>
 
+        {onComponentsChange && components.some(c => c.x < 0 || c.y < 0) && (
+          <Button variant="outline" size="sm" data-testid="button-recover-components"
+            onClick={() => {
+              // Translate the entire design so connections and relative bends
+              // retain their layout; never silently rewrite loaded projects.
+              const dx = Math.max(0, 20 - Math.min(...components.map(c => c.x)));
+              const dy = Math.max(0, 20 - Math.min(...components.map(c => c.y)));
+              onComponentsChange(components.map(c => ({ ...c, x: c.x + dx, y: c.y + dy })));
+              canvasRef.current?.scrollTo({ left: 0, top: 0 });
+              toast({ title: "Off-screen components recovered" });
+            }}>
+            Recover off-screen components
+          </Button>
+        )}
+
         {wires.some(w => w.waypoints && w.waypoints.length > 0) && (
           <Button
             variant="outline"
@@ -1241,7 +1259,8 @@ export function SchematicCanvas({
             const routeThroughPoints = (
               pts: Array<{ x: number; y: number }>,
               fromOri: ReturnType<typeof getTerminalOrientation> | undefined,
-              toOri: ReturnType<typeof getTerminalOrientation> | undefined
+              toOri: ReturnType<typeof getTerminalOrientation> | undefined,
+              laneOffsets: { start: number; end: number }
             ) => {
               let combinedPath = "";
               const allPoints: Array<{ x: number; y: number }> = [];
@@ -1253,7 +1272,8 @@ export function SchematicCanvas({
                   obstacles, 2400, 1600, occupiedNodes,
                   s === 0 ? (fromOri || undefined) : undefined,
                   s === pts.length - 2 ? (toOri || undefined) : undefined,
-                  wireRoutingOptions
+                  wireRoutingOptions,
+                  { start: s === 0 ? laneOffsets.start : 0, end: s === pts.length - 2 ? laneOffsets.end : 0 }
                 );
                 seg.pathNodes.forEach(n => occupiedNodes.add(n));
                 if (s === 0) {
@@ -1398,50 +1418,15 @@ export function SchematicCanvas({
               const getOffset = (index: number, count: number) => {
                 if (count <= 1 || wireRoutingOptions.laneOffset <= 0) return 0;
                 const raw = (index - (count - 1) / 2) * wireRoutingOptions.laneOffset;
-                // calculateRoute snaps endpoints to the 20px grid, so a sub-grid
-                // offset would be rounded away. Snap each lane to a whole grid
-                // step so parallel wires actually land in distinct lanes.
+                // Interior lanes use whole grid steps; the router connects them
+                // back to the exact, shared terminal anchor.
                 return Math.round(raw / GRID_SIZE) * GRID_SIZE;
               };
 
-              if (fromPos && fromOrientation) {
-                const offset = getOffset(fromIndex, fromWires.length);
-                if (fromOrientation === 'left' || fromOrientation === 'right') {
-                  fromPos.y += offset;
-                } else {
-                  fromPos.x += offset;
-                }
-              }
-
-              if (toPos && toOrientation) {
-                const offset = getOffset(toIndex, toWires.length);
-                if (toOrientation === 'left' || toOrientation === 'right') {
-                  toPos.y += offset;
-                } else {
-                  toPos.x += offset;
-                }
-              }
-
-              const extendDistance = 10;
-              let extendedFromPos = { ...fromPos };
-              let extendedToPos = { ...toPos };
-              
-              // Skip the inward nudge for bus bars: their terminals sit at the
-              // center of the bar and can exit either way, so nudging inward
-              // would create a "down then back up" hook.
-              if (fromOrientation && !isBusbar(fromComp.type)) {
-                if (fromOrientation === 'left') extendedFromPos.x += extendDistance;
-                else if (fromOrientation === 'right') extendedFromPos.x -= extendDistance;
-                else if (fromOrientation === 'top') extendedFromPos.y += extendDistance;
-                else if (fromOrientation === 'bottom') extendedFromPos.y -= extendDistance;
-              }
-
-              if (toOrientation && !isBusbar(toComp.type)) {
-                if (toOrientation === 'left') extendedToPos.x += extendDistance;
-                else if (toOrientation === 'right') extendedToPos.x -= extendDistance;
-                else if (toOrientation === 'top') extendedToPos.y += extendDistance;
-                else if (toOrientation === 'bottom') extendedToPos.y -= extendDistance;
-              }
+              const laneOffsets = {
+                start: getOffset(fromIndex, fromWires.length),
+                end: getOffset(toIndex, toWires.length),
+              };
 
               // Manual bends: absolute positions (relative to from-component),
               // with a live override for the waypoint currently being dragged.
@@ -1459,21 +1444,23 @@ export function SchematicCanvas({
               let result: { path: string; labelX: number; labelY: number; labelRotation: number; pathPoints: Array<{ x: number; y: number }> };
               if (manualWaypoints.length > 0) {
                 result = routeThroughPoints(
-                  [{ x: extendedFromPos.x, y: extendedFromPos.y }, ...manualWaypoints, { x: extendedToPos.x, y: extendedToPos.y }],
+                  [{ x: fromPos.x, y: fromPos.y }, ...manualWaypoints, { x: toPos.x, y: toPos.y }],
                   fromOrientation,
-                  toOrientation
+                  toOrientation,
+                  laneOffsets
                 );
               } else {
                 const r = calculateRoute(
-                  extendedFromPos.x, extendedFromPos.y,
-                  extendedToPos.x, extendedToPos.y,
+                  fromPos.x, fromPos.y,
+                  toPos.x, toPos.y,
                   obstacles,
                   2400,
                   1600,
                   occupiedNodes,
                   fromOrientation || undefined,
                   toOrientation || undefined,
-                  wireRoutingOptions
+                  wireRoutingOptions,
+                  laneOffsets
                 );
                 r.pathNodes.forEach(node => occupiedNodes.add(node));
                 result = r;

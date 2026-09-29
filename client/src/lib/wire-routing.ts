@@ -151,6 +151,62 @@ export interface Obstacle {
  * Calculate route using A* algorithm
  */
 export function calculateRoute(
+  startX: number, startY: number, endX: number, endY: number,
+  obstacles: Obstacle[], gridWidth = 2400, gridHeight = 1600,
+  occupiedNodes: Set<string> = new Set(),
+  startOrientation?: TerminalOrientation, endOrientation?: TerminalOrientation,
+  routingOptions: WireRoutingOptions = DEFAULT_WIRE_ROUTING_OPTIONS,
+  laneOffsets: { start: number; end: number } = { start: 0, end: 0 },
+) {
+  const start = { x: startX, y: startY };
+  const end = { x: endX, y: endY };
+  // Only the interior route belongs on the grid. Terminal anchors can be at
+  // fractional coordinates, including after mirroring, rotation and dragging.
+  const connector = (point: typeof start, orientation?: TerminalOrientation, lane = 0) => {
+    const grid = snapPointToGrid(point.x, point.y);
+    if (orientation === 'left' || orientation === 'right') {
+      grid.x = orientation === 'left'
+        ? Math.floor(point.x / GRID_SIZE) * GRID_SIZE - GRID_SIZE
+        : Math.ceil(point.x / GRID_SIZE) * GRID_SIZE + GRID_SIZE;
+      grid.y += lane;
+      return [point, { x: grid.x, y: point.y }, grid];
+    }
+    if (orientation === 'top' || orientation === 'bottom') {
+      grid.y = orientation === 'top'
+        ? Math.floor(point.y / GRID_SIZE) * GRID_SIZE - GRID_SIZE
+        : Math.ceil(point.y / GRID_SIZE) * GRID_SIZE + GRID_SIZE;
+      grid.x += lane;
+      return [point, { x: point.x, y: grid.y }, grid];
+    }
+    return [point, { x: grid.x, y: point.y }, grid];
+  };
+  const from = connector(start, startOrientation, laneOffsets.start);
+  const to = connector(end, endOrientation, laneOffsets.end);
+  const a = from[from.length - 1], b = to[to.length - 1];
+  const interior = routingOptions.style === 'straight' ? null : calculateGridRoute(
+    a.x, a.y, b.x, b.y, obstacles, gridWidth, gridHeight,
+    occupiedNodes, startOrientation, endOrientation, routingOptions,
+  );
+  const points = interior
+    ? [...from, ...interior.pathPoints, ...to.reverse()]
+    : [start, end];
+  const pathPoints = points.filter((p, i) => i === 0 || p.x !== points[i - 1].x || p.y !== points[i - 1].y);
+  let labelX = start.x, labelY = start.y, labelRotation = 0, longest = -1;
+  for (let i = 1; i < pathPoints.length; i++) {
+    const p = pathPoints[i - 1], q = pathPoints[i];
+    const length = Math.hypot(q.x - p.x, q.y - p.y);
+    if (length > longest) {
+      longest = length;
+      labelX = (p.x + q.x) / 2;
+      labelY = (p.y + q.y) / 2;
+      labelRotation = Math.abs(q.x - p.x) >= Math.abs(q.y - p.y) ? 0 : 90;
+    }
+  }
+  return { path: buildWirePath(pathPoints, routingOptions.style), pathPoints,
+    pathNodes: interior?.pathNodes ?? [], labelX, labelY, labelRotation };
+}
+
+function calculateGridRoute(
   startX: number,
   startY: number,
   endX: number,
