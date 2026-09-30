@@ -1,61 +1,87 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-/** Lightweight recognizable housings; connection positions stay owned by terminal-config. */
-export function deviceDetails(type: string, width: number, height: number, depth: number): THREE.Mesh[] {
+/** Complete housings, in local schematic coordinates. Terminal anchors are added by the viewer. */
+export function deviceDetails(type: string, w: number, h: number, d: number): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
-  const box = (x: number, y: number, z: number, w: number, h: number, d: number, color: string, metalness = 0.2) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, metalness, roughness: 0.6 }));
-    mesh.position.set(x, -y, z); meshes.push(mesh);
+  const material = (color: string, metal = 0.15) => new THREE.MeshStandardMaterial({ color, metalness: metal, roughness: metal > 0.5 ? 0.3 : 0.48 });
+  const add = (geometry: THREE.BufferGeometry, x: number, y: number, z: number, color: string, metal = 0.15) => {
+    const mesh = new THREE.Mesh(geometry, material(color, metal)); mesh.position.set(x, -y, z);
+    mesh.castShadow = true; mesh.receiveShadow = true; meshes.push(mesh); return mesh;
   };
-  const cylinder = (x: number, y: number, z: number, radius: number, length: number, color: string) => {
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 20), new THREE.MeshStandardMaterial({ color, metalness: 0.65, roughness: 0.35 }));
-    mesh.rotation.x = Math.PI / 2; mesh.position.set(x, -y, z); meshes.push(mesh);
+  const box = (x: number, y: number, z: number, a: number, b: number, c: number, color: string, radius = 1.5, metal = 0.15) =>
+    add(new RoundedBoxGeometry(a, b, c, 2, Math.min(radius, a / 3, b / 3, c / 3)), x, y, z, color, metal);
+  const stud = (x: number, y: number, z: number, radius: number, height: number, color: string, segments = 24) => {
+    const mesh = add(new THREE.CylinderGeometry(radius, radius, height, segments), x, y, z, color, 0.75); mesh.rotation.x = Math.PI / 2; return mesh;
   };
-  const rim = (color: string) => {
-    box(width / 2, 2, depth + 1, width, 4, 3, color);
-    box(width / 2, height - 2, depth + 1, width, 4, 3, color);
-    box(2, height / 2, depth + 1, 4, height, 3, color);
-    box(width - 2, height / 2, depth + 1, 4, height, 3, color);
+  const screw = (x: number, y: number, z: number) => {
+    stud(x, y, z, 1.7, 1, '#b6c2ca'); box(x, y, z + 0.55, 2.2, 0.4, 0.2, '#38434d', 0.1);
   };
-  if (type === 'solar-panel') {
-    rim('#bac5ce');
-    for (let col = 0; col < 6; col++) for (let row = 0; row < 2; row++) {
-      const w = (width - 20) / 6, h = height * 0.18;
-      box(10 + w * (col + 0.5), height * 0.58 + row * (h + 2), depth + 1, w - 2, h, 1.5, '#163568', 0.4);
-      box(10 + w * (col + 0.5), height * 0.58 + row * (h + 2), depth + 2, 0.6, h, 0.3, '#91acc4');
+  const feet = () => { for (const x of [w * 0.13, w * 0.87]) for (const y of [h * 0.1, h * 0.9]) {
+    box(x, y, 2, w * 0.16, h * 0.13, 4, '#26323b'); screw(x, y, 4.6);
+  } };
+  const panel = type === 'ac-panel' || type === 'dc-panel';
+  if (type.startsWith('busbar') || type === 'smartshunt' || type === 'fuse') {
+    const positive = type.endsWith('positive');
+    box(w / 2, h / 2, d * 0.28, w, h * 0.9, d * 0.56, '#172028', 3);
+    box(w / 2, h * 0.55, d * 0.72, w * 0.9, h * 0.34, d * 0.34, type === 'smartshunt' ? '#adb6b7' : '#b97635', 1, 0.85);
+    for (const x of [w * 0.06, w * 0.94]) screw(x, h * 0.18, d * 0.58);
+    if (type === 'fuse') box(w / 2, h * 0.55, d, w * 0.42, h * 0.48, 5, '#e6d4ad', 2);
+    if (type === 'smartshunt') box(w / 2, h * 0.25, d * 0.8, w * 0.35, h * 0.36, d * 0.5, '#0879aa', 2);
+    if (positive) box(w / 2, h * 0.84, d * 0.5, w * 0.9, 3, 3, '#a62c2d');
+  } else if (type === 'solar-panel') {
+    box(w / 2, h / 2, d / 2, w, h, d, '#9facb7', 1, 0.8);
+    box(w / 2, h / 2, d - 1, w - 5, h - 5, 2, '#081525', 0.5);
+    for (let row = 0; row < 4; row++) for (let col = 0; col < 6; col++) {
+      const cw = (w - 12) / 6, ch = (h - 12) / 4;
+      const x = 6 + (col + 0.5) * cw, y = 6 + (row + 0.5) * ch;
+      box(x, y, d + 0.3, cw - 1.3, ch - 1.3, 0.8, '#142c50', 1, 0.45);
+      for (const offset of [-0.25, 0.25]) box(x + offset * cw, y, d + 0.8, 0.35, ch - 2, 0.15, '#7d93a9', 0.05, 0.7);
     }
   } else if (type === 'battery') {
-    rim('#152534');
-    // Reinforced case ribs and recessed carrying handles.
-    for (const x of [width * 0.18, width * 0.82]) {
-      box(x, height + 1, depth * 0.45, 5, 3, depth * 0.8, '#1b2b39');
-      box(x, height * 0.18, depth + 3, width * 0.15, 6, 6, '#111e2b');
+    box(w / 2, h / 2, d * 0.45, w * 0.96, h * 0.95, d * 0.9, '#29363d', 5);
+    box(w / 2, h / 2, d - 2, w, h, 6, '#17232d', 3);
+    for (const x of [w * 0.22, w * 0.78]) {
+      box(x, h * 0.15, d + 1, w * 0.19, h * 0.12, 2, '#080e14', 2);
+      box(x, h * 0.15, d + 4, w * 0.15, 3, 5, '#4c5a60', 1);
+      for (const y of [h * 0.04, h * 0.96]) box(x, y, d * 0.43, 4, 4, d * 0.72, '#17232b', 1);
     }
-  } else if (type.startsWith('busbar')) {
-    box(width / 2, height * 0.76, depth + 1.5, width * 0.9, height * 0.16, 3, type.endsWith('positive') ? '#c58a48' : '#9eabb5', 0.85);
-    for (let i = 0; i < 6; i++) cylinder(width * (0.1 + i * 0.16), height * 0.76, depth + 4, 3, 4, '#d8dce1');
-  } else if (type === 'fuse') {
-    box(width / 2, height * 0.72, depth + 3, width * 0.48, height * 0.15, 6, '#e1cba4');
-    cylinder(width * 0.2, height * 0.72, depth + 4, 4, 4, '#bdc4ca');
-    cylinder(width * 0.8, height * 0.72, depth + 4, 4, 4, '#bdc4ca');
-  } else if (type === 'ac-panel' || type === 'dc-panel') {
-    rim('#a7b8c7');
+  } else if (panel) {
+    feet();
+    box(w / 2, h / 2, d * 0.48, w * 0.96, h * 0.96, d * 0.9, '#9ba6ab', 4, 0.55);
+    box(w / 2, h / 2, d - 2, w * 0.94, h * 0.94, 5, '#d5dbdc', 3, 0.35);
+    box(w / 2, h * 0.62, d + 0.5, w * 0.72, h * 0.48, 2, '#26323a', 2);
     for (let i = 0; i < 4; i++) {
-      box(width * (0.22 + i * 0.18), height * 0.7, depth + 3, width * 0.12, height * 0.22, 6, '#dce3e8');
-      box(width * (0.22 + i * 0.18), height * 0.68, depth + 7, width * 0.07, height * 0.09, 4, '#203043');
+      const x = w * (0.245 + i * 0.17);
+      box(x, h * 0.62, d + 3, w * 0.145, h * 0.39, 5, '#e6e5de', 1);
+      box(x, h * 0.59, d + 6, w * 0.095, h * 0.13, 3, '#17252e', 0.5);
+      box(x, h * 0.575, d + 8, w * 0.085, h * 0.04, 4, '#333d44', 0.7);
+      box(x, h * 0.47, d + 6, w * 0.055, 2, 0.5, '#ca4631', 0.1);
+      screw(x, h * 0.77, d + 6);
     }
+    for (const x of [w * 0.07, w * 0.93]) for (const y of [h * 0.07, h * 0.93]) screw(x, y, d + 1);
   } else if (type === 'ac-load' || type === 'dc-load') {
-    cylinder(width / 2, height * 0.72, depth + 2, Math.min(width, height) * 0.13, 4, '#c5d3db');
-    cylinder(width / 2, height * 0.72, depth + 5, Math.min(width, height) * 0.08, 3, '#25384b');
+    box(w / 2, h / 2, d / 2, w, h, d, '#d0d5d5', 6);
+    stud(w / 2, h * 0.65, d + 1, Math.min(w, h) * 0.25, 2, '#34414b');
+    for (let i = -3; i <= 3; i++) box(w / 2, h * 0.65 + i * 3, d + 2.5, Math.min(w, h) * 0.35, 1.2, 1, '#a7b2b7', 0.3);
   } else {
-    // Blue electronics: cooling fins, lower ventilation grille, status display.
-    for (let i = 1; i <= 6; i++) {
-      box(1, height * i / 7, depth / 2, 4, 3, depth * 0.8, '#075278');
-      box(width - 1, height * i / 7, depth / 2, 4, 3, depth * 0.8, '#075278');
-      box(width * (0.2 + i * 0.085), height * 0.84, depth + 0.8, 3, height * 0.08, 1.6, '#092c43');
+    feet();
+    const mppt = type === 'mppt';
+    box(w / 2, h / 2, d * 0.45, w * 0.95, h * 0.93, d * 0.86, '#133548', 4);
+    // Extruded aluminum heat sink beneath a separate powder-coated cover.
+    for (let i = 0; i < 11; i++) for (const x of [w * 0.035, w * 0.965])
+      box(x, h * (0.18 + i * 0.058), d * 0.47, 5, 2.3, d * 0.66, '#173f51', 0.5, 0.55);
+    box(w / 2, h * 0.44, d * 0.62, w * 0.88, h * 0.79, d * 0.74, '#087bac', 4, 0.3);
+    box(w / 2, h * 0.9, d * 0.65, w * 0.84, h * 0.15, d * 0.4, '#182b38', 2);
+    if (mppt) {
+      box(w / 2, h * 0.53, d + 0.6, w * 0.56, h * 0.18, 2, '#153141', 1);
+      box(w / 2, h * 0.53, d + 1.7, w * 0.46, h * 0.11, 0.5, '#7ca09c', 0.5);
+    } else {
+      box(w / 2, h * 0.55, d + 0.6, w * 0.45, h * 0.22, 2, '#1b4054', 1);
+      for (let i = 0; i < 3; i++) stud(w * (0.39 + i * 0.11), h * 0.55, d + 2, 1.7, 1, i === 0 ? '#6fc58a' : '#576b70');
     }
-    box(width / 2, height * 0.62, depth + 1, width * 0.25, height * 0.1, 2, '#102c40');
-    box(width / 2, height * 0.62, depth + 2.1, width * 0.14, 2, 0.3, '#55d8b2');
+    for (let i = 0; i < 9; i++) box(w * (0.22 + i * 0.07), h * 0.74, d + 0.2, 2.2, h * 0.075, 0.8, '#153a50', 0.5);
+    for (const x of [w * 0.11, w * 0.89]) for (const y of [h * 0.12, h * 0.78]) screw(x, y, d);
   }
   return meshes;
 }
