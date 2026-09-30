@@ -20,6 +20,7 @@ interface Props {
   onComponentSelect: (component: SchematicComponent) => void;
   onWireSelect: (wire: Wire) => void;
   onBack: () => void;
+  onReady?: () => void;
   onComponentMove?: (id: string, dx: number, dy: number) => void;
   selectedComponentId?: string;
   selectedWireId?: string;
@@ -75,15 +76,15 @@ function labelTexture(component: SchematicComponent, color: string) {
   return texture;
 }
 
-export default function Design3DView({ components, wires, routingOptions, onComponentSelect, onWireSelect, onBack, onComponentMove, selectedComponentId, selectedWireId,
+export default function Design3DView({ components, wires, routingOptions, onComponentSelect, onWireSelect, onBack, onReady, onComponentMove, selectedComponentId, selectedWireId,
   showWireLabels = true, wireGaugeFormat = 'awg', lengthUnit = 'ft', viewMode = 'standard', wireCalculations = {},
 }: Props) {
   const { theme } = useTheme();
   const dark = theme === 'dark';
   const host = useRef<HTMLDivElement>(null);
   const actions = useRef<{ fit: (top?: boolean) => void; rotate: (angle: number) => void; zoom: (factor: number) => void; refreshLabels: () => void; refreshSelection: () => void }>();
-  const callbacks = useRef({ onComponentSelect, onWireSelect, onComponentMove });
-  callbacks.current = { onComponentSelect, onWireSelect, onComponentMove };
+  const callbacks = useRef({ onComponentSelect, onWireSelect, onComponentMove, onReady });
+  callbacks.current = { onComponentSelect, onWireSelect, onComponentMove, onReady };
   const cameraState = useRef<{ position: THREE.Vector3; target: THREE.Vector3 }>();
   const display = useRef({ showWireLabels, wireGaugeFormat, lengthUnit, viewMode, wireCalculations });
   display.current = { showWireLabels, wireGaugeFormat, lengthUnit, viewMode, wireCalculations };
@@ -97,10 +98,10 @@ export default function Design3DView({ components, wires, routingOptions, onComp
 
   useEffect(() => {
     const element = host.current;
-    if (!element || !components.length) { setError(''); return; }
+    if (!element || !components.length) { setError(''); callbacks.current.onReady?.(); return; }
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); }
-    catch { setError('3D is unavailable in this browser. You can continue editing in 2D.'); return; }
+    catch { setError('3D is unavailable in this browser. You can continue editing in 2D.'); callbacks.current.onReady?.(); return; }
     setError('');
     const layout = build3DLayout(components, wires, routingOptions);
     setOmitted(layout.omittedWires);
@@ -260,10 +261,11 @@ export default function Design3DView({ components, wires, routingOptions, onComp
         occupied.push(placement); el.style.transform = `translate(${placement.x}px, ${placement.y}px)`;
       }
     };
-    let frame = 0, disposed = false;
+    let frame = 0, disposed = false, announcedReady = false;
     const render = () => {
       if (disposed || frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; renderer.render(scene, camera); positionLabels(); });
+      frame = requestAnimationFrame(() => { frame = 0; renderer.render(scene, camera); positionLabels();
+        if (!announcedReady) { announcedReady = true; callbacks.current.onReady?.(); } });
     };
     const fit = (top = false) => {
       const vFov = THREE.MathUtils.degToRad(camera.fov);

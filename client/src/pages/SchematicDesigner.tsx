@@ -1,5 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { CanvasViewTransition, View3DLoadError } from "@/components/CanvasViewTransition";
 import { TopBar } from "@/components/TopBar";
 import { RuntimeEstimatesDialog } from "@/components/RuntimeEstimatesDialog";
 import { ComponentLibrary } from "@/components/ComponentLibrary";
@@ -37,9 +38,7 @@ import { calculateWireSize, type WireGaugeFormat, type LengthUnit } from "@/lib/
 import { type WireRoutingStyle, type WireRoutingOptions, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES, normalizeRoutingOptions } from "@/lib/wire-routing";
 
 const Design3DView = lazy(() => import("@/components/Design3DView").catch(() => ({
-  default: () => <div className="flex-1 flex items-center justify-center p-6 text-sm" role="alert">
-    The 3D view could not load. Switch to the 2D editor and refresh to try again.
-  </div>,
+  default: View3DLoadError,
 })));
 
 const WIRE_ROUTING_OPTIONS_KEY = "wireRoutingOptions";
@@ -2263,9 +2262,8 @@ export default function SchematicDesigner() {
           <TooltipContent side="right">{leftPanelOpen ? "Hide component library" : "Show component library"}</TooltipContent>
         </Tooltip>
 
-        <div className="flex flex-1 min-w-0 min-h-0 flex-col">
-          {canvasMode === "3d" && <Suspense fallback={<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground" role="status">Opening 3D view…</div>}>
-            <Design3DView components={components} wires={wires} routingOptions={wireRoutingOptions}
+        <CanvasViewTransition mode={canvasMode} render3D={onReady => <Suspense fallback={null}>
+            <Design3DView onReady={onReady} components={components} wires={wires} routingOptions={wireRoutingOptions}
               showWireLabels={showWireLabels} wireGaugeFormat={wireGaugeFormat} lengthUnit={lengthUnit}
               viewMode={viewMode} wireCalculations={wireCalculations}
               selectedComponentId={selectedComponent?.id} selectedWireId={selectedWire?.id}
@@ -2273,8 +2271,7 @@ export default function SchematicDesigner() {
               onComponentSelect={component => { handleComponentSelect(component); setRightPanelOpen(true); }}
               onWireSelect={wire => { handleWireSelect(wire); setRightPanelOpen(true); }}
               onBack={() => setCanvasMode("2d")} />
-          </Suspense>}
-          <div className={canvasMode === "2d" ? "flex flex-1 min-h-0" : "hidden"}>
+          </Suspense>} editor={
         <SchematicCanvas
           components={components}
           wires={wires}
@@ -2304,8 +2301,7 @@ export default function SchematicDesigner() {
           onWireRoutingOptionsChange={setWireRoutingOptions}
           showWireRoutingSelector={wireRoutingSelectorEnabled}
         />
-          </div>
-        </div>
+        } />
 
         <Tooltip>
           <TooltipTrigger asChild>
