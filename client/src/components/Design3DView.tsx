@@ -100,13 +100,13 @@ export default function Design3DView({ components, wires, routingOptions, onComp
     const element = host.current;
     if (!element || !components.length) { setError(''); callbacks.current.onReady?.(); return; }
     let renderer: THREE.WebGLRenderer;
-    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); }
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, logarithmicDepthBuffer: true }); }
     catch { setError('3D is unavailable in this browser. You can continue editing in 2D.'); callbacks.current.onReady?.(); return; }
     setError('');
     const layout = build3DLayout(components, wires, routingOptions);
     setOmitted(layout.omittedWires);
     const scene = new THREE.Scene(); scene.background = new THREE.Color(dark ? '#0a1322' : '#edf0f3');
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100000);
+    const camera = new THREE.PerspectiveCamera(42, 1, 1, 100000);
     camera.up.set(0, 0, 1);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;

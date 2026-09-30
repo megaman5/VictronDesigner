@@ -30,13 +30,16 @@ export function deviceDetails(type: string, w: number, h: number, d: number): TH
     if (type === 'smartshunt') box(w / 2, h * 0.25, d * 0.8, w * 0.35, h * 0.36, d * 0.5, '#0879aa', 2);
     if (positive) box(w / 2, h * 0.84, d * 0.5, w * 0.9, 3, 3, '#a62c2d');
   } else if (type === 'solar-panel') {
-    box(w / 2, h / 2, d / 2, w, h, d, '#9facb7', 1, 0.8);
-    box(w / 2, h / 2, d - 1, w - 5, h - 5, 2, '#081525', 0.5);
+    // An open frame, not a solid silver slab coplanar with the dark backing.
+    // Keep every exposed layer physically separated; draw order cannot fix it.
+    for (const x of [1.25, w - 1.25]) box(x, h / 2, d / 2, 2.5, h, d, '#9facb7', 0.5, 0.8);
+    for (const y of [1.25, h - 1.25]) box(w / 2, y, d / 2, w - 5, 2.5, d, '#9facb7', 0.5, 0.8);
+    box(w / 2, h / 2, (d - 2) / 2, w - 5, h - 5, d - 2, '#081525', 0.5);
     for (let row = 0; row < 4; row++) for (let col = 0; col < 6; col++) {
       const cw = (w - 12) / 6, ch = (h - 12) / 4;
       const x = 6 + (col + 0.5) * cw, y = 6 + (row + 0.5) * ch;
       box(x, y, d + 0.3, cw - 1.3, ch - 1.3, 0.8, '#142c50', 1, 0.45);
-      for (const offset of [-0.25, 0.25]) box(x + offset * cw, y, d + 0.8, 0.35, ch - 2, 0.15, '#7d93a9', 0.05, 0.7);
+      for (const offset of [-0.25, 0.25]) box(x + offset * cw, y, d + 1, 0.35, ch - 2, 0.15, '#7d93a9', 0.05, 0.7);
     }
   } else if (type === 'battery') {
     box(w / 2, h / 2, d * 0.45, w * 0.96, h * 0.95, d * 0.9, '#29363d', 5);
