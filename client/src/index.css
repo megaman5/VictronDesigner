@@ -396,3 +396,53 @@
   transform-box: fill-box;
   transform-origin: center;
 }
+
+/* The schematic tilts away as the solid scene settles onto the same workspace. */
+.canvas-view-transition {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  perspective: 1600px;
+  isolation: isolate;
+  background: hsl(var(--background));
+}
+.canvas-view-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-height: 0;
+  transform-origin: 50% 55%;
+  backface-visibility: hidden;
+  transition: transform 700ms cubic-bezier(.22, 1, .36, 1), opacity 550ms ease, visibility 0s;
+}
+.canvas-view-editor { transform: rotateX(0deg) scale(1); opacity: 1; }
+.canvas-view-model {
+  transform: translateY(5%) rotateX(-14deg) scale(1.08);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s, 0s, 700ms;
+}
+.canvas-view-transition[data-mode="3d"] .canvas-view-editor {
+  transform: translateY(-3%) rotateX(38deg) scale(.88);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s, 0s, 700ms;
+}
+.canvas-view-transition[data-mode="3d"] .canvas-view-model {
+  transform: translateY(0) rotateX(0deg) scale(1);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-view-transition .canvas-view-layer {
+    transform: none !important;
+    transition-duration: 120ms, 120ms, 0s;
+  }
+}
