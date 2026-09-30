@@ -2186,6 +2186,8 @@ export default function SchematicDesigner() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <TopBar
+        canvasMode={canvasMode}
+        onCanvasModeChange={mode => { setWireConnectionMode(false); setCanvasMode(mode); }}
         onAIPrompt={() => setAiDialogOpen(true)}
         onAIWire={() => aiWireMutation.mutate()}
         onExport={() => { setCanvasMode("2d"); setExportDialogOpen(true); }}
@@ -2262,18 +2264,12 @@ export default function SchematicDesigner() {
         </Tooltip>
 
         <div className="flex flex-1 min-w-0 min-h-0 flex-col">
-          <div className="flex items-center justify-between gap-3 border-b bg-card px-3 py-2">
-            <div className="flex items-center gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Design view">
-              <Button size="sm" variant={canvasMode === "2d" ? "default" : "ghost"}
-                aria-pressed={canvasMode === "2d"} data-testid="button-view-2d" onClick={() => setCanvasMode("2d")}>2D editor</Button>
-              <Button size="sm" variant={canvasMode === "3d" ? "default" : "ghost"}
-                aria-pressed={canvasMode === "3d"} data-testid="button-view-3d"
-                onClick={() => { setWireConnectionMode(false); setCanvasMode("3d"); }}>3D view</Button>
-            </div>
-            <span className="hidden sm:block text-xs text-muted-foreground">{canvasMode === "3d" ? "Explore your layout · Edit placement in 2D" : "Place components and connect terminals"}</span>
-          </div>
           {canvasMode === "3d" && <Suspense fallback={<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground" role="status">Opening 3D view…</div>}>
             <Design3DView components={components} wires={wires} routingOptions={wireRoutingOptions}
+              showWireLabels={showWireLabels} wireGaugeFormat={wireGaugeFormat} lengthUnit={lengthUnit}
+              viewMode={viewMode} wireCalculations={wireCalculations}
+              selectedComponentId={selectedComponent?.id} selectedWireId={selectedWire?.id}
+              onComponentMove={handleComponentMove}
               onComponentSelect={component => { handleComponentSelect(component); setRightPanelOpen(true); }}
               onWireSelect={wire => { handleWireSelect(wire); setRightPanelOpen(true); }}
               onBack={() => setCanvasMode("2d")} />
