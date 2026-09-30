@@ -271,7 +271,7 @@ export default function Design3DView({ components, wires, routingOptions, onComp
       const vFov = THREE.MathUtils.degToRad(camera.fov);
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
       const direction = (top ? new THREE.Vector3(0, -0.001, 1)
-        : new THREE.Vector3(0.30, -0.50, 0.86)).normalize();
+        : new THREE.Vector3(0, -0.50, 0.86)).normalize();
       const right = camera.up.clone().cross(direction).normalize();
       const up = direction.clone().cross(right).normalize();
       let distance = 100;
