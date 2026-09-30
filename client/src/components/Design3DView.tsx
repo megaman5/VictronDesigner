@@ -34,10 +34,6 @@ interface Props {
 const wireColor = (polarity: string) => ({ positive: '#ff535b', negative: '#90a4b8',
   hot: '#ffad49', 'ac-hot': '#ffad49', neutral: '#e8edf5', ground: '#53df99',
 }[polarity] ?? '#93a5ff');
-const bodyColor = (type: string) => type.startsWith('busbar') ? (type.endsWith('positive') ? '#bb7541' : '#394658')
-  : type === 'battery' ? '#354352' : type === 'solar-panel' ? '#14375c'
-  : ['fuse', 'switch', 'dc-load', 'ac-load'].includes(type) ? '#495c70' : '#007dbb';
-
 /** Subtle, seamless wood grain drawn locally; no external texture download. */
 function plywoodTexture(width: number, height: number) {
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 512;
@@ -61,23 +57,19 @@ function plywoodTexture(width: number, height: number) {
 
 function labelTexture(component: SchematicComponent, color: string) {
   const canvas = document.createElement('canvas');
-  canvas.width = 512; canvas.height = 320;
+  canvas.width = 512; canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = color; ctx.fillRect(0, 0, 512, 320);
-  ctx.fillStyle = '#ffffff18'; ctx.fillRect(20, 20, 472, 3);
-  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
-  ctx.font = '600 38px Inter, sans-serif';
-  const name = component.name || component.type;
-  const words = name.split(' '); const lines: string[] = []; let line = '';
+  ctx.fillStyle = color; ctx.fillRect(0, 0, 512, 128);
+  ctx.fillStyle = color === '#24333d' ? '#ffffff' : '#193a50'; ctx.textAlign = 'center';
+  ctx.font = '600 42px Inter, sans-serif';
+  const words = (component.name || component.type).split(' '); const lines: string[] = []; let line = '';
   for (const word of words) {
-    if (ctx.measureText(`${line} ${word}`).width > 440 && line) { lines.push(line); line = word; }
+    if (ctx.measureText(`${line} ${word}`).width > 465 && line) { lines.push(line); line = word; }
     else line = line ? `${line} ${word}` : word;
   }
   if (line) lines.push(line);
-  lines.slice(0, 3).forEach((text, i) => ctx.fillText(text, 256, 100 + i * 45, 440));
-  ctx.font = '22px Inter, sans-serif'; ctx.fillStyle = '#c4dfef';
-  ctx.fillText(component.type.replaceAll('-', ' ').toUpperCase(), 256, 255, 440);
-  ctx.fillStyle = '#4aeca4'; ctx.beginPath(); ctx.arc(256, 285, 5, 0, Math.PI * 2); ctx.fill();
+  lines.slice(0, 2).forEach((text, i) => ctx.fillText(text, 256, lines.length > 1 ? 48 + i * 48 : 80, 465));
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -117,6 +109,8 @@ export default function Design3DView({ components, wires, routingOptions, onComp
     camera.up.set(0, 0, 1);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
     renderer.domElement.setAttribute('aria-label', '3D system layout. Drag to orbit, scroll to zoom, right-drag to pan.');
     renderer.domElement.setAttribute('role', 'img');
     renderer.domElement.dataset.testid = 'canvas-3d';
@@ -125,15 +119,20 @@ export default function Design3DView({ components, wires, routingOptions, onComp
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.maxPolarAngle = Math.PI / 2 - 0.04;
     controls.minDistance = 40; controls.maxDistance = 50000;
-    const ambient = new THREE.HemisphereLight(0xd9edff, 0x26344b, 2.6); scene.add(ambient);
-    const light = new THREE.DirectionalLight(0xffffff, 3.2); light.position.set(-300, 300, 900); scene.add(light);
+    const ambient = new THREE.HemisphereLight(0xd9edff, 0x697078, 2.1); scene.add(ambient);
+    const light = new THREE.DirectionalLight(0xfff1de, 3); light.position.set(-300, 300, 900); scene.add(light);
     const { minX, minY, maxX, maxY } = layout.bounds;
     const center = new THREE.Vector3((minX + maxX) / 2, -(minY + maxY) / 2, 0);
     const width = maxX - minX, height = maxY - minY;
+    light.position.copy(center).add(new THREE.Vector3(-width * 0.3, height * 0.2, 1200));
+    light.target.position.copy(center); scene.add(light.target); light.castShadow = true;
+    const span = Math.max(width, height) * 0.7;
+    Object.assign(light.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 10000 });
+    light.shadow.mapSize.set(2048, 2048); light.shadow.normalBias = 0.6; light.shadow.bias = -0.0001;
     const wood = new THREE.MeshStandardMaterial({ map: plywoodTexture(width, height), color: dark ? '#655446' : '#ffffff', roughness: 0.95 });
     const edge = new THREE.MeshStandardMaterial({ color: dark ? '#4e3926' : '#ab8051', roughness: 0.95 });
     const floor = new THREE.Mesh(new THREE.BoxGeometry(width, height, 10), [edge, edge, edge, edge, wood, edge]);
-    floor.position.copy(center); floor.position.z = -8; scene.add(floor);
+    floor.receiveShadow = true; floor.position.copy(center); floor.position.z = -8; scene.add(floor);
     const gridPoints: number[] = [];
     const spacing = Math.max(40, Math.ceil(Math.max(width, height) / 100 / 20) * 20);
     for (let x = minX; x <= maxX; x += spacing) gridPoints.push(x, -minY, -2, x, -maxY, -2);
@@ -145,14 +144,15 @@ export default function Design3DView({ components, wires, routingOptions, onComp
     const outlines = new Map<string, THREE.LineSegments>();
     for (const part of layout.parts) {
       const { component: c, width: w, height: h, depth, terminals } = part;
-      const color = bodyColor(c.type);
-      const side = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.25 });
-      const face = new THREE.MeshStandardMaterial({ map: labelTexture(c, color), roughness: 0.65 });
-      const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth), [side, side, side, side, face, side]);
-      box.position.set(c.x + w / 2, -(c.y + h / 2), depth / 2);
-      box.userData.component = c; scene.add(box); clickable.push(box);
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color: '#86badd', transparent: true, opacity: 0.35 }));
-      edges.position.copy(box.position); scene.add(edges); outlines.set(c.id, edges);
+      const outlineGeometry = new THREE.BoxGeometry(w, h, depth);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(outlineGeometry), new THREE.LineBasicMaterial({ color: '#38bdf8', transparent: true, opacity: 0 }));
+      outlineGeometry.dispose(); edges.position.set(c.x + w / 2, -(c.y + h / 2), depth / 2);
+      scene.add(edges); outlines.set(c.id, edges);
+      const small = c.type.startsWith('busbar') || c.type === 'fuse' || c.type === 'smartshunt';
+      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, h * (small ? 0.18 : 0.2)),
+        new THREE.MeshBasicMaterial({ map: labelTexture(c, ['ac-panel', 'dc-panel'].includes(c.type) ? '#d5dbdc' : '#24333d'), toneMapped: false }));
+      plaque.position.set(c.x + w / 2, -(c.y + h * (c.type === 'solar-panel' ? 0.13 : 0.27)), depth + 2.5);
+      plaque.userData.component = c; scene.add(plaque); clickable.push(plaque);
       for (const detail of deviceDetails(c.type, w, h, depth)) {
         detail.position.x += c.x; detail.position.y -= c.y;
         detail.userData.component = c; scene.add(detail); clickable.push(detail);
@@ -160,10 +160,12 @@ export default function Design3DView({ components, wires, routingOptions, onComp
       for (const t of terminals) {
         const color = t.type.includes('negative') ? '#9bafc2' : t.type === 'ground' ? '#53df99'
           : t.type.includes('positive') ? '#ff535b' : '#ffad49';
-        const terminal = new THREE.Mesh(new THREE.SphereGeometry(4.5, 12, 8),
-          new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.3 }));
-        terminal.position.set(c.x + t.x, -(c.y + t.y), depth + 5);
-        terminal.userData.component = c; scene.add(terminal); clickable.push(terminal);
+        for (const [radius, thickness, z, tint, sides] of [[5.3, 2, depth + 1, color, 24], [4, 1, depth + 2.5, '#b4bdc2', 24], [2.7, 3, depth + 4.5, '#d6dade', 6]] as const) {
+          const terminal = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, thickness, sides),
+            new THREE.MeshStandardMaterial({ color: tint, metalness: 0.7, roughness: 0.3 }));
+          terminal.rotation.x = Math.PI / 2; terminal.position.set(c.x + t.x, -(c.y + t.y), z);
+          terminal.castShadow = true; terminal.userData.component = c; scene.add(terminal); clickable.push(terminal);
+        }
       }
     }
     const cableMeshes = new Map<string, THREE.Mesh>();
@@ -214,7 +216,7 @@ export default function Design3DView({ components, wires, routingOptions, onComp
       outlines.forEach((line, id) => {
         const material = line.material as THREE.LineBasicMaterial;
         const active = id === selection.current.selectedComponentId;
-        material.color.set(active ? '#38bdf8' : '#86badd'); material.opacity = active ? 1 : 0.35;
+        material.color.set(active ? '#38bdf8' : '#86badd'); material.opacity = active ? 1 : 0;
         line.scale.setScalar(active ? 1.035 : 1);
       });
     };
@@ -380,7 +382,7 @@ export default function Design3DView({ components, wires, routingOptions, onComp
         if (mesh.material) (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach(m => materials.add(m));
       });
       materials.forEach(material => { (material as THREE.MeshStandardMaterial).map?.dispose(); material.dispose(); });
-      renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); labelLayer.remove();
+      light.shadow.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); labelLayer.remove();
     };
   }, [components, wires, routingOptions, dark]);
 
