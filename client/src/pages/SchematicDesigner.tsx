@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { TopBar } from "@/components/TopBar";
 import { RuntimeEstimatesDialog } from "@/components/RuntimeEstimatesDialog";
@@ -35,6 +35,12 @@ import { trackAction } from "@/lib/tracking";
 import { getDefaultWireLength } from "@/lib/wire-length-defaults";
 import { calculateWireSize, type WireGaugeFormat, type LengthUnit } from "@/lib/wire-calculator";
 import { type WireRoutingStyle, type WireRoutingOptions, DEFAULT_WIRE_ROUTING_OPTIONS, WIRE_ROUTING_STYLES, normalizeRoutingOptions } from "@/lib/wire-routing";
+
+const Design3DView = lazy(() => import("@/components/Design3DView").catch(() => ({
+  default: () => <div className="flex-1 flex items-center justify-center p-6 text-sm" role="alert">
+    The 3D view could not load. Switch to the 2D editor and refresh to try again.
+  </div>,
+})));
 
 const WIRE_ROUTING_OPTIONS_KEY = "wireRoutingOptions";
 
@@ -121,6 +127,7 @@ interface AuthUser {
 }
 
 export default function SchematicDesigner() {
+  const [canvasMode, setCanvasMode] = useState<"2d" | "3d">("2d");
   const { toast } = useToast();
   const [currentSchematicId, setCurrentSchematicId] = useState<string | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
@@ -2181,13 +2188,13 @@ export default function SchematicDesigner() {
       <TopBar
         onAIPrompt={() => setAiDialogOpen(true)}
         onAIWire={() => aiWireMutation.mutate()}
-        onExport={() => setExportDialogOpen(true)}
-        onSave={() => setSaveDialogOpen(true)}
+        onExport={() => { setCanvasMode("2d"); setExportDialogOpen(true); }}
+        onSave={() => { setCanvasMode("2d"); setSaveDialogOpen(true); }}
         onOpen={() => setOpenDialogOpen(true)}
-        onWireMode={() => setWireConnectionMode(!wireConnectionMode)}
+        onWireMode={() => { setCanvasMode("2d"); setWireConnectionMode(!wireConnectionMode); }}
         onDesignQuality={() => setDesignQualitySheetOpen(true)}
         onEstimates={() => setShowEstimates(true)}
-        onFeedback={() => setFeedbackDialogOpen(true)}
+        onFeedback={() => { setCanvasMode("2d"); setFeedbackDialogOpen(true); }}
         onLogin={handleLogin}
         onLogout={handleLogout}
         onClear={() => setClearDialogOpen(true)}
@@ -2223,10 +2230,10 @@ export default function SchematicDesigner() {
       <div className="flex-1 flex overflow-hidden">
         {leftPanelOpen && (
           <ComponentLibrary
-            onDragStart={(comp) => setDraggedComponentType(comp.id)}
+            onDragStart={(comp) => { setCanvasMode("2d"); setDraggedComponentType(comp.id); }}
             onAddCustom={() => setCustomDialogOpen(true)}
             isAuthenticated={!!user}
-            onDragStartCustomDefinition={(def) => setDraggedCustomDefinition(def)}
+            onDragStartCustomDefinition={(def) => { setCanvasMode("2d"); setDraggedCustomDefinition(def); }}
             onCreateCustomDefinition={() => {
               setEditingCustomDefinition(null);
               setCustomComponentEditorOpen(true);
@@ -2254,6 +2261,24 @@ export default function SchematicDesigner() {
           <TooltipContent side="right">{leftPanelOpen ? "Hide component library" : "Show component library"}</TooltipContent>
         </Tooltip>
 
+        <div className="flex flex-1 min-w-0 min-h-0 flex-col">
+          <div className="flex items-center justify-between gap-3 border-b bg-card px-3 py-2">
+            <div className="flex items-center gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Design view">
+              <Button size="sm" variant={canvasMode === "2d" ? "default" : "ghost"}
+                aria-pressed={canvasMode === "2d"} data-testid="button-view-2d" onClick={() => setCanvasMode("2d")}>2D editor</Button>
+              <Button size="sm" variant={canvasMode === "3d" ? "default" : "ghost"}
+                aria-pressed={canvasMode === "3d"} data-testid="button-view-3d"
+                onClick={() => { setWireConnectionMode(false); setCanvasMode("3d"); }}>3D view</Button>
+            </div>
+            <span className="hidden sm:block text-xs text-muted-foreground">{canvasMode === "3d" ? "Explore your layout · Edit placement in 2D" : "Place components and connect terminals"}</span>
+          </div>
+          {canvasMode === "3d" && <Suspense fallback={<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground" role="status">Opening 3D view…</div>}>
+            <Design3DView components={components} wires={wires} routingOptions={wireRoutingOptions}
+              onComponentSelect={component => { handleComponentSelect(component); setRightPanelOpen(true); }}
+              onWireSelect={wire => { handleWireSelect(wire); setRightPanelOpen(true); }}
+              onBack={() => setCanvasMode("2d")} />
+          </Suspense>}
+          <div className={canvasMode === "2d" ? "flex flex-1 min-h-0" : "hidden"}>
         <SchematicCanvas
           components={components}
           wires={wires}
@@ -2283,6 +2308,8 @@ export default function SchematicDesigner() {
           onWireRoutingOptionsChange={setWireRoutingOptions}
           showWireRoutingSelector={wireRoutingSelectorEnabled}
         />
+          </div>
+        </div>
 
         <Tooltip>
           <TooltipTrigger asChild>
