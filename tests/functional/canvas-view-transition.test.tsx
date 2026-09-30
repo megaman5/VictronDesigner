@@ -19,7 +19,9 @@ describe('canvas view transition', () => {
     expect(input.parentElement?.getAttribute('aria-hidden')).toBe('true');
     view.rerender(<CanvasViewTransition mode="2d" editor={editor} render3D={render3D} />);
     expect(screen.getByText('3D scene')).toBeTruthy();
-    act(() => vi.advanceTimersByTime(740));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByText('3D scene')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1140));
     expect(screen.queryByText('3D scene')).toBeNull();
     expect(screen.getByLabelText('Editor state')).toBe(input);
   });
@@ -31,7 +33,7 @@ describe('canvas view transition', () => {
     view.rerender(<CanvasViewTransition mode="2d" editor={editor} render3D={render3D} />);
     act(() => vi.advanceTimersByTime(300));
     view.rerender(<CanvasViewTransition mode="3d" editor={editor} render3D={render3D} />);
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2500));
     expect(screen.getByText('3D scene')).toBeTruthy();
     expect(screen.getByTestId('canvas-view-transition').getAttribute('data-mode')).toBe('3d');
   });

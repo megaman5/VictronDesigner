@@ -416,22 +416,22 @@
   min-height: 0;
   transform-origin: 50% 55%;
   backface-visibility: hidden;
-  transition: transform 700ms cubic-bezier(.22, 1, .36, 1), opacity 550ms ease, visibility 0s;
+  transition: transform 2000ms cubic-bezier(.16, 1.12, .3, 1), opacity 1450ms cubic-bezier(.4, 0, .2, 1), visibility 0s;
 }
 .canvas-view-editor { transform: rotateX(0deg) scale(1); opacity: 1; }
 .canvas-view-model {
-  transform: translateY(5%) rotateX(-14deg) scale(1.08);
+  transform: translateY(9%) rotateX(-24deg) scale(1.18);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition-delay: 0s, 0s, 700ms;
+  transition-delay: 0s, 0s, 2000ms;
 }
 .canvas-view-transition[data-mode="3d"] .canvas-view-editor {
-  transform: translateY(-3%) rotateX(38deg) scale(.88);
+  transform: translateY(-6%) rotateX(52deg) scale(.78);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition-delay: 0s, 0s, 700ms;
+  transition-delay: 0s, 0s, 2000ms;
 }
 .canvas-view-transition[data-mode="3d"] .canvas-view-model {
   transform: translateY(0) rotateX(0deg) scale(1);
@@ -445,4 +445,35 @@
     transform: none !important;
     transition-duration: 120ms, 120ms, 0s;
   }
+}
+
+/* A single broad sweep and expanding halo bridge the two scenes. */
+.canvas-view-flourish {
+  position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none;
+}
+.canvas-view-sweep {
+  position: absolute; inset: -50%;
+  background: linear-gradient(115deg, transparent 36%, rgb(56 189 248 / .06) 43%, rgb(125 211 252 / .32) 49%, rgb(224 242 254 / .5) 50%, rgb(56 189 248 / .12) 54%, transparent 63%);
+  animation: canvas-light-sweep 2000ms cubic-bezier(.22, .65, .3, 1) both;
+}
+.canvas-view-halo {
+  position: absolute; width: 65%; aspect-ratio: 1; left: 17.5%; top: 50%;
+  border: 1px solid rgb(56 189 248 / .4); border-radius: 50%;
+  box-shadow: 0 0 60px rgb(56 189 248 / .12), inset 0 0 60px rgb(56 189 248 / .08);
+  animation: canvas-depth-halo 2000ms ease-out both;
+}
+.canvas-view-flourish.is-reversed .canvas-view-sweep { animation-direction: reverse; }
+@keyframes canvas-light-sweep {
+  0% { transform: translateX(-65%) rotate(-5deg); opacity: 0; }
+  20% { opacity: .6; }
+  65% { opacity: .45; }
+  100% { transform: translateX(65%) rotate(5deg); opacity: 0; }
+}
+@keyframes canvas-depth-halo {
+  0% { transform: translateY(-50%) rotateX(65deg) scale(.4); opacity: 0; }
+  30% { opacity: .6; }
+  100% { transform: translateY(-50%) rotateX(15deg) scale(2); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-view-flourish { display: none; }
 }
