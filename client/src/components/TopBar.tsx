@@ -79,6 +79,8 @@ function AIAction({
 }
 
 interface TopBarProps {
+  canvasMode?: "2d" | "3d";
+  onCanvasModeChange?: (mode: "2d" | "3d") => void;
   onAIPrompt?: () => void;
   onAIWire?: () => void;
   onExport?: () => void;
@@ -114,7 +116,8 @@ interface TopBarProps {
   hasWireIssues?: boolean;
 }
 
-export function TopBar({ 
+export function TopBar({
+  canvasMode = "2d", onCanvasModeChange,
   onAIPrompt, 
   onAIWire, 
   onExport, 
@@ -174,6 +177,13 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
+          {onCanvasModeChange && <div className="inline-flex shrink-0 rounded-md border p-0.5" role="group" aria-label="Design view">
+            {(["2d", "3d"] as const).map(mode => <Button key={mode} size="sm"
+              variant={canvasMode === mode ? "default" : "ghost"} className="h-7 px-2.5"
+              aria-pressed={canvasMode === mode} aria-label={mode === "2d" ? "2D editor" : "3D view"}
+              title={mode === "2d" ? "Edit schematic in 2D" : "Explore system in 3D"}
+              data-testid={`button-view-${mode}`} onClick={() => onCanvasModeChange(mode)}>{mode.toUpperCase()}</Button>)}
+          </div>}
           {/* AI runs on the platform's API key, so it needs a signed-in user
               with allowance left. When it is unavailable the buttons grey out
               and the tooltip says what to do about it - a disabled button

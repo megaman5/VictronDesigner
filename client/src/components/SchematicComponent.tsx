@@ -1,3 +1,4 @@
+import { componentLoadLabel } from "@/lib/design-display";
 import { Terminal, getComponentTerminals, getComponentDimensions, getBaseComponentDimensions, getOrientation, isDefaultOrientation, getLabelCounterTransform, mpptHasLoadOutput } from "@/lib/terminal-config";
 import { FUSE_TYPES, getFuseType } from "@shared/protection-devices";
 
@@ -47,30 +48,7 @@ export function SchematicComponent({
   const rotated = !isDefaultOrientation(orientation);
   const labelCounter = getLabelCounterTransform(orientation);
 
-  const getLoadLabel = () => {
-     if (!properties) return null;
-     if (type === 'ac-load' || type === 'dc-load') {
-        return `${properties.watts || properties.power || 0}W`;
-     }
-     if (type === 'inverter' || type === 'phoenix-inverter' || type === 'multiplus' || type === 'quattro') {
-        return `${properties.watts || 3000}W`;
-     }
-     if (type === 'mppt') {
-        return `${properties.maxCurrent || properties.amps || 0}A`;
-     }
-     if (type === 'alternator' || type === 'blue-smart-charger' || type === 'orion-dc-dc') {
-         return `${properties.amps || properties.current || 0}A`;
-     }
-     if (type === 'solar-panel') {
-         return `${properties.watts || 0}W`;
-     }
-     if (type === 'battery') {
-         return `${properties.capacity || 0}Ah`;
-     }
-     return null;
-  };
-
-  const loadLabel = getLoadLabel();
+  const loadLabel = componentLoadLabel(type, properties);
 
   const handleTerminalClick = (terminal: Terminal, e: React.MouseEvent) => {
     console.log('Terminal clicked:', terminal.id, 'on component type:', type);

@@ -47,6 +47,12 @@ function normalizeGauge(gauge: string): string {
   return gauge.replace(" AWG", "").trim().replace(/\\0/g, "/0");
 }
 
+/** Stored wire size, shared by display and illustrative cable geometry. */
+export function wireGaugeAreaMm2(gauge: string | undefined): number | undefined {
+  if (!gauge) return undefined;
+  return AWG_TO_MM2[normalizeGauge(gauge.toUpperCase())];
+}
+
 function formatMetricArea(mm2: number): string {
   return mm2 >= 10 ? mm2.toFixed(1).replace(/\.0$/, "") : mm2.toFixed(2).replace(/0$/, "");
 }
