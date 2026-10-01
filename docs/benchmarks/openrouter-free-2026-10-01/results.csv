@@ -1,0 +1,69 @@
+model,stage,settings,suite,case,repeat,responded,score,errors,warnings,expectationsMet,passed,noErrorPass,seconds,error,failedExpectations,runId
+google/gemma-4-31b-it:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,1.67,429 Provider returned error,,94365b68-b23f-447c-936b-8ed8a7707541
+google/gemma-4-31b-it:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,1.672,429 Provider returned error,,92739f1c-1c23-40b9-a903-e44f5f1b0e72
+qwen/qwen3.8-27b:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,3.648,429 Provider returned error,,5310c24e-fc97-4f80-b533-0e66b7c43c2b
+qwen/qwen3.8-27b:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,1.503,429 Provider returned error,,c82569c2-cf39-4a13-9698-66a114780cdf
+thinkingmachines/inkling:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,0.035,403 thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps,,8067fa45-dac2-4c7d-8e1a-ea928ee281fe
+thinkingmachines/inkling:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,0.02,403 thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps,,99a913ec-06f0-4508-bcb6-6b1ffc5bf355
+dots-studio/dots-3-note-preview:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.012,This operation was aborted,,8c460b7e-555d-43fb-9803-a6ac744fba74
+apodex/apodex-1.1-mini:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.002,This operation was aborted,,0552705d-bbbf-42cc-b68b-4b2b0fb5ccf5
+nvidia/nemotron-3-super-120b-a12b:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.003,This operation was aborted,,dc0f59fe-6eba-41f7-bc49-d8be25168d39
+apodex/apodex-1.1-mini:free,screen,default,wiring,van-dc-wiring,1,True,100,0,3,True,True,True,13.434,,,04f02169-b03f-41ca-8142-564b10d36682
+dots-studio/dots-3-note-preview:free,screen,default,wiring,van-dc-wiring,1,True,51,4,8,True,False,False,70.993,,,cde03bea-4c0d-48fc-a258-03a58f5d3501
+nvidia/nemotron-3-super-120b-a12b:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,90.003,This operation was aborted,,7c96e745-ba0a-49a1-938e-c2ed3bca8437
+nvidia/nemotron-3-ultra-550b-a55b:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.003,This operation was aborted,,938feec1-3d99-4206-b504-6b6233db82b5
+nvidia/nemotron-3-ultra-550b-a55b:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,0.323,No JSON object found in model response,,b9dfc00f-781c-4a58-892f-a049d00c2b64
+nvidia/nemotron-3.5-lightning:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.004,This operation was aborted,,533d45de-28a7-4b8f-a4e5-817a67645984
+poolside/laguna-s-2.1:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.004,This operation was aborted,,f5b99d23-5880-4981-acac-eb75255e16b5
+cohere/north-mini-code:free,screen,default,core-designs,van-12v,1,False,,,,,False,False,90.002,This operation was aborted,,e1535bbb-883a-49ae-be94-502685df7e75
+nvidia/nemotron-3.5-lightning:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,90.006,This operation was aborted,,a6b87145-f906-43d0-866b-78df9c229d24
+poolside/laguna-s-2.1:free,screen,default,wiring,van-dc-wiring,1,True,97,0,6,True,True,True,89.057,,,170750ce-9b75-477e-afb4-ac1c7f8fea38
+cohere/north-mini-code:free,screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,90.001,This operation was aborted,,c48efc8a-c37f-45df-b5d9-32566c43beb0
+inclusionai/ling-3.0-flash-sante:free,extra-screen,default,core-designs,van-12v,1,False,,,,,False,False,0.133,400 Provider returned error,,60e500ab-4fe5-46a1-9682-8e0d28ad8362
+nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,extra-screen,default,core-designs,van-12v,1,False,,,,,False,False,0.239,No JSON object found in model response,,b6443262-2651-4655-bd6a-23556d566b6f
+inclusionai/ling-3.0-flash-sante:free,extra-screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,0.088,400 Provider returned error,,a7a583d3-3a96-4893-bd70-14b0e7db830e
+nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,extra-screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,0.169,No JSON object found in model response,,615d74ec-8a56-40a5-aa67-b398f6ffa230
+google/gemma-4-26b-a4b-it:free,extra-screen,default,core-designs,van-12v,1,False,,,,,False,False,1.925,429 Provider returned error,,3ba7540f-5d52-4aa0-8265-9a9d49760930
+google/gemma-4-26b-a4b-it:free,extra-screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,1.678,429 Provider returned error,,7d9b5514-e6e9-47b5-b573-755ea1491018
+poolside/laguna-xs-2.1:free,extra-screen,default,core-designs,van-12v,1,False,,,,,False,False,17.975,No JSON object found in model response,,d922dcc7-e6b6-4719-a636-dcc33bb136f4
+poolside/laguna-xs-2.1:free,extra-screen,default,wiring,van-dc-wiring,1,False,,,,,False,False,7.076,No JSON object found in model response,,68079f74-62f0-44bf-8c3e-a6c0296445b1
+liquid/lfm-2.5-2.6b:free,extra-screen,default,core-designs,van-12v,1,False,,,,,False,False,40.526,No JSON object found in model response,,004f9177-4f2e-4930-a2e7-76715d0b252e
+liquid/lfm-2.5-2.6b:free,extra-screen,default,wiring,van-dc-wiring,1,True,66,4,3,False,False,False,17.906,,all-components-wired: 1 unconnected: battery-1,934f796b-346b-445e-beb4-2bf75fec346d
+stealth/space-bunny-alpha,extra-screen,default,core-designs,van-12v,1,False,,,,,False,False,90.009,This operation was aborted,,d96b82f1-b45c-42ee-bd54-924fb4810956
+stealth/space-bunny-alpha,extra-screen,default,wiring,van-dc-wiring,1,True,94,0,7,True,True,True,57.488,,,0db080b6-27c4-465a-affb-089d8729c9d4
+apodex/apodex-1.1-mini:free,tuned-screen,reasoning disabled,core-designs,van-12v,1,True,0,11,9,True,False,False,16.02,,,af5519e9-5e46-45cc-90bc-81dcd5b84936
+apodex/apodex-1.1-mini:free,tuned-screen,reasoning disabled,wiring,van-dc-wiring,1,True,29,8,2,True,False,False,4.777,,,6a3a20ef-f2a4-4f6e-85be-ae67439e7951
+nvidia/nemotron-3-super-120b-a12b:free,tuned-screen,reasoning disabled,core-designs,van-12v,1,True,7,6,1,True,False,False,28.923,,,16fb0b31-295f-4936-9feb-2e6828b42625
+nvidia/nemotron-3-super-120b-a12b:free,tuned-screen,reasoning disabled,wiring,van-dc-wiring,1,True,100,0,5,True,True,True,9.41,,,007bcc97-32ff-400b-8948-705dc3565b06
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,van-12v,1,True,0,8,4,True,False,False,17.478,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,van-12v,2,True,0,7,5,True,False,False,14.435,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,split-240v,1,True,39,4,4,True,False,False,17.477,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,split-240v,2,True,0,9,8,False,False,False,23.873,,has-quattro: expected one of [quattro] in the design,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,lynx-cat,1,True,0,62,25,True,False,False,34.733,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,lynx-cat,2,True,0,12,8,True,False,False,23.111,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,small-branch-fusing,1,True,0,7,9,True,False,False,10.311,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,small-branch-fusing,2,True,27,7,5,True,False,False,17.913,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,alternator-charging,1,True,0,19,8,True,False,False,14.816,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,core-designs,alternator-charging,2,True,66,4,2,True,False,False,13.398,,,bc5537af-59a4-4b5b-a1ef-2082951b3a2f
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,wiring,van-dc-wiring,1,True,39,7,2,True,False,False,4.634,,,b1fca141-f16a-4738-8c28-9974f753bb35
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,wiring,van-dc-wiring,2,True,100,0,1,True,True,True,5.761,,,b1fca141-f16a-4738-8c28-9974f753bb35
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,wiring,ac-path-wiring,1,True,99,1,1,True,True,False,3.586,,,b1fca141-f16a-4738-8c28-9974f753bb35
+apodex/apodex-1.1-mini:free,tuned-final,reasoning disabled,wiring,ac-path-wiring,2,True,96,1,2,True,True,False,4.138,,,b1fca141-f16a-4738-8c28-9974f753bb35
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,van-12v,1,False,,,,,False,False,90.006,This operation was aborted,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,van-12v,2,True,0,9,1,True,False,False,45.035,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,split-240v,1,True,0,8,4,True,False,False,43.273,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,split-240v,2,True,0,18,8,True,False,False,83.721,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,lynx-cat,1,True,0,13,8,True,False,False,81.824,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,lynx-cat,2,True,0,15,7,True,False,False,56.968,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,small-branch-fusing,1,True,100,0,5,True,True,True,10.599,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,small-branch-fusing,2,True,91,0,8,True,True,True,13.45,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,alternator-charging,1,True,0,8,5,True,False,False,17.757,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,core-designs,alternator-charging,2,True,0,13,5,True,False,False,30.534,,,8f3f28f6-1b48-4ce0-bdbb-29df424a845d
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,wiring,van-dc-wiring,1,True,100,0,5,True,True,True,11.679,,,c043f36c-b79e-43b3-a1e3-7b17a8c68e96
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,wiring,van-dc-wiring,2,True,100,0,5,True,True,True,8.485,,,c043f36c-b79e-43b3-a1e3-7b17a8c68e96
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,wiring,ac-path-wiring,1,True,56,5,2,True,False,False,7.81,,,c043f36c-b79e-43b3-a1e3-7b17a8c68e96
+nvidia/nemotron-3-super-120b-a12b:free,tuned-final,reasoning disabled,wiring,ac-path-wiring,2,True,100,0,1,True,True,True,4.761,,,c043f36c-b79e-43b3-a1e3-7b17a8c68e96
+apodex/apodex-1.1-mini:free,budget-screen,2048 reasoning tokens requested; up to 2 iterations,core-designs,van-12v,1,False,,,,,False,False,90.008,This operation was aborted,,2cdf77f6-612b-44f1-bd9e-f565b3845ca5
+nvidia/nemotron-3-super-120b-a12b:free,budget-screen,2048 reasoning tokens requested; up to 2 iterations,core-designs,van-12v,1,True,44,2,2,True,False,False,111.003,,,f358f060-17b7-4bff-9f81-b9e64ef14ddc
+apodex/apodex-1.1-mini:free,budget-screen,2048 reasoning tokens requested; up to 2 iterations,wiring,van-dc-wiring,1,True,100,0,3,True,True,True,49.546,,,edd575e6-becc-46d1-b435-b1f06b59c3ea
+nvidia/nemotron-3-super-120b-a12b:free,budget-screen,2048 reasoning tokens requested; up to 2 iterations,wiring,van-dc-wiring,1,True,57,4,6,True,False,False,78.894,,,8b23fe7f-d685-4a2f-a899-6b2dc74e8574

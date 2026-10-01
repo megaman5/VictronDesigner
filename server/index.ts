@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { passport } from "./auth";
+import { aiAlertsConfigured } from "./ai/failure-alerts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FileStoreSession = FileStore(session);
@@ -77,6 +78,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  if (!aiAlertsConfigured()) {
+    console.warn("[ai-alerts] AI failure emails are disabled: configure SMTP_HOST and SMTP_FROM");
+  }
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

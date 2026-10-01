@@ -1,0 +1,197 @@
+{
+  "stage": "extra-screen",
+  "model": "stealth/space-bunny-alpha",
+  "suiteId": "core-designs",
+  "runId": "d96b82f1-b45c-42ee-bd54-924fb4810956",
+  "summary": {
+    "suite": {
+      "id": "core-designs",
+      "label": "Core system designs",
+      "skillId": "system-design",
+      "cases": [
+        {
+          "id": "van-12v",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V camper van system: 400W of solar, a 200Ah lithium battery, a 2000W inverter, a 12V fridge and LED lights. Include proper fusing and a battery monitor.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "has-mppt",
+              "description": "an MPPT controller is present"
+            },
+            {
+              "id": "has-monitor",
+              "description": "a battery monitor is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            },
+            {
+              "id": "no-invented-terminals",
+              "description": "every wire lands on a terminal that exists"
+            }
+          ]
+        },
+        {
+          "id": "split-240v",
+          "systemVoltage": 48,
+          "minScore": 70,
+          "prompt": "Design a 48V off-grid cabin system with a Quattro that must run a 240V well pump as well as normal 120V outlets. Include 3kW of solar and a lithium bank.",
+          "expectations": [
+            {
+              "id": "has-quattro",
+              "description": "a Quattro is present"
+            },
+            {
+              "id": "240v-supported",
+              "description": "a 240V load is present and its source can supply it"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "lynx-cat",
+          "systemVoltage": 24,
+          "minScore": 70,
+          "prompt": "Design a 24V catamaran system using Victron Lynx distribution modules, a 600Ah lithium bank, two MPPT controllers, a 3000W MultiPlus, and correct fusing throughout.",
+          "expectations": [
+            {
+              "id": "uses-lynx",
+              "description": "Lynx distribution modules are used"
+            },
+            {
+              "id": "has-multiplus",
+              "description": "a MultiPlus is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "small-branch-fusing",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a simple 12V system: 100Ah battery, a 10A LED lighting circuit, a 5A USB charging circuit and a 15A water pump. Fuse each circuit correctly.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "fuse-families-match-circuit",
+              "description": "small circuits do not get a 100A+ Class T"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            }
+          ]
+        },
+        {
+          "id": "alternator-charging",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V van system: 200Ah lithium house battery charged by the engine alternator through an Orion-Tr Smart DC-DC charger, plus 300W of solar and a 12V fridge. Also combine the house bank with a separate starter battery using a battery combiner.",
+          "expectations": [
+            {
+              "id": "has-orion",
+              "description": "an Orion-Tr DC-DC charger is present"
+            },
+            {
+              "id": "has-combiner",
+              "description": "a battery combiner is present"
+            },
+            {
+              "id": "charge-sources-have-amps",
+              "description": "chargers, alternators and battery combiners declare a current rating"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "system-design",
+      "version": "2026-09-05.1",
+      "description": "Design a complete Victron electrical system from a description",
+      "json": true
+    },
+    "model": "stealth/space-bunny-alpha",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": null,
+    "results": [
+      {
+        "caseId": "van-12v",
+        "repeat": 1,
+        "success": false,
+        "score": null,
+        "errorCount": null,
+        "warningCount": null,
+        "componentCount": null,
+        "wireCount": null,
+        "repairCount": null,
+        "iterationsUsed": 0,
+        "scorePath": [],
+        "expectationsMet": null,
+        "failedExpectations": [],
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costUsd": null,
+        "durationMs": 90009,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "errorMessage": "This operation was aborted"
+      }
+    ],
+    "stats": {
+      "caseCount": 1,
+      "completedCount": 1,
+      "meanScore": null,
+      "medianScore": null,
+      "minScore": null,
+      "maxScore": null,
+      "scoreStdDev": null,
+      "passRate": 0,
+      "totalInputTokens": 0,
+      "totalOutputTokens": 0,
+      "totalCostUsd": null,
+      "meanDurationMs": null,
+      "totalRepairs": 0,
+      "meanIterations": null,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}

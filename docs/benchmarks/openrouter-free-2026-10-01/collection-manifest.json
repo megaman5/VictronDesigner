@@ -1,0 +1,73 @@
+{
+  "startedAt": "2026-10-01T18:12:37.052Z",
+  "requestTimeoutSeconds": 90,
+  "maxOutputTokens": 32000,
+  "judging": "deterministic validator only; no paid judge calls",
+  "skillHashes": {
+    "systemDesign": "560ad1a680845c6e",
+    "wireComponents": "d6e006baf13f8b84"
+  },
+  "runs": [
+    {
+      "stage": "collection-screen",
+      "model": "thinkingmachines/inkling-small:free",
+      "suiteId": "core-designs",
+      "runId": "ef78750e-7239-413c-9475-437d8ade96a3",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": null,
+        "medianScore": null,
+        "minScore": null,
+        "maxScore": null,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCostUsd": null,
+        "meanDurationMs": null,
+        "totalRepairs": 0,
+        "meanIterations": null,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "collection-screen",
+      "model": "thinkingmachines/inkling-small:free",
+      "suiteId": "wiring",
+      "runId": "d457c4d4-35b2-4fbc-9595-ec5c91738744",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": null,
+        "medianScore": null,
+        "minScore": null,
+        "maxScore": null,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCostUsd": null,
+        "meanDurationMs": null,
+        "totalRepairs": 0,
+        "meanIterations": null,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    }
+  ],
+  "screening": [
+    {
+      "model": "thinkingmachines/inkling-small:free",
+      "cases": 2,
+      "success": 0,
+      "passes": 0,
+      "meanScore": 0,
+      "meanSeconds": 0.081,
+      "hardErrors": 0
+    }
+  ],
+  "finalists": [],
+  "finishedAt": "2026-10-01T18:12:37.723Z"
+}

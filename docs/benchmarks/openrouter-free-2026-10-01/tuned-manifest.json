@@ -1,0 +1,489 @@
+{
+  "startedAt": "2026-10-01T17:32:34.787Z",
+  "reasoning": {
+    "enabled": false
+  },
+  "requestTimeoutSeconds": 90,
+  "maxOutputTokens": 32000,
+  "runs": [
+    {
+      "stage": "tuned-screen",
+      "model": "apodex/apodex-1.1-mini:free",
+      "suiteId": "core-designs",
+      "runId": "af5519e9-5e46-45cc-90bc-81dcd5b84936",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 0,
+        "medianScore": 0,
+        "minScore": 0,
+        "maxScore": 0,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 4021,
+        "totalOutputTokens": 2889,
+        "totalCostUsd": null,
+        "meanDurationMs": 16020,
+        "totalRepairs": 6,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-screen",
+      "model": "apodex/apodex-1.1-mini:free",
+      "suiteId": "wiring",
+      "runId": "6a3a20ef-f2a4-4f6e-85be-ae67439e7951",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 29,
+        "medianScore": 29,
+        "minScore": 29,
+        "maxScore": 29,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 4525,
+        "totalOutputTokens": 798,
+        "totalCostUsd": null,
+        "meanDurationMs": 4777,
+        "totalRepairs": 8,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-screen",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suiteId": "core-designs",
+      "runId": "16fb0b31-295f-4936-9feb-2e6828b42625",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 7,
+        "medianScore": 7,
+        "minScore": 7,
+        "maxScore": 7,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 4049,
+        "totalOutputTokens": 2763,
+        "totalCostUsd": null,
+        "meanDurationMs": 28923,
+        "totalRepairs": 1,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-screen",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suiteId": "wiring",
+      "runId": "007bcc97-32ff-400b-8948-705dc3565b06",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 100,
+        "medianScore": 100,
+        "minScore": 100,
+        "maxScore": 100,
+        "scoreStdDev": null,
+        "passRate": 100,
+        "totalInputTokens": 4461,
+        "totalOutputTokens": 866,
+        "totalCostUsd": null,
+        "meanDurationMs": 9410,
+        "totalRepairs": 1,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-final",
+      "model": "apodex/apodex-1.1-mini:free",
+      "suiteId": "core-designs",
+      "runId": "bc5537af-59a4-4b5b-a1ef-2082951b3a2f",
+      "stats": {
+        "caseCount": 10,
+        "completedCount": 10,
+        "meanScore": 13.2,
+        "medianScore": 0,
+        "minScore": 0,
+        "maxScore": 66,
+        "scoreStdDev": 23.246505113672463,
+        "passRate": 0,
+        "totalInputTokens": 40174,
+        "totalOutputTokens": 36529,
+        "totalCostUsd": null,
+        "meanDurationMs": 18755,
+        "totalRepairs": 88,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-final",
+      "model": "apodex/apodex-1.1-mini:free",
+      "suiteId": "wiring",
+      "runId": "b1fca141-f16a-4738-8c28-9974f753bb35",
+      "stats": {
+        "caseCount": 4,
+        "completedCount": 4,
+        "meanScore": 83.5,
+        "medianScore": 97.5,
+        "minScore": 39,
+        "maxScore": 100,
+        "scoreStdDev": 29.715315916207253,
+        "passRate": 75,
+        "totalInputTokens": 17632,
+        "totalOutputTokens": 2853,
+        "totalCostUsd": null,
+        "meanDurationMs": 4530,
+        "totalRepairs": 9,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-final",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suiteId": "core-designs",
+      "runId": "8f3f28f6-1b48-4ce0-bdbb-29df424a845d",
+      "stats": {
+        "caseCount": 10,
+        "completedCount": 10,
+        "meanScore": 21.22222222222222,
+        "medianScore": 0,
+        "minScore": 0,
+        "maxScore": 100,
+        "scoreStdDev": 42.17160708870891,
+        "passRate": 20,
+        "totalInputTokens": 36409,
+        "totalOutputTokens": 29592,
+        "totalCostUsd": null,
+        "meanDurationMs": 42573,
+        "totalRepairs": 31,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "tuned-final",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suiteId": "wiring",
+      "runId": "c043f36c-b79e-43b3-a1e3-7b17a8c68e96",
+      "stats": {
+        "caseCount": 4,
+        "completedCount": 4,
+        "meanScore": 89,
+        "medianScore": 100,
+        "minScore": 56,
+        "maxScore": 100,
+        "scoreStdDev": 22,
+        "passRate": 75,
+        "totalInputTokens": 17440,
+        "totalOutputTokens": 3264,
+        "totalCostUsd": null,
+        "meanDurationMs": 8184,
+        "totalRepairs": 5,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    }
+  ],
+  "requests": [
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 15982,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 4775,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 28918,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 9408,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 17473,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 14430,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 17465,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 23861,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "durationMs": 90006,
+      "error": "This operation was aborted"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 34715,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 23102,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 10309,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 45031,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 17908,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 14810,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 13394,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 4631,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 43266,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 5758,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 3585,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 4136,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 83702,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 81811,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 56957,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 10597,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 13447,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 17753,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 30530,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 11677,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 8482,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 7808,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 4759,
+      "reasoningTokens": 0,
+      "finish": "stop"
+    }
+  ],
+  "finishedAt": "2026-10-01T17:41:42.023Z"
+}

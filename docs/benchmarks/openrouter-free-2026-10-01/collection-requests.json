@@ -1,0 +1,14 @@
+[
+  {
+    "model": "thinkingmachines/inkling-small:free",
+    "durationMs": 129,
+    "error": "403 thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+    "status": 403
+  },
+  {
+    "model": "thinkingmachines/inkling-small:free",
+    "durationMs": 31,
+    "error": "403 thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+    "status": 403
+  }
+]

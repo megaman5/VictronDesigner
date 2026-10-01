@@ -1,0 +1,561 @@
+{
+  "stage": "screen",
+  "model": "dots-studio/dots-3-note-preview:free",
+  "suiteId": "wiring",
+  "runId": "cde03bea-4c0d-48fc-a258-03a58f5d3501",
+  "summary": {
+    "suite": {
+      "id": "wiring",
+      "label": "Wire existing components",
+      "skillId": "wire-components",
+      "cases": [
+        {
+          "id": "van-dc-wiring",
+          "systemVoltage": 12,
+          "minScore": 60,
+          "prompt": "Wire these components into a complete, safe 12V system.",
+          "existingComponents": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt",
+              "x": 500,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "buspos-1",
+              "type": "busbar-positive",
+              "name": "DC Positive Bus",
+              "x": 800,
+              "y": 460,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "busneg-1",
+              "type": "busbar-negative",
+              "name": "DC Negative Bus",
+              "x": 800,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 100/30",
+              "x": 500,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "voltage": 12
+              }
+            },
+            {
+              "id": "solar-1",
+              "type": "solar-panel",
+              "name": "400W Array",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "load-1",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 1100,
+              "y": 560,
+              "properties": {
+                "watts": 60,
+                "voltage": 12
+              }
+            }
+          ],
+          "existingWires": [],
+          "expectations": [
+            {
+              "id": "all-components-wired",
+              "description": "no component is left unconnected"
+            },
+            {
+              "id": "ac-polarity-matches-terminal",
+              "description": "AC wire polarity matches the terminal it lands on"
+            }
+          ]
+        },
+        {
+          "id": "ac-path-wiring",
+          "systemVoltage": 24,
+          "minScore": 60,
+          "prompt": "Wire these components, including the AC path from the inverter to the panel and outlets.",
+          "existingComponents": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 24,
+                "capacity": 400,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 400
+              }
+            },
+            {
+              "id": "inv-1",
+              "type": "multiplus",
+              "name": "MultiPlus 3000",
+              "x": 900,
+              "y": 460,
+              "properties": {
+                "powerRating": 3000,
+                "watts": 3000,
+                "voltage": 24,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "acpanel-1",
+              "type": "ac-panel",
+              "name": "AC Panel",
+              "x": 1300,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "acload-1",
+              "type": "ac-load",
+              "name": "Galley Outlets",
+              "x": 1650,
+              "y": 400,
+              "properties": {
+                "watts": 800,
+                "acVoltage": 120
+              }
+            }
+          ],
+          "existingWires": [],
+          "expectations": [
+            {
+              "id": "all-components-wired",
+              "description": "no component is left unconnected"
+            },
+            {
+              "id": "ac-polarity-matches-terminal",
+              "description": "AC wire polarity matches the terminal it lands on"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "wire-components",
+      "version": "2026-09-05.1",
+      "description": "Create wire connections between components already on the canvas",
+      "json": true
+    },
+    "model": "dots-studio/dots-3-note-preview:free",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": false,
+    "results": [
+      {
+        "caseId": "van-dc-wiring",
+        "repeat": 1,
+        "success": true,
+        "score": 51,
+        "errorCount": 4,
+        "warningCount": 8,
+        "componentCount": 8,
+        "wireCount": 10,
+        "repairCount": 5,
+        "iterationsUsed": 1,
+        "scorePath": [
+          51
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4364,
+        "outputTokens": 7194,
+        "costUsd": null,
+        "durationMs": 70993,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Main battery fuse is too far from battery",
+            "wireId": "bench-wire-1-0",
+            "componentIds": [
+              "battery-1",
+              "fuse-1"
+            ],
+            "suggestion": "Move main fuse closer to battery (ABYC recommends within 7 inches)"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-0",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-1",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for negative wire - gauge validation skipped",
+            "wireId": "bench-wire-1-2",
+            "suggestion": "Negative wires should match positive wire gauge in the same circuit"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for negative wire - gauge validation skipped",
+            "wireId": "bench-wire-1-3",
+            "suggestion": "Negative wires should match positive wire gauge in the same circuit"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Excessive voltage drop: 74.0% (max 3% per ABYC) at 22.2A, 300ft, 18V",
+            "wireId": "bench-wire-1-4",
+            "componentIds": [
+              "solar-1",
+              "mppt-1"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 10 AWG) or shorten run (current: 300ft)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Excessive voltage drop: 74.0% (max 3% per ABYC) at 22.2A, 300ft, 18V",
+            "wireId": "bench-wire-1-5",
+            "componentIds": [
+              "solar-1",
+              "mppt-1"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 10 AWG) or shorten run (current: 300ft)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Excessive voltage drop: 9.7% (max 3% per ABYC) at 30.0A, 397ft, 12V",
+            "wireId": "bench-wire-1-6",
+            "componentIds": [
+              "mppt-1",
+              "buspos-1"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 10 AWG) or shorten run (current: 397ft)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Excessive voltage drop: 14.3% (max 3% per ABYC) at 30.0A, 583ft, 12V",
+            "wireId": "bench-wire-1-7",
+            "componentIds": [
+              "mppt-1",
+              "busneg-1"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 10 AWG) or shorten run (current: 583ft)"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "High voltage drop: 2.6% at 5.0A, 316ft, 12V",
+            "wireId": "bench-wire-1-8",
+            "componentIds": [
+              "load-1",
+              "buspos-1"
+            ],
+            "suggestion": "Consider larger gauge (e.g., 2/0 AWG) to reduce losses"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "High voltage drop: 2.7% at 5.0A, 331ft, 12V",
+            "wireId": "bench-wire-1-9",
+            "componentIds": [
+              "load-1",
+              "busneg-1"
+            ],
+            "suggestion": "Consider larger gauge (e.g., 2/0 AWG) to reduce losses"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt",
+              "x": 500,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "buspos-1",
+              "type": "busbar-positive",
+              "name": "DC Positive Bus",
+              "x": 800,
+              "y": 460,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "busneg-1",
+              "type": "busbar-negative",
+              "name": "DC Negative Bus",
+              "x": 800,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 100/30",
+              "x": 500,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "voltage": 12,
+                "maxPVVoltage": 100
+              }
+            },
+            {
+              "id": "solar-1",
+              "type": "solar-panel",
+              "name": "400W Array",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "load-1",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 1100,
+              "y": 560,
+              "properties": {
+                "watts": 60,
+                "voltage": 12
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "fuse-1",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 300,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "fuse-1",
+              "toComponentId": "buspos-1",
+              "fromTerminal": "out",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 303,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "shunt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 361,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "shunt-1",
+              "toComponentId": "busneg-1",
+              "fromTerminal": "system-minus",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 300,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "solar-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 300,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "solar-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 300,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "buspos-1",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "pos-2",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 397,
+              "id": "bench-wire-1-6",
+              "current": 30
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "busneg-1",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "neg-2",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 583,
+              "id": "bench-wire-1-7",
+              "current": 30
+            },
+            {
+              "fromComponentId": "load-1",
+              "toComponentId": "buspos-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pos-3",
+              "polarity": "positive",
+              "gauge": "1/0 AWG",
+              "length": 316,
+              "id": "bench-wire-1-8",
+              "current": 5
+            },
+            {
+              "fromComponentId": "load-1",
+              "toComponentId": "busneg-1",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-3",
+              "polarity": "negative",
+              "gauge": "1/0 AWG",
+              "length": 331,
+              "id": "bench-wire-1-9",
+              "current": 5
+            }
+          ]
+        }
+      }
+    ],
+    "stats": {
+      "caseCount": 1,
+      "completedCount": 1,
+      "meanScore": 51,
+      "medianScore": 51,
+      "minScore": 51,
+      "maxScore": 51,
+      "scoreStdDev": null,
+      "passRate": 0,
+      "totalInputTokens": 4364,
+      "totalOutputTokens": 7194,
+      "totalCostUsd": null,
+      "meanDurationMs": 70993,
+      "totalRepairs": 5,
+      "meanIterations": 1,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}

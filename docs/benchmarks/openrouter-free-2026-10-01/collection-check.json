@@ -1,0 +1,49 @@
+{
+  "collectionUrl": "https://openrouter.ai/collections/free-models",
+  "checkedAt": "2026-10-01T18:12:37.723Z",
+  "chatModels": [
+    "stealth/space-bunny-alpha",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "poolside/laguna-s-2.1:free",
+    "dots-studio/dots-3-note-preview:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "inclusionai/ling-3.0-flash-sante:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "thinkingmachines/inkling:free",
+    "cohere/north-mini-code:free",
+    "thinkingmachines/inkling-small:free",
+    "poolside/laguna-xs-2.1:free",
+    "qwen/qwen3.8-27b:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "liquid/lfm-2.5-2.6b:free"
+  ],
+  "previouslyTestedChatModels": 13,
+  "newlyTestedModel": "thinkingmachines/inkling-small:free",
+  "newCaseResults": [
+    {
+      "caseId": "van-12v",
+      "success": false,
+      "errorMessage": "403 thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+      "durationMs": 130
+    },
+    {
+      "caseId": "van-dc-wiring",
+      "success": false,
+      "errorMessage": "403 thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+      "durationMs": 32
+    }
+  ],
+  "excludedEntries": [
+    {
+      "model": "Voyage rerank-2.5-lite",
+      "reason": "Reranker, not chat generation; page lists paid token pricing."
+    },
+    {
+      "model": "Voyage rerank-2.5",
+      "reason": "Reranker, not chat generation; page lists paid token pricing."
+    }
+  ],
+  "allChatModelsAttempted": true,
+  "combinedModelCount": 17,
+  "combinedCaseCount": 70
+}

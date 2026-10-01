@@ -1,0 +1,458 @@
+{
+  "startedAt": "2026-10-01T17:28:54.291Z",
+  "finishedAt": "2026-10-01T17:42:55.765Z",
+  "allFinished": true,
+  "cases": 68,
+  "modelsScreened": 16,
+  "screening": [
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "tests": 2,
+      "responses": 1,
+      "passes": 1,
+      "noErrorPasses": 1,
+      "meanScore": 100,
+      "medianSeconds": 51.7,
+      "maxSeconds": 90.002,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "poolside/laguna-s-2.1:free",
+      "tests": 2,
+      "responses": 1,
+      "passes": 1,
+      "noErrorPasses": 1,
+      "meanScore": 97,
+      "medianSeconds": 89.5,
+      "maxSeconds": 90.004,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "stealth/space-bunny-alpha",
+      "tests": 2,
+      "responses": 1,
+      "passes": 1,
+      "noErrorPasses": 1,
+      "meanScore": 94,
+      "medianSeconds": 73.7,
+      "maxSeconds": 90.009,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "liquid/lfm-2.5-2.6b:free",
+      "tests": 2,
+      "responses": 1,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": 66,
+      "medianSeconds": 29.2,
+      "maxSeconds": 40.526,
+      "errors": 4,
+      "failures": [
+        "No JSON object found in model response"
+      ]
+    },
+    {
+      "model": "dots-studio/dots-3-note-preview:free",
+      "tests": 2,
+      "responses": 1,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": 51,
+      "medianSeconds": 80.5,
+      "maxSeconds": 90.012,
+      "errors": 4,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "cohere/north-mini-code:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 90.0,
+      "maxSeconds": 90.002,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 1.8,
+      "maxSeconds": 1.925,
+      "errors": 0,
+      "failures": [
+        "429 Provider returned error"
+      ]
+    },
+    {
+      "model": "google/gemma-4-31b-it:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 1.7,
+      "maxSeconds": 1.672,
+      "errors": 0,
+      "failures": [
+        "429 Provider returned error"
+      ]
+    },
+    {
+      "model": "inclusionai/ling-3.0-flash-sante:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 0.1,
+      "maxSeconds": 0.133,
+      "errors": 0,
+      "failures": [
+        "400 Provider returned error"
+      ]
+    },
+    {
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 0.2,
+      "maxSeconds": 0.239,
+      "errors": 0,
+      "failures": [
+        "No JSON object found in model response"
+      ]
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 90.0,
+      "maxSeconds": 90.003,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 45.2,
+      "maxSeconds": 90.003,
+      "errors": 0,
+      "failures": [
+        "No JSON object found in model response",
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "nvidia/nemotron-3.5-lightning:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 90.0,
+      "maxSeconds": 90.006,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "poolside/laguna-xs-2.1:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 12.5,
+      "maxSeconds": 17.975,
+      "errors": 0,
+      "failures": [
+        "No JSON object found in model response"
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-27b:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 2.6,
+      "maxSeconds": 3.648,
+      "errors": 0,
+      "failures": [
+        "429 Provider returned error"
+      ]
+    },
+    {
+      "model": "thinkingmachines/inkling:free",
+      "tests": 2,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 0.0,
+      "maxSeconds": 0.035,
+      "errors": 0,
+      "failures": [
+        "403 thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps"
+      ]
+    }
+  ],
+  "repeatTests": [
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suite": "wiring",
+      "tests": 4,
+      "responses": 4,
+      "passes": 3,
+      "noErrorPasses": 3,
+      "meanScore": 89,
+      "medianSeconds": 8.1,
+      "maxSeconds": 11.679,
+      "errors": 5,
+      "failures": []
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "suite": "wiring",
+      "tests": 4,
+      "responses": 4,
+      "passes": 3,
+      "noErrorPasses": 1,
+      "meanScore": 83.5,
+      "medianSeconds": 4.4,
+      "maxSeconds": 5.761,
+      "errors": 9,
+      "failures": []
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suite": "core-designs",
+      "tests": 10,
+      "responses": 9,
+      "passes": 2,
+      "noErrorPasses": 2,
+      "meanScore": 21.2,
+      "medianSeconds": 44.2,
+      "maxSeconds": 90.006,
+      "errors": 84,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "suite": "core-designs",
+      "tests": 10,
+      "responses": 10,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": 13.2,
+      "medianSeconds": 17.5,
+      "maxSeconds": 34.733,
+      "errors": 139,
+      "failures": []
+    }
+  ],
+  "budgetTests": [
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "suite": "wiring",
+      "tests": 1,
+      "responses": 1,
+      "passes": 1,
+      "noErrorPasses": 1,
+      "meanScore": 100,
+      "medianSeconds": 49.5,
+      "maxSeconds": 49.546,
+      "errors": 0,
+      "failures": []
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suite": "wiring",
+      "tests": 1,
+      "responses": 1,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": 57,
+      "medianSeconds": 78.9,
+      "maxSeconds": 78.894,
+      "errors": 4,
+      "failures": []
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suite": "core-designs",
+      "tests": 1,
+      "responses": 1,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": 44,
+      "medianSeconds": 111.0,
+      "maxSeconds": 111.003,
+      "errors": 2,
+      "failures": []
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "suite": "core-designs",
+      "tests": 1,
+      "responses": 0,
+      "passes": 0,
+      "noErrorPasses": 0,
+      "meanScore": null,
+      "medianSeconds": 90.0,
+      "maxSeconds": 90.008,
+      "errors": 0,
+      "failures": [
+        "This operation was aborted"
+      ]
+    }
+  ],
+  "bySettings": [
+    {
+      "settings": "reasoning disabled",
+      "tests": 32,
+      "responses": 31,
+      "passes": 9,
+      "noErrorPasses": 7,
+      "meanScore": 37.1,
+      "medianSeconds": 15.4,
+      "maxSeconds": 90.006,
+      "errors": 262,
+      "failures": [
+        "This operation was aborted"
+      ]
+    },
+    {
+      "settings": "default",
+      "tests": 32,
+      "responses": 5,
+      "passes": 3,
+      "noErrorPasses": 3,
+      "meanScore": 81.6,
+      "medianSeconds": 17.9,
+      "maxSeconds": 90.012,
+      "errors": 8,
+      "failures": [
+        "400 Provider returned error",
+        "403 thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+        "429 Provider returned error",
+        "No JSON object found in model response",
+        "This operation was aborted"
+      ]
+    },
+    {
+      "settings": "2048 reasoning tokens requested; up to 2 iterations",
+      "tests": 4,
+      "responses": 3,
+      "passes": 1,
+      "noErrorPasses": 1,
+      "meanScore": 67,
+      "medianSeconds": 84.5,
+      "maxSeconds": 111.003,
+      "errors": 6,
+      "failures": [
+        "This operation was aborted"
+      ]
+    }
+  ],
+  "promptHashes": {
+    "systemDesign": "560ad1a680845c6e",
+    "wireComponents": "d6e006baf13f8b84"
+  },
+  "sourceHashes": {
+    "server/design-validator.ts": "9368631ba3ecddc3f7b965514264abe970d86b201030981ab149cdc41cf2d3ec",
+    "server/ai-design-normalizer.ts": "61c0691c44eafc68c65032d58b14aaa68fc5d0733973deb5edf4820dd64c1c71",
+    "server/ai/benchmark/runner.ts": "9a094dd5c7677a5f3fe640fb6a251e15bde6f1dbb0bf123ef352a1c67324d97e"
+  },
+  "requestAccounting": {
+    "sdkChatCalls": 70,
+    "callsWithReportedCost": 44,
+    "totalReportedCostUsd": 0.0,
+    "notes": "Two tiny OK diagnostics used free models outside benchmark case accounting. API-level SDK retries are not separately counted. Calls without reported cost are not inferred to be paid or free from that absence; all selected models had zero token prices in the saved catalog."
+  },
+  "collectionCheck": {
+    "collectionUrl": "https://openrouter.ai/collections/free-models",
+    "checkedAt": "2026-10-01T18:12:37.723Z",
+    "chatModels": [
+      "stealth/space-bunny-alpha",
+      "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "poolside/laguna-s-2.1:free",
+      "dots-studio/dots-3-note-preview:free",
+      "nvidia/nemotron-3.5-lightning:free",
+      "inclusionai/ling-3.0-flash-sante:free",
+      "nvidia/nemotron-3-super-120b-a12b:free",
+      "thinkingmachines/inkling:free",
+      "cohere/north-mini-code:free",
+      "thinkingmachines/inkling-small:free",
+      "poolside/laguna-xs-2.1:free",
+      "qwen/qwen3.8-27b:free",
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "liquid/lfm-2.5-2.6b:free"
+    ],
+    "previouslyTestedChatModels": 13,
+    "newlyTestedModel": "thinkingmachines/inkling-small:free",
+    "newCaseResults": [
+      {
+        "caseId": "van-12v",
+        "success": false,
+        "errorMessage": "403 thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+        "durationMs": 130
+      },
+      {
+        "caseId": "van-dc-wiring",
+        "success": false,
+        "errorMessage": "403 thinkingmachines/inkling-small:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+        "durationMs": 32
+      }
+    ],
+    "excludedEntries": [
+      {
+        "model": "Voyage rerank-2.5-lite",
+        "reason": "Reranker, not chat generation; page lists paid token pricing."
+      },
+      {
+        "model": "Voyage rerank-2.5",
+        "reason": "Reranker, not chat generation; page lists paid token pricing."
+      }
+    ],
+    "allChatModelsAttempted": true,
+    "combinedModelCount": 17,
+    "combinedCaseCount": 70
+  }
+}

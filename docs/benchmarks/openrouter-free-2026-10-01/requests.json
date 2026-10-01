@@ -1,0 +1,124 @@
+[
+  {
+    "model": "google/gemma-4-31b-it:free",
+    "durationMs": 1670,
+    "error": "429 Provider returned error",
+    "status": 429
+  },
+  {
+    "model": "google/gemma-4-31b-it:free",
+    "durationMs": 1672,
+    "error": "429 Provider returned error",
+    "status": 429
+  },
+  {
+    "model": "qwen/qwen3.8-27b:free",
+    "durationMs": 3648,
+    "error": "429 Provider returned error",
+    "status": 429
+  },
+  {
+    "model": "qwen/qwen3.8-27b:free",
+    "durationMs": 1503,
+    "error": "429 Provider returned error",
+    "status": 429
+  },
+  {
+    "model": "thinkingmachines/inkling:free",
+    "durationMs": 34,
+    "error": "403 thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+    "status": 403
+  },
+  {
+    "model": "thinkingmachines/inkling:free",
+    "durationMs": 19,
+    "error": "403 thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps",
+    "status": 403
+  },
+  {
+    "model": "dots-studio/dots-3-note-preview:free",
+    "durationMs": 90011,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "apodex/apodex-1.1-mini:free",
+    "durationMs": 90002,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "durationMs": 90002,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "apodex/apodex-1.1-mini:free",
+    "servedModel": "apodex/apodex-1.1-mini:free",
+    "durationMs": 13420,
+    "provider": "Novita",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 4523,
+    "outputTokens": 2459
+  },
+  {
+    "model": "dots-studio/dots-3-note-preview:free",
+    "servedModel": "dots-studio/dots-3-note-preview:free",
+    "durationMs": 70987,
+    "provider": "AtlasCloud",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 4364,
+    "outputTokens": 7194
+  },
+  {
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "durationMs": 90003,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "durationMs": 90002,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "durationMs": 323,
+    "inputTokens": 0,
+    "outputTokens": 0
+  },
+  {
+    "model": "nvidia/nemotron-3.5-lightning:free",
+    "durationMs": 90003,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "poolside/laguna-s-2.1:free",
+    "durationMs": 90003,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "cohere/north-mini-code:free",
+    "durationMs": 90002,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "nvidia/nemotron-3.5-lightning:free",
+    "durationMs": 90004,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "poolside/laguna-s-2.1:free",
+    "servedModel": "poolside/laguna-s-2.1:free",
+    "durationMs": 89047,
+    "provider": "Poolside",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 4485,
+    "outputTokens": 5075
+  },
+  {
+    "model": "cohere/north-mini-code:free",
+    "durationMs": 90001,
+    "error": "This operation was aborted"
+  }
+]

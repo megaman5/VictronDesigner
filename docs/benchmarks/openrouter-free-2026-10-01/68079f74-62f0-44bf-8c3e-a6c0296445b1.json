@@ -1,0 +1,249 @@
+{
+  "stage": "extra-screen",
+  "model": "poolside/laguna-xs-2.1:free",
+  "suiteId": "wiring",
+  "runId": "68079f74-62f0-44bf-8c3e-a6c0296445b1",
+  "summary": {
+    "suite": {
+      "id": "wiring",
+      "label": "Wire existing components",
+      "skillId": "wire-components",
+      "cases": [
+        {
+          "id": "van-dc-wiring",
+          "systemVoltage": 12,
+          "minScore": 60,
+          "prompt": "Wire these components into a complete, safe 12V system.",
+          "existingComponents": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt",
+              "x": 500,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "buspos-1",
+              "type": "busbar-positive",
+              "name": "DC Positive Bus",
+              "x": 800,
+              "y": 460,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "busneg-1",
+              "type": "busbar-negative",
+              "name": "DC Negative Bus",
+              "x": 800,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 100/30",
+              "x": 500,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "voltage": 12
+              }
+            },
+            {
+              "id": "solar-1",
+              "type": "solar-panel",
+              "name": "400W Array",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "load-1",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 1100,
+              "y": 560,
+              "properties": {
+                "watts": 60,
+                "voltage": 12
+              }
+            }
+          ],
+          "existingWires": [],
+          "expectations": [
+            {
+              "id": "all-components-wired",
+              "description": "no component is left unconnected"
+            },
+            {
+              "id": "ac-polarity-matches-terminal",
+              "description": "AC wire polarity matches the terminal it lands on"
+            }
+          ]
+        },
+        {
+          "id": "ac-path-wiring",
+          "systemVoltage": 24,
+          "minScore": 60,
+          "prompt": "Wire these components, including the AC path from the inverter to the panel and outlets.",
+          "existingComponents": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 24,
+                "capacity": 400,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 400
+              }
+            },
+            {
+              "id": "inv-1",
+              "type": "multiplus",
+              "name": "MultiPlus 3000",
+              "x": 900,
+              "y": 460,
+              "properties": {
+                "powerRating": 3000,
+                "watts": 3000,
+                "voltage": 24,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "acpanel-1",
+              "type": "ac-panel",
+              "name": "AC Panel",
+              "x": 1300,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "acload-1",
+              "type": "ac-load",
+              "name": "Galley Outlets",
+              "x": 1650,
+              "y": 400,
+              "properties": {
+                "watts": 800,
+                "acVoltage": 120
+              }
+            }
+          ],
+          "existingWires": [],
+          "expectations": [
+            {
+              "id": "all-components-wired",
+              "description": "no component is left unconnected"
+            },
+            {
+              "id": "ac-polarity-matches-terminal",
+              "description": "AC wire polarity matches the terminal it lands on"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "wire-components",
+      "version": "2026-09-05.1",
+      "description": "Create wire connections between components already on the canvas",
+      "json": true
+    },
+    "model": "poolside/laguna-xs-2.1:free",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": false,
+    "results": [
+      {
+        "caseId": "van-dc-wiring",
+        "repeat": 1,
+        "success": false,
+        "score": null,
+        "errorCount": null,
+        "warningCount": null,
+        "componentCount": null,
+        "wireCount": null,
+        "repairCount": null,
+        "iterationsUsed": 0,
+        "scorePath": [],
+        "expectationsMet": null,
+        "failedExpectations": [],
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costUsd": null,
+        "durationMs": 7076,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "errorMessage": "No JSON object found in model response"
+      }
+    ],
+    "stats": {
+      "caseCount": 1,
+      "completedCount": 1,
+      "meanScore": null,
+      "medianScore": null,
+      "minScore": null,
+      "maxScore": null,
+      "scoreStdDev": null,
+      "passRate": 0,
+      "totalInputTokens": 0,
+      "totalOutputTokens": 0,
+      "totalCostUsd": null,
+      "meanDurationMs": null,
+      "totalRepairs": 0,
+      "meanIterations": null,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}

@@ -1,0 +1,93 @@
+[
+  {
+    "model": "inclusionai/ling-3.0-flash-sante:free",
+    "durationMs": 133,
+    "error": "400 Provider returned error",
+    "status": 400
+  },
+  {
+    "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "durationMs": 238,
+    "inputTokens": 0,
+    "outputTokens": 0
+  },
+  {
+    "model": "inclusionai/ling-3.0-flash-sante:free",
+    "durationMs": 88,
+    "error": "400 Provider returned error",
+    "status": 400
+  },
+  {
+    "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "durationMs": 168,
+    "inputTokens": 0,
+    "outputTokens": 0
+  },
+  {
+    "model": "google/gemma-4-26b-a4b-it:free",
+    "durationMs": 1924,
+    "error": "429 Provider returned error",
+    "status": 429
+  },
+  {
+    "model": "google/gemma-4-26b-a4b-it:free",
+    "durationMs": 1676,
+    "error": "429 Provider returned error",
+    "status": 429
+  },
+  {
+    "model": "poolside/laguna-xs-2.1:free",
+    "servedModel": "poolside/laguna-xs-2.1:free",
+    "durationMs": 17974,
+    "provider": "Poolside",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 3986,
+    "outputTokens": 1906
+  },
+  {
+    "model": "poolside/laguna-xs-2.1:free",
+    "servedModel": "poolside/laguna-xs-2.1:free",
+    "durationMs": 7076,
+    "provider": "Poolside",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 4485,
+    "outputTokens": 848
+  },
+  {
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "servedModel": "liquid/lfm-2.5-2.6b:free",
+    "durationMs": 40525,
+    "provider": "Liquid",
+    "reportedCostUsd": 0,
+    "finishReason": "length",
+    "inputTokens": 3758,
+    "outputTokens": 8192
+  },
+  {
+    "model": "liquid/lfm-2.5-2.6b:free",
+    "servedModel": "liquid/lfm-2.5-2.6b:free",
+    "durationMs": 17888,
+    "provider": "Liquid",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 4153,
+    "outputTokens": 7120
+  },
+  {
+    "model": "stealth/space-bunny-alpha",
+    "durationMs": 90009,
+    "error": "This operation was aborted"
+  },
+  {
+    "model": "stealth/space-bunny-alpha",
+    "servedModel": "stealth/space-bunny-alpha",
+    "durationMs": 57480,
+    "provider": "Stealth",
+    "reportedCostUsd": 0,
+    "finishReason": "stop",
+    "inputTokens": 4104,
+    "outputTokens": 3740
+  }
+]

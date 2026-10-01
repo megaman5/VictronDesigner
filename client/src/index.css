@@ -390,6 +390,12 @@
  * are conventional on schematics and readable, and standing them upright would
  * push them out of a box that just became narrower.
  */
+/* Component names can extend beyond the symbol's fixed SVG viewport. Keep
+ * the full label visible without changing its footprint or terminal positions. */
+.schematic-component svg {
+  overflow: visible;
+}
+
 .component-artwork text {
   transform: scale(var(--label-flip-x, 1), var(--label-flip-y, 1))
              rotate(var(--label-rotate, 0deg));

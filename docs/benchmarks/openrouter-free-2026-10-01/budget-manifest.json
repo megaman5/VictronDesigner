@@ -1,0 +1,159 @@
+{
+  "startedAt": "2026-10-01T17:39:45.248Z",
+  "reasoning": {
+    "max_tokens": 2048
+  },
+  "requestTimeoutSeconds": 90,
+  "maxOutputTokens": 32000,
+  "runs": [
+    {
+      "stage": "budget-screen",
+      "model": "apodex/apodex-1.1-mini:free",
+      "suiteId": "core-designs",
+      "runId": "2cdf77f6-612b-44f1-bd9e-f565b3845ca5",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": null,
+        "medianScore": null,
+        "minScore": null,
+        "maxScore": null,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCostUsd": null,
+        "meanDurationMs": null,
+        "totalRepairs": 0,
+        "meanIterations": null,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "budget-screen",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suiteId": "core-designs",
+      "runId": "f358f060-17b7-4bff-9f81-b9e64ef14ddc",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 44,
+        "medianScore": 44,
+        "minScore": 44,
+        "maxScore": 44,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 8683,
+        "totalOutputTokens": 9707,
+        "totalCostUsd": null,
+        "meanDurationMs": 111003,
+        "totalRepairs": 1,
+        "meanIterations": 2,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "budget-screen",
+      "model": "apodex/apodex-1.1-mini:free",
+      "suiteId": "wiring",
+      "runId": "edd575e6-becc-46d1-b435-b1f06b59c3ea",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 100,
+        "medianScore": 100,
+        "minScore": 100,
+        "maxScore": 100,
+        "scoreStdDev": null,
+        "passRate": 100,
+        "totalInputTokens": 4523,
+        "totalOutputTokens": 8513,
+        "totalCostUsd": null,
+        "meanDurationMs": 49546,
+        "totalRepairs": 1,
+        "meanIterations": 1,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    },
+    {
+      "stage": "budget-screen",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "suiteId": "wiring",
+      "runId": "8b23fe7f-d685-4a2f-a899-6b2dc74e8574",
+      "stats": {
+        "caseCount": 1,
+        "completedCount": 1,
+        "meanScore": 57,
+        "medianScore": 57,
+        "minScore": 57,
+        "maxScore": 57,
+        "scoreStdDev": null,
+        "passRate": 0,
+        "totalInputTokens": 9480,
+        "totalOutputTokens": 5870,
+        "totalCostUsd": null,
+        "meanDurationMs": 78894,
+        "totalRepairs": 5,
+        "meanIterations": 2,
+        "meanJudgeScore": null,
+        "totalJudgeCostUsd": null
+      }
+    }
+  ],
+  "requests": [
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 66877,
+      "reasoningTokens": 2047,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "durationMs": 90008,
+      "error": "This operation was aborted"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 44099,
+      "reasoningTokens": 2047,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 18213,
+      "reasoningTokens": 2047,
+      "finish": "stop"
+    },
+    {
+      "model": "apodex/apodex-1.1-mini:free",
+      "servedModel": "apodex/apodex-1.1-mini:free",
+      "provider": "Novita",
+      "cost": 0,
+      "durationMs": 49544,
+      "reasoningTokens": 6042,
+      "finish": "stop"
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "servedModel": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "Nvidia",
+      "cost": 0,
+      "durationMs": 60671,
+      "reasoningTokens": 2047,
+      "finish": "stop"
+    }
+  ],
+  "finishedAt": "2026-10-01T17:42:55.765Z"
+}

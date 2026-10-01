@@ -1,0 +1,806 @@
+{
+  "stage": "tuned-screen",
+  "model": "apodex/apodex-1.1-mini:free",
+  "suiteId": "core-designs",
+  "runId": "af5519e9-5e46-45cc-90bc-81dcd5b84936",
+  "summary": {
+    "suite": {
+      "id": "core-designs",
+      "label": "Core system designs",
+      "skillId": "system-design",
+      "cases": [
+        {
+          "id": "van-12v",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V camper van system: 400W of solar, a 200Ah lithium battery, a 2000W inverter, a 12V fridge and LED lights. Include proper fusing and a battery monitor.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "has-mppt",
+              "description": "an MPPT controller is present"
+            },
+            {
+              "id": "has-monitor",
+              "description": "a battery monitor is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            },
+            {
+              "id": "no-invented-terminals",
+              "description": "every wire lands on a terminal that exists"
+            }
+          ]
+        },
+        {
+          "id": "split-240v",
+          "systemVoltage": 48,
+          "minScore": 70,
+          "prompt": "Design a 48V off-grid cabin system with a Quattro that must run a 240V well pump as well as normal 120V outlets. Include 3kW of solar and a lithium bank.",
+          "expectations": [
+            {
+              "id": "has-quattro",
+              "description": "a Quattro is present"
+            },
+            {
+              "id": "240v-supported",
+              "description": "a 240V load is present and its source can supply it"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "lynx-cat",
+          "systemVoltage": 24,
+          "minScore": 70,
+          "prompt": "Design a 24V catamaran system using Victron Lynx distribution modules, a 600Ah lithium bank, two MPPT controllers, a 3000W MultiPlus, and correct fusing throughout.",
+          "expectations": [
+            {
+              "id": "uses-lynx",
+              "description": "Lynx distribution modules are used"
+            },
+            {
+              "id": "has-multiplus",
+              "description": "a MultiPlus is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "small-branch-fusing",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a simple 12V system: 100Ah battery, a 10A LED lighting circuit, a 5A USB charging circuit and a 15A water pump. Fuse each circuit correctly.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "fuse-families-match-circuit",
+              "description": "small circuits do not get a 100A+ Class T"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            }
+          ]
+        },
+        {
+          "id": "alternator-charging",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V van system: 200Ah lithium house battery charged by the engine alternator through an Orion-Tr Smart DC-DC charger, plus 300W of solar and a 12V fridge. Also combine the house bank with a separate starter battery using a battery combiner.",
+          "expectations": [
+            {
+              "id": "has-orion",
+              "description": "an Orion-Tr DC-DC charger is present"
+            },
+            {
+              "id": "has-combiner",
+              "description": "a battery combiner is present"
+            },
+            {
+              "id": "charge-sources-have-amps",
+              "description": "chargers, alternators and battery combiners declare a current rating"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "system-design",
+      "version": "2026-09-05.1",
+      "description": "Design a complete Victron electrical system from a description",
+      "json": true
+    },
+    "model": "apodex/apodex-1.1-mini:free",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": false,
+    "results": [
+      {
+        "caseId": "van-12v",
+        "repeat": 1,
+        "success": true,
+        "score": 0,
+        "errorCount": 11,
+        "warningCount": 9,
+        "componentCount": 15,
+        "wireCount": 24,
+        "repairCount": 6,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4021,
+        "outputTokens": 2889,
+        "costUsd": null,
+        "durationMs": 16020,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "MPPT \"MPPT 150|45 Charger\" PV current near limit: 22.2A PV is close to maximum 22A output",
+            "componentIds": [
+              "mppt-1",
+              "solar-1"
+            ],
+            "suggestion": "Consider using an MPPT with higher current rating for safety margin"
+          },
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "Fuse \"150A Class-T Inverter Fuse\" (150A) is undersized: 257.1A exceeds rating (171.4% utilization)",
+            "componentIds": [
+              "fuse-inverter-1"
+            ],
+            "suggestion": "Increase the rating to 300A"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Lithium battery main uses a MEGA / AMG fuse (2,000A interrupt)",
+            "componentIds": [
+              "battery-1",
+              "fuse-mppt-1"
+            ],
+            "suggestion": "Use a Class T (20,000A) or MRBF (10,000A) fuse for the main battery connection on a lithium bank"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Wire gauge 6 AWG insufficient for 242.6A (max 120.0A at 75°C per wire)",
+            "wireId": "bench-wire-1-3",
+            "componentIds": [
+              "fuse-mppt-1",
+              "battery-1"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 2/0 AWG)"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire gauge 1/0 AWG running at 90% capacity (257.1A of 285.0A max per wire)",
+            "wireId": "bench-wire-1-5",
+            "componentIds": [
+              "battery-1",
+              "fuse-main-1"
+            ],
+            "suggestion": "Consider using larger gauge for better safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire gauge 1/0 AWG running at 90% capacity (257.1A of 285.0A max per wire)",
+            "wireId": "bench-wire-1-10",
+            "componentIds": [
+              "fuse-main-1",
+              "fuse-inverter-1"
+            ],
+            "suggestion": "Consider using larger gauge for better safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire gauge 1/0 AWG running at 90% capacity (257.1A of 285.0A max per wire)",
+            "wireId": "bench-wire-1-11",
+            "componentIds": [
+              "fuse-inverter-1",
+              "inverter-1"
+            ],
+            "suggestion": "Consider using larger gauge for better safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire gauge 1/0 AWG running at 90% capacity (257.1A of 285.0A max per wire)",
+            "wireId": "bench-wire-1-12",
+            "componentIds": [
+              "inverter-1",
+              "battery-1"
+            ],
+            "suggestion": "Consider using larger gauge for better safety margin"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MPPT 150|45 Charger\" and \"40A Mega Fuse MPPT Feed\" overlap",
+            "componentIds": [
+              "mppt-1",
+              "fuse-mppt-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"200Ah LiFePO4 House Bank\" and \"SmartShunt Battery Monitor\" overlap",
+            "componentIds": [
+              "battery-1",
+              "shunt-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Components \"2000W Pure Sine Inverter\" and \"150A Class-T Inverter Fuse\" are very close",
+            "componentIds": [
+              "inverter-1",
+              "fuse-inverter-1"
+            ],
+            "suggestion": "Increase spacing for better readability"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Components \"200A Class-T Main Fuse\" and \"40A Mega Fuse MPPT Feed\" are very close",
+            "componentIds": [
+              "fuse-main-1",
+              "fuse-mppt-1"
+            ],
+            "suggestion": "Increase spacing for better readability"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"DC Distribution Panel\" and \"AC Distribution Panel\" overlap",
+            "componentIds": [
+              "dc-panel-1",
+              "ac-panel-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"12V Compressor Fridge\" and \"LED Interior Lights\" overlap",
+            "componentIds": [
+              "dc-load-fridge-1",
+              "dc-load-lights-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"LED Interior Lights\" and \"1200W Microwave\" overlap",
+            "componentIds": [
+              "dc-load-lights-1",
+              "ac-load-microwave-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "terminal",
+            "message": "Reversed polarity: positive terminal (DC Distribution Panel \"main-in-pos\") wired to negative terminal (SmartShunt Battery Monitor \"system-minus\")",
+            "wireId": "bench-wire-1-7",
+            "componentIds": [
+              "shunt-1",
+              "dc-panel-1"
+            ],
+            "suggestion": "Connect positive to positive and negative to negative. Reconnect this wire to the correct terminal."
+          },
+          {
+            "severity": "error",
+            "category": "terminal",
+            "message": "ac-load \"1200W Microwave\" is missing ground (G) connection",
+            "componentIds": [
+              "ac-load-microwave-1"
+            ],
+            "suggestion": "Connect ground terminal to AC source. Valid terminals: ground"
+          },
+          {
+            "severity": "error",
+            "category": "terminal",
+            "message": "ac-load \"1500W Rooftop A/C\" is missing ground (G) connection",
+            "componentIds": [
+              "ac-load-acunit-1"
+            ],
+            "suggestion": "Connect ground terminal to AC source. Valid terminals: ground"
+          },
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "AC loads (2700W) exceed inverter capacity (2000W)",
+            "componentIds": [
+              "ac-load-microwave-1",
+              "ac-load-acunit-1",
+              "inverter-1"
+            ],
+            "suggestion": "Reduce AC loads or add/increase inverter capacity. Need 2700W, have 2000W."
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "solar-1",
+              "type": "solar-panel",
+              "name": "Solar Array (400W)",
+              "x": 150,
+              "y": 400,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 150|45 Charger",
+              "x": 450,
+              "y": 400,
+              "properties": {
+                "maxCurrent": 22,
+                "model": "150|45",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "200Ah LiFePO4 House Bank",
+              "x": 750,
+              "y": 300,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt Battery Monitor",
+              "x": 900,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "inverter-1",
+              "type": "inverter",
+              "name": "2000W Pure Sine Inverter",
+              "x": 750,
+              "y": 550,
+              "properties": {
+                "powerRating": 2000,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "fuse-main-1",
+              "type": "fuse",
+              "name": "200A Class-T Main Fuse",
+              "x": 650,
+              "y": 350,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 200
+              }
+            },
+            {
+              "id": "fuse-inverter-1",
+              "type": "fuse",
+              "name": "150A Class-T Inverter Fuse",
+              "x": 650,
+              "y": 550,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 150
+              }
+            },
+            {
+              "id": "fuse-mppt-1",
+              "type": "fuse",
+              "name": "40A Mega Fuse MPPT Feed",
+              "x": 550,
+              "y": 350,
+              "properties": {
+                "fuseType": "mega",
+                "fuseRating": 40
+              }
+            },
+            {
+              "id": "dc-panel-1",
+              "type": "dc-panel",
+              "name": "DC Distribution Panel",
+              "x": 1150,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "dc-load-fridge-1",
+              "type": "dc-load",
+              "name": "12V Compressor Fridge",
+              "x": 1350,
+              "y": 320,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "dc-load-lights-1",
+              "type": "dc-load",
+              "name": "LED Interior Lights",
+              "x": 1350,
+              "y": 400,
+              "properties": {
+                "watts": 30
+              }
+            },
+            {
+              "id": "ac-panel-1",
+              "type": "ac-panel",
+              "name": "AC Distribution Panel",
+              "x": 1150,
+              "y": 550,
+              "properties": {}
+            },
+            {
+              "id": "ac-load-microwave-1",
+              "type": "ac-load",
+              "name": "1200W Microwave",
+              "x": 1350,
+              "y": 470,
+              "properties": {
+                "watts": 1200,
+                "acVoltage": 120
+              }
+            },
+            {
+              "id": "ac-load-acunit-1",
+              "type": "ac-load",
+              "name": "1500W Rooftop A/C",
+              "x": 1350,
+              "y": 630,
+              "properties": {
+                "watts": 1500,
+                "acVoltage": 120
+              }
+            },
+            {
+              "id": "ac-breaker-1",
+              "type": "ac-breaker",
+              "name": "40A 2-Pole AC Breaker",
+              "x": 1000,
+              "y": 550,
+              "properties": {
+                "amps": 40,
+                "poles": 2
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "solar-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "8 AWG",
+              "length": 3,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "solar-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "8 AWG",
+              "length": 3,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "fuse-mppt-1",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "fuse-mppt-1",
+              "toComponentId": "battery-1",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 1,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "battery-1",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "8 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "fuse-main-1",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "1/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5",
+              "current": 257.14285714285717
+            },
+            {
+              "fromComponentId": "shunt-1",
+              "toComponentId": "dc-panel-1",
+              "fromTerminal": "system-minus",
+              "toTerminal": "main-in-pos",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "shunt-1",
+              "toComponentId": "battery-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "4 AWG",
+              "length": 1,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "shunt-1",
+              "toComponentId": "dc-panel-1",
+              "fromTerminal": "negative",
+              "toTerminal": "main-in-neg",
+              "polarity": "negative",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "fuse-main-1",
+              "toComponentId": "fuse-inverter-1",
+              "fromTerminal": "out",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "1/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10",
+              "current": 257.14285714285717
+            },
+            {
+              "fromComponentId": "fuse-inverter-1",
+              "toComponentId": "inverter-1",
+              "fromTerminal": "out",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "1/0 AWG",
+              "length": 1,
+              "id": "bench-wire-1-11",
+              "current": 257.14285714285717
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "battery-1",
+              "fromTerminal": "dc-negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "1/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-12",
+              "current": 257.14285714285717
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "ac-breaker-1",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "in-hot",
+              "polarity": "hot",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "ac-breaker-1",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "in-neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "ac-breaker-1",
+              "toComponentId": "ac-panel-1",
+              "fromTerminal": "out-hot",
+              "toTerminal": "main-in-hot",
+              "polarity": "hot",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "ac-breaker-1",
+              "toComponentId": "ac-panel-1",
+              "fromTerminal": "out-neutral",
+              "toTerminal": "main-in-neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "dc-load-fridge-1",
+              "fromTerminal": "load-1-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "dc-load-fridge-1",
+              "fromTerminal": "load-1-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-18"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "dc-load-lights-1",
+              "fromTerminal": "load-2-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "14 AWG",
+              "length": 2,
+              "id": "bench-wire-1-19"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "dc-load-lights-1",
+              "fromTerminal": "load-2-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "14 AWG",
+              "length": 2,
+              "id": "bench-wire-1-20"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "ac-load-microwave-1",
+              "fromTerminal": "load-1-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-21"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "ac-load-microwave-1",
+              "fromTerminal": "load-1-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-22"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "ac-load-acunit-1",
+              "fromTerminal": "load-2-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-23"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "ac-load-acunit-1",
+              "fromTerminal": "load-2-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-24"
+            }
+          ]
+        }
+      }
+    ],
+    "stats": {
+      "caseCount": 1,
+      "completedCount": 1,
+      "meanScore": 0,
+      "medianScore": 0,
+      "minScore": 0,
+      "maxScore": 0,
+      "scoreStdDev": null,
+      "passRate": 0,
+      "totalInputTokens": 4021,
+      "totalOutputTokens": 2889,
+      "totalCostUsd": null,
+      "meanDurationMs": 16020,
+      "totalRepairs": 6,
+      "meanIterations": 1,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}
