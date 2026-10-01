@@ -16,11 +16,29 @@ import { calculateRuntimeEstimates } from "./runtime-calculator";
 import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
-import OpenAI from "openai";
-import { clientForModel, hasKeyForModel } from "./ai/model-client";
+import { hasKeyForModel } from "./ai/model-client";
+import { AISession, canUseOpenRouterFallback, type FallbackEvent } from "./ai/fallback";
+import { notifyAIFailure } from "./ai/failure-alerts";
+import { describeAIError, isPermanentAIError } from "./ai/errors";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
 import { checkQuota } from "./ai/usage-limits";
 import { buildIterationUserMessage } from "./ai/schematic-image";
+
+function recordFallbackFailure(req: Request, action: string, event: FallbackEvent) {
+  void notifyAIFailure({ action, model: event.primaryModel, errorMessage: event.reason })
+    .catch(error => console.error("[ai-fallback] Alert failed:", error));
+  void observabilityStorage.logError({
+    type: "ai_error", endpoint: req.path, visitorId: getVisitorId(req),
+    userId: (req.user as AuthUser)?.id, message: event.reason,
+    metadata: { primaryModel: event.primaryModel, fallbackModel: event.model, fallbackStarted: true },
+  }).catch(error => console.error("[ai-fallback] Error logging failed:", error));
+}
+
+function prefersFallbackCandidate(candidate: ReturnType<typeof validateDesign>, best: ReturnType<typeof validateDesign>) {
+  const clean = (value: typeof candidate) => !value.issues.some(issue => issue.severity === "error");
+  if (clean(candidate) !== clean(best)) return clean(candidate);
+  return candidate.score > best.score;
+}
 
 // Helper to extract visitor ID from request
 function getVisitorId(req: Request): string {
@@ -289,12 +307,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const user = req.user as AuthUser | undefined;
     const clientIP = getClientIP(req);
     let aiModel = DEFAULT_AI_MODEL;
+    let aiSession: AISession | undefined;
     
     try {
       aiModel = await getAIModel();
+      aiSession = new AISession(aiModel, event => {
+        aiModel = event.model;
+        recordFallbackFailure(req, "generate-system", event);
+      });
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
-      if (!hasKeyForModel(aiModel)) {
+      if (!hasKeyForModel(aiModel) && !canUseOpenRouterFallback()) {
         console.log("No OpenAI API key found, returning mock response");
         const mockResponse = {
           components: [
@@ -328,7 +351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(mockResponse);
       }
 
-      const completion = await clientForModel(aiModel).chat.completions.create({
+      const completion = await aiSession.create({
         model: aiModel,
         messages: [
           {
@@ -371,6 +394,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         response.wires = normalized.wires;
       }
 
+      if (aiSession.usedFallback) {
+        response.validation = validateDesign(response.components || [], response.wires || [], systemVoltage);
+        aiSession.assertValidFallback(response.validation, 70);
+      }
+
       // Log to observability
       await observabilityStorage.logAIRequest({
         ...tokenUsage,
@@ -385,6 +413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         durationMs: Date.now() - startTime,
         componentCount: response.components?.length || 0,
         wireCount: response.wires?.length || 0,
+        ...aiSession?.metadata,
         model: aiModel,
         response: {
           components: response.components,
@@ -394,9 +423,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       });
 
-      res.json(response);
+      res.json({ ...response, ...aiSession.responseMetadata });
     } catch (error: any) {
       console.error("AI generation error:", error);
+      error.message = describeAIError(error);
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
@@ -411,10 +441,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: false,
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
+        ...aiSession?.metadata,
         model: aiModel,
       });
       
-      res.status(500).json({ error: error.message });
+      res.status(error.status === 422 ? 422 : 500).json({ error: error.message });
     }
   });
 
@@ -429,9 +460,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const user = req.user as AuthUser | undefined;
     const clientIP = getClientIP(req);
     let aiModel = DEFAULT_AI_MODEL;
+    let aiSession: AISession | undefined;
     
     try {
       aiModel = await getAIModel();
+      aiSession = new AISession(aiModel, event => {
+        aiModel = event.model;
+        recordFallbackFailure(req, "wire-components", event);
+      });
       const { 
         components, 
         wires = [],
@@ -446,7 +482,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Components array is required" });
       }
 
-      const openai = clientForModel(aiModel);
       let bestWires: any[] = [];
       let bestScore = 0;
       let bestValidation: any = null;
@@ -667,7 +702,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? wireCalculationIssues 
           : currentWireCalculationIssues;
 
-      const openai = clientForModel(aiModel);
 
         // Build iteration feedback if not first iteration
         let iterationFeedback = "";
@@ -824,7 +858,7 @@ QUALITY IMPROVEMENT GUIDELINES:
 `;
         }
 
-      const completion = await clientForModel(aiModel).chat.completions.create({
+      const completion = await aiSession.create({
         model: aiModel,
         messages: [
           {
@@ -907,10 +941,14 @@ QUALITY IMPROVEMENT GUIDELINES:
         }
 
         // Validate the merged wires (ensure all have unique IDs)
-        const mergedWiresWithIds = mergedWires.map((wire: any, index: number) => ({
+        let mergedWiresWithIds = mergedWires.map((wire: any, index: number) => ({
           ...wire,
           id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
         }));
+        if (aiSession.usedFallback) {
+          mergedWiresWithIds = normalizeAIDesign(components, mergedWiresWithIds, systemVoltage).wires;
+          mergedWires = mergedWiresWithIds;
+        }
         let validation = validateDesign(components, mergedWiresWithIds, systemVoltage);
         const score = validation.score;
         
@@ -926,7 +964,9 @@ QUALITY IMPROVEMENT GUIDELINES:
         });
 
         // Keep track of best result
-        if (score > bestScore || (score === bestScore && mergedWires.length > bestWires.length)) {
+        if (!bestValidation || (aiSession.usedFallback
+          ? prefersFallbackCandidate(validation, bestValidation)
+          : score > bestScore || (score === bestScore && mergedWires.length > bestWires.length))) {
           bestScore = score;
           bestWires = mergedWires;
           bestValidation = validation;
@@ -979,6 +1019,8 @@ QUALITY IMPROVEMENT GUIDELINES:
         }
       }
 
+      aiSession.assertValidFallback(bestValidation, minQualityScore);
+
       // Log to observability
       await observabilityStorage.logAIRequest({
         ...tokenUsage,
@@ -995,6 +1037,7 @@ QUALITY IMPROVEMENT GUIDELINES:
         qualityScore: Math.round(bestScore), // Round to integer for database
         componentCount: components.length,
         wireCount: bestWires.length,
+        ...aiSession?.metadata,
         model: aiModel,
         response: {
           wires: bestWires,
@@ -1010,6 +1053,7 @@ QUALITY IMPROVEMENT GUIDELINES:
       });
 
       res.json({
+        ...aiSession.responseMetadata,
         wires: bestWires,
         description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
         recommendations: [],
@@ -1019,6 +1063,7 @@ QUALITY IMPROVEMENT GUIDELINES:
       });
     } catch (error: any) {
       console.error("AI wire generation error:", error);
+      error.message = describeAIError(error);
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
@@ -1033,23 +1078,30 @@ QUALITY IMPROVEMENT GUIDELINES:
         success: false,
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
+        ...aiSession?.metadata,
         model: aiModel,
       });
       
-      res.status(500).json({ error: error.message });
+      res.status(error.status === 422 ? 422 : 500).json({ error: error.message });
     }
   });
 
   // Iterative AI generation with quality validation
   app.post("/api/ai-generate-system-iterative", requireAiQuota, async (req, res) => {
+    const startTime = Date.now();
     // Token usage for cost accounting. Accumulated across every model call
     // this request makes (the iterative endpoint makes several), so the
     // logged cost reflects the whole request, not just the last round.
     const tokenUsage = { inputTokens: 0, outputTokens: 0 };
     let aiModel = DEFAULT_AI_MODEL;
+    let aiSession: AISession | undefined;
 
     try {
       aiModel = await getAIModel();
+      aiSession = new AISession(aiModel, event => {
+        aiModel = event.model;
+        recordFallbackFailure(req, "iterate-design", event);
+      });
       const {
         prompt,
         systemVoltage = 12,
@@ -1065,6 +1117,18 @@ QUALITY IMPROVEMENT GUIDELINES:
       let bestDesign: any = null;
       let bestScore = 0;
       const iterationHistory: any[] = [];
+      const finishDesign = async (finalIteration: number, achievedQualityThreshold: boolean) => {
+        aiSession!.assertValidFallback(bestDesign?.validation, minQualityScore);
+        await observabilityStorage.logAIRequest({
+          ...tokenUsage, ...aiSession!.metadata, visitorId: getVisitorId(req),
+          userId: (req.user as AuthUser)?.id, userEmail: (req.user as AuthUser)?.email,
+          ip: getClientIP(req), action: "iterate-design", prompt, systemVoltage,
+          success: true, durationMs: Date.now() - startTime, iterations: finalIteration,
+          qualityScore: Math.round(bestScore), componentCount: bestDesign?.components?.length || 0,
+          wireCount: bestDesign?.wires?.length || 0, response: bestDesign, iterationHistory,
+        });
+        res.json({ ...bestDesign, ...aiSession!.responseMetadata, iterationHistory, finalIteration, achievedQualityThreshold });
+      };
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
         console.log(`\n=== Iteration ${iteration + 1}/${maxIterations} ===`);
@@ -1247,7 +1311,7 @@ CRITICAL FIXES NEEDED:
         // From the second round on, show the model what it just built.
         const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
 
-        const completion = await clientForModel(aiModel).chat.completions.create({
+        const completion = await aiSession.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
@@ -1334,7 +1398,9 @@ CRITICAL FIXES NEEDED:
         });
 
         // Update best design if this is better OR if we don't have one yet
-        if (validation.score > bestScore || !bestDesign) {
+        if (!bestDesign || (aiSession.usedFallback
+          ? prefersFallbackCandidate(validation, bestDesign.validation)
+          : validation.score > bestScore)) {
           bestScore = validation.score;
           bestDesign = {
             ...response,
@@ -1345,26 +1411,16 @@ CRITICAL FIXES NEEDED:
 
         // Check if we've achieved minimum quality AND no critical errors (reuse variables from above)
         // Allow early stopping if quality threshold met and no critical errors remain
-        if (validation.score >= minQualityScore && criticalErrorsCount === 0) {
+        if (validation.score >= minQualityScore && criticalErrorsCount === 0 && (!aiSession.usedFallback || errors.length === 0)) {
           console.log(`✓ Achieved quality threshold (${validation.score} >= ${minQualityScore}) with no critical errors at iteration ${iteration + 1}`);
-          res.json({
-            ...bestDesign,
-            iterationHistory,
-            finalIteration: iteration + 1,
-            achievedQualityThreshold: true
-          });
+          await finishDesign(iteration + 1, true);
           return;
         }
         
         // Also stop early if we have high quality (>90) even with some minor errors (but not voltage drop or orphaned components)
-        if (validation.score >= 90 && criticalErrorsCount === 0 && errors.length <= 3) {
+        if (validation.score >= 90 && criticalErrorsCount === 0 && errors.length <= 3 && !aiSession.usedFallback) {
           console.log(`✓ High quality score (${validation.score}) with minimal errors at iteration ${iteration + 1}`);
-          res.json({
-            ...bestDesign,
-            iterationHistory,
-            finalIteration: iteration + 1,
-            achievedQualityThreshold: true
-          });
+          await finishDesign(iteration + 1, true);
           return;
         }
         
@@ -1375,14 +1431,9 @@ CRITICAL FIXES NEEDED:
           const currentIsBest = validation.score >= maxRecentScore;
           const notImproving = recentScores.every(s => Math.abs(s - recentScores[0]) <= 5);
           
-          if (notImproving && criticalErrorsCount === 0 && errors.length <= 3) {
+          if (notImproving && criticalErrorsCount === 0 && errors.length <= 3 && !aiSession.usedFallback) {
             console.log(`✓ Score plateaued (${recentScores.join(' → ')}) with acceptable errors at iteration ${iteration + 1}`);
-            res.json({
-              ...bestDesign,
-              iterationHistory,
-              finalIteration: iteration + 1,
-              achievedQualityThreshold: bestScore >= minQualityScore
-            });
+            await finishDesign(iteration + 1, bestScore >= minQualityScore);
             return;
           }
         }
@@ -1390,16 +1441,21 @@ CRITICAL FIXES NEEDED:
 
       // Return best design after max iterations
       console.log(`Max iterations reached. Best score: ${bestScore}/${minQualityScore}`);
-      res.json({
-        ...bestDesign,
-        iterationHistory,
-        finalIteration: maxIterations,
-        achievedQualityThreshold: bestScore >= minQualityScore
-      });
+      await finishDesign(maxIterations, bestScore >= minQualityScore);
 
     } catch (error: any) {
       console.error("Iterative AI generation error:", error);
-      res.status(500).json({ error: error.message });
+      error.message = describeAIError(error);
+      await observabilityStorage.logAIRequest({
+        ...tokenUsage, visitorId: getVisitorId(req),
+        userId: (req.user as AuthUser)?.id, userEmail: (req.user as AuthUser)?.email,
+        ip: getClientIP(req), action: "iterate-design",
+        prompt: req.body.prompt || "", systemVoltage: req.body.systemVoltage || 12,
+        success: false, durationMs: Date.now() - startTime,
+        errorMessage: error.message, model: aiModel,
+        ...aiSession?.metadata,
+      });
+      res.status(error.status === 422 ? 422 : 500).json({ error: error.message });
     }
   });
 
@@ -1414,6 +1470,7 @@ CRITICAL FIXES NEEDED:
     const user = req.user as AuthUser | undefined;
     const clientIP = getClientIP(req);
     let aiModel = DEFAULT_AI_MODEL;
+    let aiSession: AISession | undefined;
     
     try {
       aiModel = await getAIModel();
@@ -1441,6 +1498,12 @@ CRITICAL FIXES NEEDED:
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
       };
+
+      aiSession = new AISession(aiModel, event => {
+        aiModel = event.model;
+        recordFallbackFailure(req, "iterate-design", event);
+        sendEvent("ai-fallback", { model: event.model, provider: event.provider });
+      });
 
       let bestDesign: any = null;
       let bestScore = 0;
@@ -1617,7 +1680,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         }
 
         // Stream the AI response
-        const stream = await clientForModel(aiModel).chat.completions.create({
+        const stream = await aiSession.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
@@ -1794,7 +1857,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         }
 
         // Update best design if this is better, or if we don't have one yet
-        if (validation.score > bestScore || !bestDesign) {
+        if (!bestDesign || (aiSession.usedFallback
+          ? prefersFallbackCandidate(validation, bestDesign.validation)
+          : validation.score > bestScore)) {
           bestScore = validation.score;
           bestDesign = {
             ...response,
@@ -1812,7 +1877,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         });
 
         // Check if we've achieved minimum quality
-        if (validation.score >= minQualityScore) {
+        if (validation.score >= minQualityScore && (!aiSession.usedFallback || !validation.issues.some(issue => issue.severity === "error"))) {
           // Calculate wire sizing for observability (reuse same logic as feedback)
           const wireCalculationsForObs: any[] = [];
           if (response.wires) {
@@ -1916,6 +1981,8 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
             suggestions: validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion),
           };
 
+          aiSession.assertValidFallback(bestDesign.validation, minQualityScore);
+
           // Log success to observability with full debugging info
           await observabilityStorage.logAIRequest({
             ...tokenUsage,
@@ -1932,6 +1999,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
             qualityScore: Math.round(validation.score), // Round to integer for database
             componentCount: bestDesign.components?.length || 0,
             wireCount: bestDesign.wires?.length || 0,
+            ...aiSession?.metadata,
             model: aiModel,
             systemMessage: fullSystemMessage,
             userMessage: fullUserMessage,
@@ -1952,6 +2020,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           });
           
           sendEvent('complete', {
+            ...aiSession.responseMetadata,
             ...bestDesign,
             iterationHistory,
             finalIteration: iteration + 1,
@@ -1961,8 +2030,17 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           return;
         }
         } catch (iterationError: any) {
-          // Log iteration error but continue to next iteration
+          // Billing/auth/configuration errors cannot improve on another iteration.
+          if (iterationError.retryWithFallback) {
+            iteration--; // Retry this pass with an empty buffer and the sticky backup model.
+            continue;
+          }
+          if (iterationError.fallbackExhausted || isPermanentAIError(iterationError)) throw iterationError;
           console.error(`[SSE] Iteration ${iteration + 1} failed:`, iterationError);
+          iterationHistory.push({
+            iteration: iteration + 1, score: 0, errorCount: 1, warningCount: 0,
+            error: describeAIError(iterationError),
+          });
           sendEvent('iteration-complete', {
             iteration: iteration + 1,
             score: 0,
@@ -1993,7 +2071,8 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           success: false,
           durationMs: Date.now() - startTime,
           iterations: maxIterations,
-          errorMessage: "All iterations failed - no valid design generated. Check iteration history for details.",
+          errorMessage: iterationHistory.at(-1)?.error || "All iterations failed - no valid design generated. Check iteration history for details.",
+          ...aiSession?.metadata,
           model: aiModel,
           systemMessage: fullSystemMessage,
           userMessage: fullUserMessage,
@@ -2001,7 +2080,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         });
         
         sendEvent('error', {
-          error: 'Failed to generate a valid design after all iterations. Check iteration history for details.',
+          error: iterationHistory.at(-1)?.error || 'Failed to generate a valid design after all iterations. Check iteration history for details.',
           iterationHistory,
           finalIteration: maxIterations
         });
@@ -2112,6 +2191,8 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         suggestions: bestDesign.validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion),
       } : undefined;
 
+      aiSession.assertValidFallback(bestDesign.validation, minQualityScore);
+
       // Log success to observability with full debugging info
       await observabilityStorage.logAIRequest({
         ...tokenUsage,
@@ -2128,6 +2209,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         qualityScore: bestScore,
         componentCount: bestDesign.components?.length || 0,
         wireCount: bestDesign.wires?.length || 0,
+        ...aiSession?.metadata,
         model: aiModel,
         systemMessage: fullSystemMessage,
         userMessage: fullUserMessage,
@@ -2142,6 +2224,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
       });
 
       sendEvent('complete', {
+        ...aiSession.responseMetadata,
         ...bestDesign,
         iterationHistory,
         finalIteration: maxIterations,
@@ -2151,6 +2234,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
     } catch (error: any) {
       console.error("SSE streaming error:", error);
+      error.message = describeAIError(error);
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
@@ -2165,6 +2249,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         success: false,
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
+        ...aiSession?.metadata,
         model: aiModel,
       });
       

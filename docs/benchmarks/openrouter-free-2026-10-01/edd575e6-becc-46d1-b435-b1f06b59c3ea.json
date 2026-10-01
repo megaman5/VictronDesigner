@@ -1,0 +1,456 @@
+{
+  "stage": "budget-screen",
+  "model": "apodex/apodex-1.1-mini:free",
+  "suiteId": "wiring",
+  "runId": "edd575e6-becc-46d1-b435-b1f06b59c3ea",
+  "summary": {
+    "suite": {
+      "id": "wiring",
+      "label": "Wire existing components",
+      "skillId": "wire-components",
+      "cases": [
+        {
+          "id": "van-dc-wiring",
+          "systemVoltage": 12,
+          "minScore": 60,
+          "prompt": "Wire these components into a complete, safe 12V system.",
+          "existingComponents": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt",
+              "x": 500,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "buspos-1",
+              "type": "busbar-positive",
+              "name": "DC Positive Bus",
+              "x": 800,
+              "y": 460,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "busneg-1",
+              "type": "busbar-negative",
+              "name": "DC Negative Bus",
+              "x": 800,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 100/30",
+              "x": 500,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "voltage": 12
+              }
+            },
+            {
+              "id": "solar-1",
+              "type": "solar-panel",
+              "name": "400W Array",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "load-1",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 1100,
+              "y": 560,
+              "properties": {
+                "watts": 60,
+                "voltage": 12
+              }
+            }
+          ],
+          "existingWires": [],
+          "expectations": [
+            {
+              "id": "all-components-wired",
+              "description": "no component is left unconnected"
+            },
+            {
+              "id": "ac-polarity-matches-terminal",
+              "description": "AC wire polarity matches the terminal it lands on"
+            }
+          ]
+        },
+        {
+          "id": "ac-path-wiring",
+          "systemVoltage": 24,
+          "minScore": 60,
+          "prompt": "Wire these components, including the AC path from the inverter to the panel and outlets.",
+          "existingComponents": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 24,
+                "capacity": 400,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 400
+              }
+            },
+            {
+              "id": "inv-1",
+              "type": "multiplus",
+              "name": "MultiPlus 3000",
+              "x": 900,
+              "y": 460,
+              "properties": {
+                "powerRating": 3000,
+                "watts": 3000,
+                "voltage": 24,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "acpanel-1",
+              "type": "ac-panel",
+              "name": "AC Panel",
+              "x": 1300,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "acload-1",
+              "type": "ac-load",
+              "name": "Galley Outlets",
+              "x": 1650,
+              "y": 400,
+              "properties": {
+                "watts": 800,
+                "acVoltage": 120
+              }
+            }
+          ],
+          "existingWires": [],
+          "expectations": [
+            {
+              "id": "all-components-wired",
+              "description": "no component is left unconnected"
+            },
+            {
+              "id": "ac-polarity-matches-terminal",
+              "description": "AC wire polarity matches the terminal it lands on"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "wire-components",
+      "version": "2026-09-05.1",
+      "description": "Create wire connections between components already on the canvas",
+      "json": true
+    },
+    "model": "apodex/apodex-1.1-mini:free",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": false,
+    "results": [
+      {
+        "caseId": "van-dc-wiring",
+        "repeat": 1,
+        "success": true,
+        "score": 100,
+        "errorCount": 0,
+        "warningCount": 3,
+        "componentCount": 8,
+        "wireCount": 9,
+        "repairCount": 1,
+        "iterationsUsed": 1,
+        "scorePath": [
+          100
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4523,
+        "outputTokens": 8513,
+        "costUsd": null,
+        "durationMs": 49546,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-2",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-3",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "Main Fuse",
+              "x": 500,
+              "y": 500,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt",
+              "x": 500,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "buspos-1",
+              "type": "busbar-positive",
+              "name": "DC Positive Bus",
+              "x": 800,
+              "y": 460,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "busneg-1",
+              "type": "busbar-negative",
+              "name": "DC Negative Bus",
+              "x": 800,
+              "y": 700,
+              "properties": {
+                "voltage": 12
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 100/30",
+              "x": 500,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "voltage": 12,
+                "maxPVVoltage": 100
+              }
+            },
+            {
+              "id": "solar-1",
+              "type": "solar-panel",
+              "name": "400W Array",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "load-1",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 1100,
+              "y": 560,
+              "properties": {
+                "watts": 60,
+                "voltage": 12
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "solar-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "solar-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "fuse-1",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "1/0 AWG",
+              "length": 3,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "fuse-1",
+              "toComponentId": "buspos-1",
+              "fromTerminal": "out",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "1/0 AWG",
+              "length": 3,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "buspos-1",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "pos-2",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 4,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "shunt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "1/0 AWG",
+              "length": 4,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "shunt-1",
+              "toComponentId": "busneg-1",
+              "fromTerminal": "system-minus",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "1/0 AWG",
+              "length": 3,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "load-1",
+              "toComponentId": "buspos-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pos-3",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "load-1",
+              "toComponentId": "busneg-1",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-2",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-8"
+            }
+          ]
+        }
+      }
+    ],
+    "stats": {
+      "caseCount": 1,
+      "completedCount": 1,
+      "meanScore": 100,
+      "medianScore": 100,
+      "minScore": 100,
+      "maxScore": 100,
+      "scoreStdDev": null,
+      "passRate": 100,
+      "totalInputTokens": 4523,
+      "totalOutputTokens": 8513,
+      "totalCostUsd": null,
+      "meanDurationMs": 49546,
+      "totalRepairs": 1,
+      "meanIterations": 1,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}

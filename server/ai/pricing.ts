@@ -178,6 +178,8 @@ export function estimateFallbackCostUsd(model: string | null): number {
  * and dated snapshots ("gpt-5.4-2026-03-05").
  */
 export function lookupPrice(model: string): ModelPrice | null {
+  // Explicit OpenRouter free variants bill zero, including reasoning tokens.
+  if (model.includes("/") && model.endsWith(":free")) return { inputPerMTok: 0, outputPerMTok: 0 };
   if (MODEL_PRICING[model]) return MODEL_PRICING[model];
 
   const withoutVendor = model.includes("/") ? model.slice(model.indexOf("/") + 1) : model;

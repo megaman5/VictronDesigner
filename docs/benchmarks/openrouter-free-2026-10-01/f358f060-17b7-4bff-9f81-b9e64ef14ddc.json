@@ -1,0 +1,595 @@
+{
+  "stage": "budget-screen",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "suiteId": "core-designs",
+  "runId": "f358f060-17b7-4bff-9f81-b9e64ef14ddc",
+  "summary": {
+    "suite": {
+      "id": "core-designs",
+      "label": "Core system designs",
+      "skillId": "system-design",
+      "cases": [
+        {
+          "id": "van-12v",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V camper van system: 400W of solar, a 200Ah lithium battery, a 2000W inverter, a 12V fridge and LED lights. Include proper fusing and a battery monitor.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "has-mppt",
+              "description": "an MPPT controller is present"
+            },
+            {
+              "id": "has-monitor",
+              "description": "a battery monitor is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            },
+            {
+              "id": "no-invented-terminals",
+              "description": "every wire lands on a terminal that exists"
+            }
+          ]
+        },
+        {
+          "id": "split-240v",
+          "systemVoltage": 48,
+          "minScore": 70,
+          "prompt": "Design a 48V off-grid cabin system with a Quattro that must run a 240V well pump as well as normal 120V outlets. Include 3kW of solar and a lithium bank.",
+          "expectations": [
+            {
+              "id": "has-quattro",
+              "description": "a Quattro is present"
+            },
+            {
+              "id": "240v-supported",
+              "description": "a 240V load is present and its source can supply it"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "lynx-cat",
+          "systemVoltage": 24,
+          "minScore": 70,
+          "prompt": "Design a 24V catamaran system using Victron Lynx distribution modules, a 600Ah lithium bank, two MPPT controllers, a 3000W MultiPlus, and correct fusing throughout.",
+          "expectations": [
+            {
+              "id": "uses-lynx",
+              "description": "Lynx distribution modules are used"
+            },
+            {
+              "id": "has-multiplus",
+              "description": "a MultiPlus is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "small-branch-fusing",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a simple 12V system: 100Ah battery, a 10A LED lighting circuit, a 5A USB charging circuit and a 15A water pump. Fuse each circuit correctly.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "fuse-families-match-circuit",
+              "description": "small circuits do not get a 100A+ Class T"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            }
+          ]
+        },
+        {
+          "id": "alternator-charging",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V van system: 200Ah lithium house battery charged by the engine alternator through an Orion-Tr Smart DC-DC charger, plus 300W of solar and a 12V fridge. Also combine the house bank with a separate starter battery using a battery combiner.",
+          "expectations": [
+            {
+              "id": "has-orion",
+              "description": "an Orion-Tr DC-DC charger is present"
+            },
+            {
+              "id": "has-combiner",
+              "description": "a battery combiner is present"
+            },
+            {
+              "id": "charge-sources-have-amps",
+              "description": "chargers, alternators and battery combiners declare a current rating"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "system-design",
+      "version": "2026-09-05.1",
+      "description": "Design a complete Victron electrical system from a description",
+      "json": true
+    },
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": false,
+    "results": [
+      {
+        "caseId": "van-12v",
+        "repeat": 1,
+        "success": true,
+        "score": 44,
+        "errorCount": 2,
+        "warningCount": 2,
+        "componentCount": 14,
+        "wireCount": 21,
+        "repairCount": 1,
+        "iterationsUsed": 2,
+        "scorePath": [
+          0,
+          44
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 8683,
+        "outputTokens": 9707,
+        "costUsd": null,
+        "durationMs": 111003,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-2-5",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Distributor\" and \"2000W MultiPlus\" overlap",
+            "componentIds": [
+              "lynx-dist",
+              "inverter-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Distributor\" and \"200A ANL Inverter Fuse\" overlap",
+            "componentIds": [
+              "lynx-dist",
+              "inverter-fuse"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "solar-panel",
+              "type": "solar-panel",
+              "name": "400W Solar Panel",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 400,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "100|30 MPPT",
+              "x": 600,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "maxPVVoltage": 100
+              }
+            },
+            {
+              "id": "solar-fuse",
+              "type": "fuse",
+              "name": "30A MIDI Solar Fuse",
+              "x": 400,
+              "y": 200,
+              "properties": {
+                "fuseType": "midi",
+                "fuseRating": 30
+              }
+            },
+            {
+              "id": "mppt-fuse",
+              "type": "fuse",
+              "name": "30A MIDI MPPT Output Fuse",
+              "x": 800,
+              "y": 200,
+              "properties": {
+                "fuseType": "midi",
+                "fuseRating": 30
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "250A Class-T Main Fuse",
+              "x": 1200,
+              "y": 400,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "200Ah LiFePO4 House Bank",
+              "x": 1000,
+              "y": 400,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "lynx-dist",
+              "type": "lynx-distributor",
+              "name": "Lynx Distributor",
+              "x": 1400,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "shunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt 500A",
+              "x": 1200,
+              "y": 600,
+              "properties": {}
+            },
+            {
+              "id": "inverter-1",
+              "type": "multiplus",
+              "name": "2000W MultiPlus",
+              "x": 1600,
+              "y": 400,
+              "properties": {
+                "powerRating": 2000,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "inverter-fuse",
+              "type": "fuse",
+              "name": "200A ANL Inverter Fuse",
+              "x": 1400,
+              "y": 500,
+              "properties": {
+                "fuseType": "anl",
+                "fuseRating": 200
+              }
+            },
+            {
+              "id": "dc-panel",
+              "type": "dc-panel",
+              "name": "DC Distribution Panel",
+              "x": 1800,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "fridge-1",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 2000,
+              "y": 200,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "led-lights",
+              "type": "dc-load",
+              "name": "LED Lights",
+              "x": 2000,
+              "y": 600,
+              "properties": {
+                "watts": 20
+              }
+            },
+            {
+              "id": "ac-outlet",
+              "type": "ac-load",
+              "name": "AC Outlet (Laptop)",
+              "x": 2000,
+              "y": 1000,
+              "properties": {
+                "watts": 60,
+                "acVoltage": 120
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "solar-panel",
+              "toComponentId": "solar-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-0"
+            },
+            {
+              "fromComponentId": "solar-fuse",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "out",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-1"
+            },
+            {
+              "fromComponentId": "solar-panel",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-2"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "mppt-fuse",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-3"
+            },
+            {
+              "fromComponentId": "mppt-fuse",
+              "toComponentId": "lynx-dist",
+              "fromTerminal": "out",
+              "toTerminal": "bus-out-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-4"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-2-5"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "lynx-dist",
+              "fromTerminal": "out",
+              "toTerminal": "main-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-2-6"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "shunt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-2-7"
+            },
+            {
+              "fromComponentId": "shunt-1",
+              "toComponentId": "lynx-dist",
+              "fromTerminal": "system-minus",
+              "toTerminal": "main-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-2-8"
+            },
+            {
+              "fromComponentId": "lynx-dist",
+              "toComponentId": "inverter-fuse",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-2-9"
+            },
+            {
+              "fromComponentId": "inverter-fuse",
+              "toComponentId": "inverter-1",
+              "fromTerminal": "out",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-2-10"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "lynx-dist",
+              "fromTerminal": "dc-negative",
+              "toTerminal": "bus-out-negative",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-2-11"
+            },
+            {
+              "fromComponentId": "lynx-dist",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "main-in-pos",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-12"
+            },
+            {
+              "fromComponentId": "lynx-dist",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "main-in-neg",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-13"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "fridge-1",
+              "fromTerminal": "load-1-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-14"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "fridge-1",
+              "fromTerminal": "load-1-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-15"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "led-lights",
+              "fromTerminal": "load-2-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-16"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "led-lights",
+              "fromTerminal": "load-2-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-2-17"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "ac-outlet",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-2-18"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "ac-outlet",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-2-19"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "ac-outlet",
+              "fromTerminal": "ac-out-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-2-20"
+            }
+          ]
+        }
+      }
+    ],
+    "stats": {
+      "caseCount": 1,
+      "completedCount": 1,
+      "meanScore": 44,
+      "medianScore": 44,
+      "minScore": 44,
+      "maxScore": 44,
+      "scoreStdDev": null,
+      "passRate": 0,
+      "totalInputTokens": 8683,
+      "totalOutputTokens": 9707,
+      "totalCostUsd": null,
+      "meanDurationMs": 111003,
+      "totalRepairs": 1,
+      "meanIterations": 2,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}

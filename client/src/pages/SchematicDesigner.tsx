@@ -807,6 +807,9 @@ export default function SchematicDesigner() {
                 streamingText: "",
                 tokenCount: 0,
               });
+            } else if (currentEventType === "ai-fallback") {
+              toast({ title: "Using backup AI", description: "The primary AI is unavailable. Continuing with OpenRouter." });
+              setIterationProgress(prev => prev ? { ...prev, streamingText: "", tokenCount: 0 } : null);
             } else if (currentEventType === "ai-request-start") {
               setIterationProgress(prev => prev ? {
                 ...prev,

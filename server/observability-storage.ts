@@ -1,5 +1,7 @@
 import { db } from "./db";
 import { estimateCostUsd } from "./ai/pricing";
+import { notifyAIFailure } from "./ai/failure-alerts";
+import type { ModelUsage } from "./ai/fallback";
 
 // numeric() columns round-trip as strings in Drizzle; match how the benchmark
 // storage writes money so the two agree.
@@ -35,6 +37,8 @@ export interface AILogData {
   errorMessage?: string;
   model?: string;
   provider?: string;
+  modelUsage?: ModelUsage[];
+  aiRouting?: { primaryModel: string; usedFallback: boolean; primaryFailure?: string };
   /** Token usage as reported by the provider, when it reports any. */
   inputTokens?: number;
   outputTokens?: number;
@@ -163,6 +167,11 @@ class ObservabilityStorage {
 
   // AI logging
   async logAIRequest(data: AILogData): Promise<{ id: string }> {
+    // Start delivery independently so database trouble cannot suppress alerts
+    // and SMTP trouble cannot fail or delay an AI response.
+    if (!data.success) void notifyAIFailure(data).catch(error => {
+      console.error("[ai-alerts] Unexpected alert error:", error);
+    });
     // Store enhanced debugging data in response metadata
     const enhancedResponse = {
       ...data.response,
@@ -172,6 +181,8 @@ class ObservabilityStorage {
         rawResponse: data.rawResponse,
         validationFeedback: data.validationFeedback,
         iterationHistory: data.iterationHistory,
+        modelUsage: data.modelUsage,
+        aiRouting: data.aiRouting,
       }
     };
 
@@ -201,7 +212,12 @@ class ObservabilityStorage {
         // through the app prices consistently. Unknown models stay null - the
         // quota code treats null as "unknown", not as free.
         costUsd: money(
-          data.model && data.inputTokens != null && data.outputTokens != null
+          data.modelUsage?.length
+            ? data.modelUsage.reduce<number | null>((total, usage) => {
+                const cost = estimateCostUsd(usage.model, usage);
+                return total === null || cost === null ? null : total + cost;
+              }, 0)
+            : data.model && data.inputTokens != null && data.outputTokens != null
             ? estimateCostUsd(data.model, {
                 inputTokens: data.inputTokens,
                 outputTokens: data.outputTokens,

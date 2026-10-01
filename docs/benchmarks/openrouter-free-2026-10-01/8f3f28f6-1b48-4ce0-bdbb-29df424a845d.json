@@ -1,0 +1,5600 @@
+{
+  "stage": "tuned-final",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "suiteId": "core-designs",
+  "runId": "8f3f28f6-1b48-4ce0-bdbb-29df424a845d",
+  "summary": {
+    "suite": {
+      "id": "core-designs",
+      "label": "Core system designs",
+      "skillId": "system-design",
+      "cases": [
+        {
+          "id": "van-12v",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V camper van system: 400W of solar, a 200Ah lithium battery, a 2000W inverter, a 12V fridge and LED lights. Include proper fusing and a battery monitor.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "has-mppt",
+              "description": "an MPPT controller is present"
+            },
+            {
+              "id": "has-monitor",
+              "description": "a battery monitor is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            },
+            {
+              "id": "no-invented-terminals",
+              "description": "every wire lands on a terminal that exists"
+            }
+          ]
+        },
+        {
+          "id": "split-240v",
+          "systemVoltage": 48,
+          "minScore": 70,
+          "prompt": "Design a 48V off-grid cabin system with a Quattro that must run a 240V well pump as well as normal 120V outlets. Include 3kW of solar and a lithium bank.",
+          "expectations": [
+            {
+              "id": "has-quattro",
+              "description": "a Quattro is present"
+            },
+            {
+              "id": "240v-supported",
+              "description": "a 240V load is present and its source can supply it"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "lynx-cat",
+          "systemVoltage": 24,
+          "minScore": 70,
+          "prompt": "Design a 24V catamaran system using Victron Lynx distribution modules, a 600Ah lithium bank, two MPPT controllers, a 3000W MultiPlus, and correct fusing throughout.",
+          "expectations": [
+            {
+              "id": "uses-lynx",
+              "description": "Lynx distribution modules are used"
+            },
+            {
+              "id": "has-multiplus",
+              "description": "a MultiPlus is present"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        },
+        {
+          "id": "small-branch-fusing",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a simple 12V system: 100Ah battery, a 10A LED lighting circuit, a 5A USB charging circuit and a 15A water pump. Fuse each circuit correctly.",
+          "expectations": [
+            {
+              "id": "has-battery",
+              "description": "a battery bank is present"
+            },
+            {
+              "id": "fuse-families-match-circuit",
+              "description": "small circuits do not get a 100A+ Class T"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            }
+          ]
+        },
+        {
+          "id": "alternator-charging",
+          "systemVoltage": 12,
+          "minScore": 70,
+          "prompt": "Design a 12V van system: 200Ah lithium house battery charged by the engine alternator through an Orion-Tr Smart DC-DC charger, plus 300W of solar and a 12V fridge. Also combine the house bank with a separate starter battery using a battery combiner.",
+          "expectations": [
+            {
+              "id": "has-orion",
+              "description": "an Orion-Tr DC-DC charger is present"
+            },
+            {
+              "id": "has-combiner",
+              "description": "a battery combiner is present"
+            },
+            {
+              "id": "charge-sources-have-amps",
+              "description": "chargers, alternators and battery combiners declare a current rating"
+            },
+            {
+              "id": "loads-have-power",
+              "description": "every load declares realistic watts or amps"
+            },
+            {
+              "id": "solar-has-vmp",
+              "description": "solar panels declare a PV voltage"
+            }
+          ]
+        }
+      ]
+    },
+    "skill": {
+      "id": "system-design",
+      "version": "2026-09-05.1",
+      "description": "Design a complete Victron electrical system from a description",
+      "json": true
+    },
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "providerId": "openrouter",
+    "usingPlatformKey": true,
+    "samplingApplied": false,
+    "results": [
+      {
+        "caseId": "van-12v",
+        "repeat": 1,
+        "success": false,
+        "score": null,
+        "errorCount": null,
+        "warningCount": null,
+        "componentCount": null,
+        "wireCount": null,
+        "repairCount": null,
+        "iterationsUsed": 0,
+        "scorePath": [],
+        "expectationsMet": null,
+        "failedExpectations": [],
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costUsd": null,
+        "durationMs": 90006,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "errorMessage": "This operation was aborted"
+      },
+      {
+        "caseId": "van-12v",
+        "repeat": 2,
+        "success": true,
+        "score": 0,
+        "errorCount": 9,
+        "warningCount": 1,
+        "componentCount": 14,
+        "wireCount": 22,
+        "repairCount": 1,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4049,
+        "outputTokens": 2855,
+        "costUsd": null,
+        "durationMs": 45035,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "Fuse \"30A MPPT Fuse\" (30A) is undersized: 152.4A exceeds rating (507.9% utilization)",
+            "componentIds": [
+              "fuse-1"
+            ],
+            "suggestion": "Increase the rating to 200A"
+          },
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "Fuse \"150A Inverter Fuse\" (150A) is undersized: 152.4A exceeds rating (101.6% utilization)",
+            "componentIds": [
+              "fuse-2"
+            ],
+            "suggestion": "Increase the rating to 200A"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Wire gauge 10 AWG insufficient for 129.0A (max 60.0A at 75°C per wire)",
+            "wireId": "bench-wire-1-5",
+            "componentIds": [
+              "fuse-1",
+              "positive-bus"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 4 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 2 AWG",
+            "wireId": "bench-wire-1-12",
+            "wireIds": [
+              "bench-wire-1-15",
+              "bench-wire-1-12"
+            ],
+            "componentIds": [
+              "negative-bus",
+              "inverter-1"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 2 AWG",
+            "wireId": "bench-wire-1-12",
+            "wireIds": [
+              "bench-wire-1-15",
+              "bench-wire-1-12"
+            ],
+            "componentIds": [
+              "negative-bus",
+              "inverter-1"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 2 AWG",
+            "wireId": "bench-wire-1-15",
+            "wireIds": [
+              "bench-wire-1-12",
+              "bench-wire-1-15"
+            ],
+            "componentIds": [
+              "inverter-1",
+              "negative-bus"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 2 AWG",
+            "wireId": "bench-wire-1-15",
+            "wireIds": [
+              "bench-wire-1-12",
+              "bench-wire-1-15"
+            ],
+            "componentIds": [
+              "inverter-1",
+              "negative-bus"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"200A Positive Bus\" and \"2000W Inverter\" overlap",
+            "componentIds": [
+              "positive-bus",
+              "inverter-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"200A Negative Bus\" and \"12V DC Panel\" overlap",
+            "componentIds": [
+              "negative-bus",
+              "dc-panel-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "solar-panel-1",
+              "type": "solar-panel",
+              "name": "200W Solar Panel",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "watts": 200,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-2",
+              "type": "solar-panel",
+              "name": "200W Solar Panel",
+              "x": 400,
+              "y": 200,
+              "properties": {
+                "watts": 200,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "100|30 MPPT",
+              "x": 600,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "maxPVVoltage": 100
+              }
+            },
+            {
+              "id": "fuse-1",
+              "type": "fuse",
+              "name": "30A MPPT Fuse",
+              "x": 800,
+              "y": 200,
+              "properties": {
+                "fuseType": "midi",
+                "fuseRating": 30
+              }
+            },
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "200Ah LiFePO4 House Bank",
+              "x": 800,
+              "y": 400,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "200A Class-T Main Fuse",
+              "x": 1000,
+              "y": 400,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 200
+              }
+            },
+            {
+              "id": "smartshunt-1",
+              "type": "smartshunt",
+              "name": "SmartShunt 500A",
+              "x": 1200,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "positive-bus",
+              "type": "busbar-positive",
+              "name": "200A Positive Bus",
+              "x": 1400,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "negative-bus",
+              "type": "busbar-negative",
+              "name": "200A Negative Bus",
+              "x": 1400,
+              "y": 500,
+              "properties": {}
+            },
+            {
+              "id": "inverter-1",
+              "type": "inverter",
+              "name": "2000W Inverter",
+              "x": 1600,
+              "y": 200,
+              "properties": {
+                "powerRating": 2000,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "fuse-2",
+              "type": "fuse",
+              "name": "150A Inverter Fuse",
+              "x": 1800,
+              "y": 200,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 150
+              }
+            },
+            {
+              "id": "dc-panel-1",
+              "type": "dc-panel",
+              "name": "12V DC Panel",
+              "x": 1600,
+              "y": 500,
+              "properties": {}
+            },
+            {
+              "id": "fridge-1",
+              "type": "dc-load",
+              "name": "60W 12V Fridge",
+              "x": 1800,
+              "y": 400,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "led-lights-1",
+              "type": "dc-load",
+              "name": "20W LED Lights",
+              "x": 1800,
+              "y": 600,
+              "properties": {
+                "watts": 20
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "fuse-1",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "fuse-1",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "out",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "out",
+              "toTerminal": "pos-2",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "smartshunt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "smartshunt-1",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "system-minus",
+              "toTerminal": "neg-2",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "inverter-1",
+              "fromTerminal": "pos-3",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "negative-bus",
+              "toComponentId": "inverter-1",
+              "fromTerminal": "neg-3",
+              "toTerminal": "dc-negative",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "fuse-2",
+              "fromTerminal": "dc-positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "fuse-2",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "out",
+              "toTerminal": "pos-4",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "inverter-1",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "dc-negative",
+              "toTerminal": "neg-4",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 1,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "dc-panel-1",
+              "fromTerminal": "pos-5",
+              "toTerminal": "main-in-pos",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "negative-bus",
+              "toComponentId": "dc-panel-1",
+              "fromTerminal": "neg-5",
+              "toTerminal": "main-in-neg",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "fridge-1",
+              "fromTerminal": "load-1-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-18"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "fridge-1",
+              "fromTerminal": "load-1-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-19"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "led-lights-1",
+              "fromTerminal": "load-2-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-20"
+            },
+            {
+              "fromComponentId": "dc-panel-1",
+              "toComponentId": "led-lights-1",
+              "fromTerminal": "load-2-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 1,
+              "id": "bench-wire-1-21"
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "split-240v",
+        "repeat": 1,
+        "success": true,
+        "score": 0,
+        "errorCount": 8,
+        "warningCount": 4,
+        "componentCount": 19,
+        "wireCount": 34,
+        "repairCount": 10,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4041,
+        "outputTokens": 4436,
+        "costUsd": null,
+        "durationMs": 43273,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "info",
+            "category": "electrical",
+            "message": "System has both AC and DC components - ensure proper separation",
+            "suggestion": "Use clearly labeled bus bars: 'DC Positive Bus', 'DC Negative Bus', 'AC Positive Bus', 'AC Negative Bus'"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 10 AWG",
+            "wireId": "bench-wire-1-26",
+            "wireIds": [
+              "bench-wire-1-27",
+              "bench-wire-1-26"
+            ],
+            "componentIds": [
+              "ac-panel-1",
+              "well-pump-load"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 10 AWG",
+            "wireId": "bench-wire-1-26",
+            "wireIds": [
+              "bench-wire-1-27",
+              "bench-wire-1-26"
+            ],
+            "componentIds": [
+              "ac-panel-1",
+              "well-pump-load"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 10 AWG",
+            "wireId": "bench-wire-1-27",
+            "wireIds": [
+              "bench-wire-1-26",
+              "bench-wire-1-27"
+            ],
+            "componentIds": [
+              "ac-panel-1",
+              "well-pump-load"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 10 AWG",
+            "wireId": "bench-wire-1-27",
+            "wireIds": [
+              "bench-wire-1-26",
+              "bench-wire-1-27"
+            ],
+            "componentIds": [
+              "ac-panel-1",
+              "well-pump-load"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Shunt 500A\" and \"200A Positive Bus\" overlap",
+            "componentIds": [
+              "lynx-shunt-1",
+              "positive-bus-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"48V 300Ah LiFePO4 Bank\" and \"1.5HP Well Pump 1200W\" overlap",
+            "componentIds": [
+              "battery-bank-1",
+              "well-pump-load"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Components \"200A Positive Bus\" and \"200A Negative Bus\" are very close",
+            "componentIds": [
+              "positive-bus-1",
+              "negative-bus-1"
+            ],
+            "suggestion": "Increase spacing for better readability"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Components \"200A Negative Bus\" and \"AC Distribution Panel\" are very close",
+            "componentIds": [
+              "negative-bus-1",
+              "ac-panel-1"
+            ],
+            "suggestion": "Increase spacing for better readability"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"General Outlets 1500W\" and \"Cerbo GX\" overlap",
+            "componentIds": [
+              "outlets-load",
+              "cerbo-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "terminal",
+            "message": "ac-load \"1.5HP Well Pump 1200W\" is missing neutral (N) connection",
+            "componentIds": [
+              "well-pump-load"
+            ],
+            "suggestion": "Connect neutral terminal to AC source. Valid terminals: neutral"
+          },
+          {
+            "severity": "warning",
+            "category": "ai-quality",
+            "message": "1 component(s) not connected to any wires",
+            "componentIds": [
+              "bmv-1"
+            ],
+            "suggestion": "Wire all components or remove unused ones"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "solar-array-1",
+              "type": "solar-panel",
+              "name": "3kW Solar Array",
+              "x": 100,
+              "y": 100,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-array-2",
+              "type": "solar-panel",
+              "name": "3kW Solar Array",
+              "x": 100,
+              "y": 250,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-array-3",
+              "type": "solar-panel",
+              "name": "3kW Solar Array",
+              "x": 100,
+              "y": 400,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-array-4",
+              "type": "solar-panel",
+              "name": "3kW Solar Array",
+              "x": 100,
+              "y": 550,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-array-5",
+              "type": "solar-panel",
+              "name": "3kW Solar Array",
+              "x": 100,
+              "y": 700,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-array-6",
+              "type": "solar-panel",
+              "name": "3kW Solar Array",
+              "x": 100,
+              "y": 850,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "150/70 MPPT",
+              "x": 400,
+              "y": 200,
+              "rotation": 0,
+              "properties": {
+                "maxCurrent": 70,
+                "model": "150|70",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "mppt-2",
+              "type": "mppt",
+              "name": "150/70 MPPT",
+              "x": 400,
+              "y": 500,
+              "rotation": 0,
+              "properties": {
+                "maxCurrent": 70,
+                "model": "150|70",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "quattro-1",
+              "type": "quattro",
+              "name": "Quattro 48/5000/70",
+              "x": 700,
+              "y": 400,
+              "rotation": 0,
+              "properties": {
+                "powerRating": 5000,
+                "acOutputVoltage": "split-120-240"
+              }
+            },
+            {
+              "id": "lynx-shunt-1",
+              "type": "lynx-shunt",
+              "name": "Lynx Shunt 500A",
+              "x": 1000,
+              "y": 400,
+              "rotation": 0,
+              "properties": {}
+            },
+            {
+              "id": "battery-bank-1",
+              "type": "battery",
+              "name": "48V 300Ah LiFePO4 Bank",
+              "x": 1200,
+              "y": 200,
+              "rotation": 0,
+              "properties": {
+                "voltage": 48,
+                "capacity": 300,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "main-fuse-1",
+              "type": "fuse",
+              "name": "250A Class-T Main Fuse",
+              "x": 1050,
+              "y": 200,
+              "rotation": 0,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "positive-bus-1",
+              "type": "busbar-positive",
+              "name": "200A Positive Bus",
+              "x": 1050,
+              "y": 500,
+              "rotation": 0,
+              "properties": {}
+            },
+            {
+              "id": "negative-bus-1",
+              "type": "busbar-negative",
+              "name": "200A Negative Bus",
+              "x": 1050,
+              "y": 600,
+              "rotation": 0,
+              "properties": {}
+            },
+            {
+              "id": "well-pump-load",
+              "type": "ac-load",
+              "name": "1.5HP Well Pump 1200W",
+              "x": 1300,
+              "y": 200,
+              "rotation": 0,
+              "properties": {
+                "watts": 1200,
+                "acVoltage": "240"
+              }
+            },
+            {
+              "id": "outlets-load",
+              "type": "ac-load",
+              "name": "General Outlets 1500W",
+              "x": 1300,
+              "y": 350,
+              "rotation": 0,
+              "properties": {
+                "watts": 1500,
+                "acVoltage": "120"
+              }
+            },
+            {
+              "id": "ac-panel-1",
+              "type": "ac-panel",
+              "name": "AC Distribution Panel",
+              "x": 1150,
+              "y": 700,
+              "rotation": 0,
+              "properties": {}
+            },
+            {
+              "id": "cerbo-1",
+              "type": "cerbo",
+              "name": "Cerbo GX",
+              "x": 1400,
+              "y": 400,
+              "rotation": 0,
+              "properties": {}
+            },
+            {
+              "id": "bmv-1",
+              "type": "bmv",
+              "name": "BMV-712 Smart",
+              "x": 1400,
+              "y": 550,
+              "rotation": 0,
+              "properties": {}
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "solar-array-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "solar-array-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "solar-array-2",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "solar-array-2",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "solar-array-3",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "solar-array-3",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "solar-array-4",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "solar-array-4",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "solar-array-5",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "solar-array-5",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "solar-array-6",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "solar-array-6",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "lynx-shunt-1",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "bus-out-positive",
+              "polarity": "positive",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "lynx-shunt-1",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "bus-out-negative",
+              "polarity": "negative",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "mppt-2",
+              "toComponentId": "lynx-shunt-1",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "bus-out-positive",
+              "polarity": "positive",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "mppt-2",
+              "toComponentId": "lynx-shunt-1",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "bus-out-negative",
+              "polarity": "negative",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "lynx-shunt-1",
+              "toComponentId": "main-fuse-1",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "main-fuse-1",
+              "toComponentId": "positive-bus-1",
+              "fromTerminal": "out",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "lynx-shunt-1",
+              "toComponentId": "negative-bus-1",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-18"
+            },
+            {
+              "fromComponentId": "positive-bus-1",
+              "toComponentId": "quattro-1",
+              "fromTerminal": "pos-2",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-19"
+            },
+            {
+              "fromComponentId": "negative-bus-1",
+              "toComponentId": "quattro-1",
+              "fromTerminal": "neg-2",
+              "toTerminal": "dc-negative",
+              "polarity": "negative",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-20"
+            },
+            {
+              "fromComponentId": "battery-bank-1",
+              "toComponentId": "lynx-shunt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "batt-positive",
+              "polarity": "positive",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-21"
+            },
+            {
+              "fromComponentId": "battery-bank-1",
+              "toComponentId": "lynx-shunt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "batt-negative",
+              "polarity": "negative",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-22"
+            },
+            {
+              "fromComponentId": "quattro-1",
+              "toComponentId": "ac-panel-1",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "main-in-hot",
+              "polarity": "hot",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-23"
+            },
+            {
+              "fromComponentId": "quattro-1",
+              "toComponentId": "ac-panel-1",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "main-in-neutral",
+              "polarity": "neutral",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-24"
+            },
+            {
+              "fromComponentId": "quattro-1",
+              "toComponentId": "ac-panel-1",
+              "fromTerminal": "ac-out-ground",
+              "toTerminal": "main-in-ground",
+              "polarity": "ground",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-25"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "well-pump-load",
+              "fromTerminal": "load-1-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-26"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "well-pump-load",
+              "fromTerminal": "load-2-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-27"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "well-pump-load",
+              "fromTerminal": "load-1-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-28"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "outlets-load",
+              "fromTerminal": "load-1-neutral",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-29"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "outlets-load",
+              "fromTerminal": "load-2-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-30"
+            },
+            {
+              "fromComponentId": "ac-panel-1",
+              "toComponentId": "outlets-load",
+              "fromTerminal": "load-2-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-31"
+            },
+            {
+              "fromComponentId": "quattro-1",
+              "toComponentId": "cerbo-1",
+              "fromTerminal": "dc-positive",
+              "toTerminal": "power-positive",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-32",
+              "current": 95.23809523809524
+            },
+            {
+              "fromComponentId": "quattro-1",
+              "toComponentId": "cerbo-1",
+              "fromTerminal": "dc-negative",
+              "toTerminal": "power-negative",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-33",
+              "current": 95.23809523809524
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "split-240v",
+        "repeat": 2,
+        "success": true,
+        "score": 0,
+        "errorCount": 18,
+        "warningCount": 8,
+        "componentCount": 26,
+        "wireCount": 46,
+        "repairCount": 6,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4041,
+        "outputTokens": 5590,
+        "costUsd": null,
+        "durationMs": 83721,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "MPPT \"150/45 MPPT\" PV current exceeded: 50.0A PV exceeds maximum 45A output",
+            "componentIds": [
+              "mppt-1",
+              "solar-panel-1",
+              "solar-panel-2",
+              "solar-panel-3"
+            ],
+            "suggestion": "Reduce number of panels in parallel or use an MPPT with higher current rating (e.g., 46A or higher)"
+          },
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "MPPT \"150/45 MPPT\" PV current exceeded: 50.0A PV exceeds maximum 45A output",
+            "componentIds": [
+              "mppt-2",
+              "solar-panel-4",
+              "solar-panel-5",
+              "solar-panel-6"
+            ],
+            "suggestion": "Reduce number of panels in parallel or use an MPPT with higher current rating (e.g., 46A or higher)"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-16",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-25",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 10 AWG",
+            "wireId": "bench-wire-1-28",
+            "wireIds": [
+              "bench-wire-1-29",
+              "bench-wire-1-28"
+            ],
+            "componentIds": [
+              "ac-panel",
+              "ac-breaker-wellpump"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 10 AWG",
+            "wireId": "bench-wire-1-28",
+            "wireIds": [
+              "bench-wire-1-29",
+              "bench-wire-1-28"
+            ],
+            "componentIds": [
+              "ac-panel",
+              "ac-breaker-wellpump"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-28",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 10 AWG",
+            "wireId": "bench-wire-1-29",
+            "wireIds": [
+              "bench-wire-1-28",
+              "bench-wire-1-29"
+            ],
+            "componentIds": [
+              "ac-panel",
+              "ac-breaker-wellpump"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 10 AWG",
+            "wireId": "bench-wire-1-29",
+            "wireIds": [
+              "bench-wire-1-28",
+              "bench-wire-1-29"
+            ],
+            "componentIds": [
+              "ac-panel",
+              "ac-breaker-wellpump"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-29",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-33",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire has unknown gauge: 22 AWG",
+            "wireId": "bench-wire-1-46",
+            "suggestion": "Normalized to: 22 AWG. Please use standard gauge format (e.g., \"10 AWG\", \"1/0 AWG\")."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire has unknown gauge: 22 AWG",
+            "wireId": "bench-wire-1-47",
+            "suggestion": "Normalized to: 22 AWG. Please use standard gauge format (e.g., \"10 AWG\", \"1/0 AWG\")."
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"300W Solar Panel\" and \"300W Solar Panel\" overlap",
+            "componentIds": [
+              "solar-panel-1",
+              "solar-panel-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"300W Solar Panel\" and \"300W Solar Panel\" overlap",
+            "componentIds": [
+              "solar-panel-2",
+              "solar-panel-3"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"300W Solar Panel\" and \"300W Solar Panel\" overlap",
+            "componentIds": [
+              "solar-panel-3",
+              "solar-panel-4"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"300W Solar Panel\" and \"300W Solar Panel\" overlap",
+            "componentIds": [
+              "solar-panel-4",
+              "solar-panel-5"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"300W Solar Panel\" and \"300W Solar Panel\" overlap",
+            "componentIds": [
+              "solar-panel-5",
+              "solar-panel-6"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Smart BMS\" and \"300A Negative Bus\" overlap",
+            "componentIds": [
+              "lynx-bms",
+              "busbar-negative"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"300A Negative Bus\" and \"DC Distribution Panel\" overlap",
+            "componentIds": [
+              "busbar-negative",
+              "dc-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"10kVA Quattro 48/10000\" and \"10A DC Breaker\" overlap",
+            "componentIds": [
+              "quattro",
+              "dc-breaker-lights"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Main AC Panel\" and \"100W LED Lights\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "led-lights"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"20A 1-Pole AC Breaker\" and \"100W LED Lights\" overlap",
+            "componentIds": [
+              "ac-breaker-outlets",
+              "led-lights"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"DC Distribution Panel\" and \"Cerbo GX\" overlap",
+            "componentIds": [
+              "dc-panel",
+              "cerbo"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"100W LED Lights\" and \"100W 12V Fridge\" overlap",
+            "componentIds": [
+              "led-lights",
+              "fridge"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "solar-panel-1",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 100,
+              "y": 100,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-2",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 100,
+              "y": 220,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-3",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 100,
+              "y": 340,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-4",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 100,
+              "y": 460,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-5",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 100,
+              "y": 580,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-6",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 100,
+              "y": 700,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "150/45 MPPT",
+              "x": 400,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 45,
+                "model": "150|45",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "mppt-2",
+              "type": "mppt",
+              "name": "150/45 MPPT",
+              "x": 400,
+              "y": 400,
+              "properties": {
+                "maxCurrent": 45,
+                "model": "150|45",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "48V 200Ah LiFePO4 Bank",
+              "x": 800,
+              "y": 400,
+              "properties": {
+                "voltage": 48,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "200A Class-T Main Fuse",
+              "x": 1000,
+              "y": 400,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 200
+              }
+            },
+            {
+              "id": "lynx-shunt",
+              "type": "lynx-shunt",
+              "name": "Lynx Shunt",
+              "x": 1200,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "lynx-bms",
+              "type": "lynx-smart-bms",
+              "name": "Lynx Smart BMS",
+              "x": 1200,
+              "y": 460,
+              "properties": {}
+            },
+            {
+              "id": "busbar-positive",
+              "type": "busbar-positive",
+              "name": "300A Positive Bus",
+              "x": 1400,
+              "y": 200,
+              "properties": {}
+            },
+            {
+              "id": "busbar-negative",
+              "type": "busbar-negative",
+              "name": "300A Negative Bus",
+              "x": 1400,
+              "y": 500,
+              "properties": {}
+            },
+            {
+              "id": "quattro",
+              "type": "quattro",
+              "name": "10kVA Quattro 48/10000",
+              "x": 1600,
+              "y": 300,
+              "properties": {
+                "powerRating": 10000,
+                "acOutputVoltage": "split-120-240"
+              }
+            },
+            {
+              "id": "ac-panel",
+              "type": "ac-panel",
+              "name": "Main AC Panel",
+              "x": 1900,
+              "y": 200,
+              "properties": {}
+            },
+            {
+              "id": "ac-breaker-wellpump",
+              "type": "ac-breaker",
+              "name": "30A 2-Pole AC Breaker",
+              "x": 2100,
+              "y": 100,
+              "properties": {
+                "amps": 30,
+                "poles": 2
+              }
+            },
+            {
+              "id": "well-pump",
+              "type": "ac-load",
+              "name": "1500W 240V Well Pump",
+              "x": 2300,
+              "y": 50,
+              "properties": {
+                "watts": 1500,
+                "acVoltage": 240
+              }
+            },
+            {
+              "id": "ac-breaker-outlets",
+              "type": "ac-breaker",
+              "name": "20A 1-Pole AC Breaker",
+              "x": 2100,
+              "y": 300,
+              "properties": {
+                "amps": 20,
+                "poles": 1
+              }
+            },
+            {
+              "id": "outlets",
+              "type": "ac-load",
+              "name": "120V Outlets",
+              "x": 2300,
+              "y": 250,
+              "properties": {
+                "watts": 1500,
+                "acVoltage": 120
+              }
+            },
+            {
+              "id": "dc-panel",
+              "type": "dc-panel",
+              "name": "DC Distribution Panel",
+              "x": 1600,
+              "y": 500,
+              "properties": {}
+            },
+            {
+              "id": "dc-breaker-lights",
+              "type": "dc-breaker",
+              "name": "10A DC Breaker",
+              "x": 1800,
+              "y": 400,
+              "properties": {
+                "amps": 10
+              }
+            },
+            {
+              "id": "led-lights",
+              "type": "dc-load",
+              "name": "100W LED Lights",
+              "x": 2000,
+              "y": 350,
+              "properties": {
+                "watts": 100
+              }
+            },
+            {
+              "id": "fridge",
+              "type": "dc-load",
+              "name": "100W 12V Fridge",
+              "x": 2000,
+              "y": 450,
+              "properties": {
+                "watts": 100
+              }
+            },
+            {
+              "id": "bmv",
+              "type": "bmv",
+              "name": "BMV-712 Smart",
+              "x": 1400,
+              "y": 700,
+              "properties": {}
+            },
+            {
+              "id": "cerbo",
+              "type": "cerbo",
+              "name": "Cerbo GX",
+              "x": 1600,
+              "y": 700,
+              "properties": {}
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "solar-panel-3",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "solar-panel-3",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "solar-panel-4",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "solar-panel-4",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "solar-panel-5",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "solar-panel-5",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "solar-panel-6",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "solar-panel-6",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "bus-out-positive",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "bus-out-negative",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "mppt-2",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "bus-out-positive",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "mppt-2",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "bus-out-negative",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "out",
+              "toTerminal": "batt-positive",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "negative",
+              "toTerminal": "batt-negative",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-18"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "lynx-bms",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "system-positive",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-19"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "lynx-bms",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "system-negative",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-20"
+            },
+            {
+              "fromComponentId": "lynx-bms",
+              "toComponentId": "busbar-positive",
+              "fromTerminal": "system-positive",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-21"
+            },
+            {
+              "fromComponentId": "lynx-bms",
+              "toComponentId": "busbar-negative",
+              "fromTerminal": "system-negative",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-22"
+            },
+            {
+              "fromComponentId": "busbar-positive",
+              "toComponentId": "quattro",
+              "fromTerminal": "pos-2",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-23"
+            },
+            {
+              "fromComponentId": "busbar-negative",
+              "toComponentId": "quattro",
+              "fromTerminal": "neg-2",
+              "toTerminal": "dc-negative",
+              "polarity": "negative",
+              "gauge": "2/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-24"
+            },
+            {
+              "fromComponentId": "quattro",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "main-in-hot",
+              "polarity": "hot",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-25"
+            },
+            {
+              "fromComponentId": "quattro",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "main-in-neutral",
+              "polarity": "neutral",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-26"
+            },
+            {
+              "fromComponentId": "quattro",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-ground",
+              "toTerminal": "main-in-ground",
+              "polarity": "ground",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-27"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-breaker-wellpump",
+              "fromTerminal": "load-1-hot",
+              "toTerminal": "in-hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-28"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-breaker-wellpump",
+              "fromTerminal": "load-2-hot",
+              "toTerminal": "in-hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-29"
+            },
+            {
+              "fromComponentId": "ac-breaker-wellpump",
+              "toComponentId": "well-pump",
+              "fromTerminal": "out-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-30"
+            },
+            {
+              "fromComponentId": "ac-breaker-wellpump",
+              "toComponentId": "well-pump",
+              "fromTerminal": "out-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-31"
+            },
+            {
+              "fromComponentId": "ac-breaker-wellpump",
+              "toComponentId": "well-pump",
+              "fromTerminal": "out-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-32"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-breaker-outlets",
+              "fromTerminal": "load-1-neutral",
+              "toTerminal": "in-hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-33"
+            },
+            {
+              "fromComponentId": "ac-breaker-outlets",
+              "toComponentId": "outlets",
+              "fromTerminal": "out-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-34"
+            },
+            {
+              "fromComponentId": "ac-breaker-outlets",
+              "toComponentId": "outlets",
+              "fromTerminal": "out-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-35"
+            },
+            {
+              "fromComponentId": "ac-breaker-outlets",
+              "toComponentId": "outlets",
+              "fromTerminal": "out-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-36"
+            },
+            {
+              "fromComponentId": "busbar-positive",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "pos-3",
+              "toTerminal": "main-in-pos",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-37"
+            },
+            {
+              "fromComponentId": "busbar-negative",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "neg-3",
+              "toTerminal": "main-in-neg",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-38"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-breaker-lights",
+              "fromTerminal": "load-1-pos",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-39"
+            },
+            {
+              "fromComponentId": "dc-breaker-lights",
+              "toComponentId": "led-lights",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-40"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "led-lights",
+              "fromTerminal": "load-1-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-41"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "fridge",
+              "fromTerminal": "load-2-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-42"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "fridge",
+              "fromTerminal": "load-2-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-43"
+            },
+            {
+              "fromComponentId": "bmv",
+              "toComponentId": "cerbo",
+              "fromTerminal": "data",
+              "toTerminal": "ve-direct",
+              "polarity": "positive",
+              "gauge": "22 AWG",
+              "length": 1,
+              "id": "bench-wire-1-46"
+            },
+            {
+              "fromComponentId": "lynx-bms",
+              "toComponentId": "cerbo",
+              "fromTerminal": "bms-can",
+              "toTerminal": "ve-can",
+              "polarity": "positive",
+              "gauge": "22 AWG",
+              "length": 1,
+              "id": "bench-wire-1-47"
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "lynx-cat",
+        "repeat": 1,
+        "success": true,
+        "score": 0,
+        "errorCount": 13,
+        "warningCount": 8,
+        "componentCount": 19,
+        "wireCount": 37,
+        "repairCount": 4,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4041,
+        "outputTokens": 4264,
+        "costUsd": null,
+        "durationMs": 81824,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-0",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire has unknown gauge: 22 AWG",
+            "wireId": "bench-wire-1-34",
+            "suggestion": "Normalized to: 22 AWG. Please use standard gauge format (e.g., \"10 AWG\", \"1/0 AWG\")."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire has unknown gauge: 22 AWG",
+            "wireId": "bench-wire-1-35",
+            "suggestion": "Normalized to: 22 AWG. Please use standard gauge format (e.g., \"10 AWG\", \"1/0 AWG\")."
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"600Ah House Bank\" and \"250A Class-T Main Fuse\" overlap",
+            "componentIds": [
+              "battery-bank",
+              "main-fuse"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Smart Shunt\" and \"Lynx Smart BMS\" overlap",
+            "componentIds": [
+              "lynx-shunt",
+              "lynx-smart-bms"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Smart BMS\" and \"Lynx Distributor\" overlap",
+            "componentIds": [
+              "lynx-smart-bms",
+              "lynx-distributor"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MultiPlus-II 3000\" and \"AC Distribution Panel\" overlap",
+            "componentIds": [
+              "multiplus",
+              "ac-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MultiPlus-II 3000\" and \"DC Distribution Panel\" overlap",
+            "componentIds": [
+              "multiplus",
+              "dc-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MultiPlus-II 3000\" and \"Bilge Pump 50W\" overlap",
+            "componentIds": [
+              "multiplus",
+              "dc-load-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MultiPlus-II 3000\" and \"Refrigerator 80W\" overlap",
+            "componentIds": [
+              "multiplus",
+              "dc-load-3"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"AC Distribution Panel\" and \"Microwave 1200W\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "ac-load-1"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"AC Distribution Panel\" and \"Air Conditioner 1500W\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "ac-load-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"AC Distribution Panel\" and \"Bilge Pump 50W\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "dc-load-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"AC Distribution Panel\" and \"Refrigerator 80W\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "dc-load-3"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"DC Distribution Panel\" and \"Cerbo GX\" overlap",
+            "componentIds": [
+              "dc-panel",
+              "cerbo-gx"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Bilge Pump 50W\" and \"Refrigerator 80W\" overlap",
+            "componentIds": [
+              "dc-load-2",
+              "dc-load-3"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Component \"350W Solar Array\" too close to canvas edge",
+            "componentIds": [
+              "solar-array-1"
+            ],
+            "suggestion": "Move component at least 50px from edges"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Component \"350W Solar Array\" too close to canvas edge",
+            "componentIds": [
+              "solar-array-2"
+            ],
+            "suggestion": "Move component at least 50px from edges"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "AC loads (2700W) are 90% of inverter capacity",
+            "componentIds": [
+              "ac-load-1",
+              "ac-load-2"
+            ],
+            "suggestion": "Consider larger inverter for safety margin or reduce peak loads."
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Solar panel output (700W) may be insufficient for battery charging",
+            "componentIds": [
+              "solar-array-1",
+              "solar-array-2"
+            ],
+            "suggestion": "Recommended: 2880W solar for 600Ah battery. Current: 700W."
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "battery-bank",
+              "type": "battery",
+              "name": "600Ah House Bank",
+              "x": 400,
+              "y": 720,
+              "properties": {
+                "voltage": 24,
+                "capacity": 600,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "250A Class-T Main Fuse",
+              "x": 560,
+              "y": 720,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "lynx-shunt",
+              "type": "lynx-shunt",
+              "name": "Lynx Smart Shunt",
+              "x": 720,
+              "y": 720,
+              "properties": {}
+            },
+            {
+              "id": "lynx-smart-bms",
+              "type": "lynx-smart-bms",
+              "name": "Lynx Smart BMS",
+              "x": 880,
+              "y": 720,
+              "properties": {}
+            },
+            {
+              "id": "lynx-distributor",
+              "type": "lynx-distributor",
+              "name": "Lynx Distributor",
+              "x": 1040,
+              "y": 720,
+              "properties": {}
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 250/70",
+              "x": 200,
+              "y": 300,
+              "properties": {
+                "maxCurrent": 70,
+                "model": "250|70",
+                "maxPVVoltage": 250
+              }
+            },
+            {
+              "id": "mppt-2",
+              "type": "mppt",
+              "name": "MPPT 250/70",
+              "x": 200,
+              "y": 500,
+              "properties": {
+                "maxCurrent": 70,
+                "model": "250|70",
+                "maxPVVoltage": 250
+              }
+            },
+            {
+              "id": "solar-array-1",
+              "type": "solar-panel",
+              "name": "350W Solar Array",
+              "x": 40,
+              "y": 240,
+              "properties": {
+                "watts": 350,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-array-2",
+              "type": "solar-panel",
+              "name": "350W Solar Array",
+              "x": 40,
+              "y": 440,
+              "properties": {
+                "watts": 350,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "multiplus",
+              "type": "multiplus",
+              "name": "MultiPlus-II 3000",
+              "x": 1200,
+              "y": 500,
+              "properties": {
+                "powerRating": 3000,
+                "acOutputVoltage": "split-120-240"
+              }
+            },
+            {
+              "id": "ac-panel",
+              "type": "ac-panel",
+              "name": "AC Distribution Panel",
+              "x": 1380,
+              "y": 500,
+              "properties": {}
+            },
+            {
+              "id": "ac-load-1",
+              "type": "ac-load",
+              "name": "Microwave 1200W",
+              "x": 1560,
+              "y": 400,
+              "properties": {
+                "watts": 1200,
+                "acVoltage": 120
+              }
+            },
+            {
+              "id": "ac-load-2",
+              "type": "ac-load",
+              "name": "Air Conditioner 1500W",
+              "x": 1560,
+              "y": 600,
+              "properties": {
+                "watts": 1500,
+                "acVoltage": 120
+              }
+            },
+            {
+              "id": "dc-panel",
+              "type": "dc-panel",
+              "name": "DC Distribution Panel",
+              "x": 1200,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "dc-load-1",
+              "type": "dc-load",
+              "name": "Navigation Lights 20W",
+              "x": 1380,
+              "y": 200,
+              "properties": {
+                "watts": 20
+              }
+            },
+            {
+              "id": "dc-load-2",
+              "type": "dc-load",
+              "name": "Bilge Pump 50W",
+              "x": 1380,
+              "y": 400,
+              "properties": {
+                "watts": 50
+              }
+            },
+            {
+              "id": "dc-load-3",
+              "type": "dc-load",
+              "name": "Refrigerator 80W",
+              "x": 1380,
+              "y": 500,
+              "properties": {
+                "watts": 80
+              }
+            },
+            {
+              "id": "bmv-712",
+              "type": "bmv",
+              "name": "BMV-712 Battery Monitor",
+              "x": 1040,
+              "y": 500,
+              "properties": {}
+            },
+            {
+              "id": "cerbo-gx",
+              "type": "cerbo",
+              "name": "Cerbo GX",
+              "x": 1040,
+              "y": 300,
+              "properties": {}
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "battery-bank",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "out",
+              "toTerminal": "batt-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "battery-bank",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "negative",
+              "toTerminal": "batt-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "lynx-smart-bms",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "system-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "lynx-smart-bms",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "system-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "lynx-smart-bms",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "system-positive",
+              "toTerminal": "main-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "lynx-smart-bms",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "system-negative",
+              "toTerminal": "main-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "batt-positive",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "batt-negative",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "batt-positive",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "batt-negative",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "solar-array-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "solar-array-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "solar-array-2",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "solar-array-2",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "multiplus",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "multiplus",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "dc-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "main-in-pos",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "main-in-neg",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-18"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-1",
+              "fromTerminal": "load-1-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "16 AWG",
+              "length": 1,
+              "id": "bench-wire-1-19"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-1",
+              "fromTerminal": "load-1-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "16 AWG",
+              "length": 1,
+              "id": "bench-wire-1-20"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-2",
+              "fromTerminal": "load-2-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "16 AWG",
+              "length": 1,
+              "id": "bench-wire-1-21"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-2",
+              "fromTerminal": "load-2-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "16 AWG",
+              "length": 1,
+              "id": "bench-wire-1-22"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-3",
+              "fromTerminal": "load-3-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "16 AWG",
+              "length": 1,
+              "id": "bench-wire-1-23"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-3",
+              "fromTerminal": "load-3-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "16 AWG",
+              "length": 1,
+              "id": "bench-wire-1-24"
+            },
+            {
+              "fromComponentId": "multiplus",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "main-in-hot",
+              "polarity": "hot",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-25"
+            },
+            {
+              "fromComponentId": "multiplus",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "main-in-neutral",
+              "polarity": "neutral",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-26"
+            },
+            {
+              "fromComponentId": "multiplus",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-ground",
+              "toTerminal": "main-in-ground",
+              "polarity": "ground",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-27"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-1",
+              "fromTerminal": "load-1-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-28"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-1",
+              "fromTerminal": "load-1-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-29"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-1",
+              "fromTerminal": "load-1-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-30"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-2",
+              "fromTerminal": "load-2-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-31"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-2",
+              "fromTerminal": "load-2-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-32"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-2",
+              "fromTerminal": "load-2-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-33"
+            },
+            {
+              "fromComponentId": "bmv-712",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "data",
+              "toTerminal": "ve-can",
+              "polarity": "positive",
+              "gauge": "22 AWG",
+              "length": 1,
+              "id": "bench-wire-1-34"
+            },
+            {
+              "fromComponentId": "cerbo-gx",
+              "toComponentId": "lynx-smart-bms",
+              "fromTerminal": "ve-can",
+              "toTerminal": "ve-can",
+              "polarity": "positive",
+              "gauge": "22 AWG",
+              "length": 1,
+              "id": "bench-wire-1-35"
+            },
+            {
+              "fromComponentId": "cerbo-gx",
+              "toComponentId": "multiplus",
+              "fromTerminal": "ve-bus",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-36",
+              "current": 114.28571428571428
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "lynx-cat",
+        "repeat": 2,
+        "success": true,
+        "score": 0,
+        "errorCount": 15,
+        "warningCount": 7,
+        "componentCount": 19,
+        "wireCount": 38,
+        "repairCount": 4,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4041,
+        "outputTokens": 4307,
+        "costUsd": null,
+        "durationMs": 56968,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-0",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire has unknown gauge: 22 AWG",
+            "wireId": "bench-wire-1-35",
+            "suggestion": "Normalized to: 22 AWG. Please use standard gauge format (e.g., \"10 AWG\", \"1/0 AWG\")."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Wire has unknown gauge: 22 AWG",
+            "wireId": "bench-wire-1-36",
+            "suggestion": "Normalized to: 22 AWG. Please use standard gauge format (e.g., \"10 AWG\", \"1/0 AWG\")."
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Shunt\" and \"Lynx Smart BMS\" overlap",
+            "componentIds": [
+              "lynx-shunt",
+              "lynx-smart-bms"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Smart BMS\" and \"Lynx Distributor\" overlap",
+            "componentIds": [
+              "lynx-smart-bms",
+              "lynx-distributor"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Smart BMS\" and \"BMV-712 Smart\" overlap",
+            "componentIds": [
+              "lynx-smart-bms",
+              "bmv"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Distributor\" and \"MultiPlus 3000W\" overlap",
+            "componentIds": [
+              "lynx-distributor",
+              "multiplus"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Distributor\" and \"AC Panel\" overlap",
+            "componentIds": [
+              "lynx-distributor",
+              "ac-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Distributor\" and \"DC Panel\" overlap",
+            "componentIds": [
+              "lynx-distributor",
+              "dc-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Lynx Distributor\" and \"BMV-712 Smart\" overlap",
+            "componentIds": [
+              "lynx-distributor",
+              "bmv"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MPPT 150/45\" and \"MPPT 150/45\" overlap",
+            "componentIds": [
+              "mppt-1",
+              "mppt-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Solar Array 1 300W\" and \"Solar Array 2 300W\" overlap",
+            "componentIds": [
+              "solar-panel-1",
+              "solar-panel-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"MultiPlus 3000W\" and \"AC Panel\" overlap",
+            "componentIds": [
+              "multiplus",
+              "ac-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"AC Panel\" and \"DC Panel\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "dc-panel"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"AC Panel\" and \"Cerbo GX\" overlap",
+            "componentIds": [
+              "ac-panel",
+              "cerbo"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"DC Panel\" and \"Cerbo GX\" overlap",
+            "componentIds": [
+              "dc-panel",
+              "cerbo"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Fridge 100W\" and \"LED Lights 50W\" overlap",
+            "componentIds": [
+              "dc-load-1",
+              "dc-load-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"BMV-712 Smart\" and \"Cerbo GX\" overlap",
+            "componentIds": [
+              "bmv",
+              "cerbo"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Component \"Solar Array 1 300W\" too close to canvas edge",
+            "componentIds": [
+              "solar-panel-1"
+            ],
+            "suggestion": "Move component at least 50px from edges"
+          },
+          {
+            "severity": "warning",
+            "category": "layout",
+            "message": "Component \"Solar Array 2 300W\" too close to canvas edge",
+            "componentIds": [
+              "solar-panel-2"
+            ],
+            "suggestion": "Move component at least 50px from edges"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Solar panel output (600W) may be insufficient for battery charging",
+            "componentIds": [
+              "solar-panel-1",
+              "solar-panel-2"
+            ],
+            "suggestion": "Recommended: 2880W solar for 600Ah battery. Current: 600W."
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "battery-bank-1",
+              "type": "battery",
+              "name": "House Bank 600Ah",
+              "x": 400,
+              "y": 300,
+              "properties": {
+                "voltage": 24,
+                "capacity": 600,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "250A Class-T Main Fuse",
+              "x": 580,
+              "y": 300,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "lynx-shunt",
+              "type": "lynx-shunt",
+              "name": "Lynx Shunt",
+              "x": 760,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "lynx-smart-bms",
+              "type": "lynx-smart-bms",
+              "name": "Lynx Smart BMS",
+              "x": 940,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "lynx-distributor",
+              "type": "lynx-distributor",
+              "name": "Lynx Distributor",
+              "x": 1120,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "mppt-1",
+              "type": "mppt",
+              "name": "MPPT 150/45",
+              "x": 200,
+              "y": 100,
+              "properties": {
+                "maxCurrent": 45,
+                "model": "150|45",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "mppt-2",
+              "type": "mppt",
+              "name": "MPPT 150/45",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "maxCurrent": 45,
+                "model": "150|45",
+                "maxPVVoltage": 150
+              }
+            },
+            {
+              "id": "solar-panel-1",
+              "type": "solar-panel",
+              "name": "Solar Array 1 300W",
+              "x": 20,
+              "y": 100,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "solar-panel-2",
+              "type": "solar-panel",
+              "name": "Solar Array 2 300W",
+              "x": 20,
+              "y": 160,
+              "properties": {
+                "watts": 300,
+                "voltage": 36
+              }
+            },
+            {
+              "id": "multiplus",
+              "type": "multiplus",
+              "name": "MultiPlus 3000W",
+              "x": 1300,
+              "y": 200,
+              "properties": {
+                "powerRating": 3000,
+                "acOutputVoltage": "120"
+              }
+            },
+            {
+              "id": "ac-breaker-shore",
+              "type": "ac-breaker",
+              "name": "50A 2-Pole AC Breaker",
+              "x": 1120,
+              "y": 100,
+              "properties": {
+                "amps": 50,
+                "poles": 2
+              }
+            },
+            {
+              "id": "shore-power",
+              "type": "shore-power",
+              "name": "Shore Power 50A",
+              "x": 940,
+              "y": 100,
+              "properties": {
+                "voltage": 120,
+                "maxAmps": 50
+              }
+            },
+            {
+              "id": "ac-panel",
+              "type": "ac-panel",
+              "name": "AC Panel",
+              "x": 1300,
+              "y": 300,
+              "properties": {}
+            },
+            {
+              "id": "ac-load-1",
+              "type": "ac-load",
+              "name": "Microwave 1200W",
+              "x": 1500,
+              "y": 200,
+              "properties": {
+                "watts": 1200,
+                "acVoltage": 120
+              }
+            },
+            {
+              "id": "dc-panel",
+              "type": "dc-panel",
+              "name": "DC Panel",
+              "x": 1300,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "dc-load-1",
+              "type": "dc-load",
+              "name": "Fridge 100W",
+              "x": 1500,
+              "y": 400,
+              "properties": {
+                "watts": 100
+              }
+            },
+            {
+              "id": "dc-load-2",
+              "type": "dc-load",
+              "name": "LED Lights 50W",
+              "x": 1500,
+              "y": 500,
+              "properties": {
+                "watts": 50
+              }
+            },
+            {
+              "id": "bmv",
+              "type": "bmv",
+              "name": "BMV-712 Smart",
+              "x": 1120,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "cerbo",
+              "type": "cerbo",
+              "name": "Cerbo GX",
+              "x": 1120,
+              "y": 500,
+              "properties": {}
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "battery-bank-1",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "out",
+              "toTerminal": "batt-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "battery-bank-1",
+              "toComponentId": "lynx-shunt",
+              "fromTerminal": "negative",
+              "toTerminal": "batt-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "lynx-smart-bms",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "system-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "lynx-smart-bms",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "system-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "lynx-smart-bms",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "system-positive",
+              "toTerminal": "main-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "lynx-smart-bms",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "system-negative",
+              "toTerminal": "main-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "fuse-1",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "mppt-1",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "mppt-2",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "fuse-2",
+              "polarity": "positive",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "mppt-2",
+              "toComponentId": "lynx-distributor",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "neg-2",
+              "polarity": "negative",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt-1",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt-2",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "multiplus",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "multiplus",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "dc-negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "shore-power",
+              "toComponentId": "ac-breaker-shore",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "in-hot",
+              "polarity": "hot",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "shore-power",
+              "toComponentId": "ac-breaker-shore",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "in-neutral",
+              "polarity": "neutral",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-18"
+            },
+            {
+              "fromComponentId": "shore-power",
+              "toComponentId": "ac-breaker-shore",
+              "fromTerminal": "ac-out-ground",
+              "toTerminal": "in-ground",
+              "polarity": "ground",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-19"
+            },
+            {
+              "fromComponentId": "ac-breaker-shore",
+              "toComponentId": "multiplus",
+              "fromTerminal": "out-hot",
+              "toTerminal": "ac-in-hot",
+              "polarity": "hot",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-20"
+            },
+            {
+              "fromComponentId": "ac-breaker-shore",
+              "toComponentId": "multiplus",
+              "fromTerminal": "out-neutral",
+              "toTerminal": "ac-in-neutral",
+              "polarity": "neutral",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-21"
+            },
+            {
+              "fromComponentId": "ac-breaker-shore",
+              "toComponentId": "multiplus",
+              "fromTerminal": "out-ground",
+              "toTerminal": "ac-in-ground",
+              "polarity": "ground",
+              "gauge": "6 AWG",
+              "length": 2,
+              "id": "bench-wire-1-22"
+            },
+            {
+              "fromComponentId": "multiplus",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-hot",
+              "toTerminal": "main-in-hot",
+              "polarity": "hot",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-23"
+            },
+            {
+              "fromComponentId": "multiplus",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-neutral",
+              "toTerminal": "main-in-neutral",
+              "polarity": "neutral",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-24"
+            },
+            {
+              "fromComponentId": "multiplus",
+              "toComponentId": "ac-panel",
+              "fromTerminal": "ac-out-ground",
+              "toTerminal": "main-in-ground",
+              "polarity": "ground",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-25"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-1",
+              "fromTerminal": "load-1-hot",
+              "toTerminal": "hot",
+              "polarity": "hot",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-26"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-1",
+              "fromTerminal": "load-1-neutral",
+              "toTerminal": "neutral",
+              "polarity": "neutral",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-27"
+            },
+            {
+              "fromComponentId": "ac-panel",
+              "toComponentId": "ac-load-1",
+              "fromTerminal": "load-1-ground",
+              "toTerminal": "ground",
+              "polarity": "ground",
+              "gauge": "12 AWG",
+              "length": 2,
+              "id": "bench-wire-1-28"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "bus-out-positive",
+              "toTerminal": "main-in-pos",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-29"
+            },
+            {
+              "fromComponentId": "lynx-distributor",
+              "toComponentId": "dc-panel",
+              "fromTerminal": "bus-out-negative",
+              "toTerminal": "main-in-neg",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-30"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-1",
+              "fromTerminal": "load-1-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "14 AWG",
+              "length": 2,
+              "id": "bench-wire-1-31"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-1",
+              "fromTerminal": "load-1-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "14 AWG",
+              "length": 2,
+              "id": "bench-wire-1-32"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-2",
+              "fromTerminal": "load-2-pos",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "16 AWG",
+              "length": 2,
+              "id": "bench-wire-1-33"
+            },
+            {
+              "fromComponentId": "dc-panel",
+              "toComponentId": "dc-load-2",
+              "fromTerminal": "load-2-neg",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "16 AWG",
+              "length": 2,
+              "id": "bench-wire-1-34"
+            },
+            {
+              "fromComponentId": "lynx-shunt",
+              "toComponentId": "bmv",
+              "fromTerminal": "ve-can",
+              "toTerminal": "data",
+              "polarity": "positive",
+              "gauge": "22 AWG",
+              "length": 2,
+              "id": "bench-wire-1-35"
+            },
+            {
+              "fromComponentId": "cerbo",
+              "toComponentId": "lynx-smart-bms",
+              "fromTerminal": "ve-can",
+              "toTerminal": "ve-can",
+              "polarity": "positive",
+              "gauge": "22 AWG",
+              "length": 2,
+              "id": "bench-wire-1-36"
+            },
+            {
+              "fromComponentId": "cerbo",
+              "toComponentId": "multiplus",
+              "fromTerminal": "ve-bus",
+              "toTerminal": "dc-positive",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-37",
+              "current": 114.28571428571428
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "small-branch-fusing",
+        "repeat": 1,
+        "success": true,
+        "score": 100,
+        "errorCount": 0,
+        "warningCount": 5,
+        "componentCount": 10,
+        "wireCount": 12,
+        "repairCount": 0,
+        "iterationsUsed": 1,
+        "scorePath": [
+          100
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4040,
+        "outputTokens": 1788,
+        "costUsd": null,
+        "durationMs": 10599,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Fuse \"10A Blade Fuse - Lighting\" (10A) is near capacity: 10.0A (100.0% utilization)",
+            "componentIds": [
+              "lighting-fuse"
+            ],
+            "suggestion": "Consider increasing the rating to 10A for safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Fuse \"5A Blade Fuse - USB Charging\" (5A) is near capacity: 5.0A (100.0% utilization)",
+            "componentIds": [
+              "usb-fuse"
+            ],
+            "suggestion": "Consider increasing the rating to 5A for safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Fuse \"15A Blade Fuse - Water Pump\" (15A) is near capacity: 15.0A (100.0% utilization)",
+            "componentIds": [
+              "pump-fuse"
+            ],
+            "suggestion": "Consider increasing the rating to 15A for safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "DC loads (360W) will drain battery quickly (1.7 hours at full load)",
+            "componentIds": [
+              "lighting-load",
+              "usb-load",
+              "pump-load"
+            ],
+            "suggestion": "Consider increasing battery capacity or reducing loads for longer runtime."
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "100Ah LiFePO4 House Bank",
+              "x": 200,
+              "y": 400,
+              "properties": {
+                "voltage": 12,
+                "capacity": 100,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "150A Class-T Main Fuse",
+              "x": 400,
+              "y": 400,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 150
+              }
+            },
+            {
+              "id": "positive-bus",
+              "type": "busbar-positive",
+              "name": "Positive Distribution Bus",
+              "x": 600,
+              "y": 400,
+              "properties": {}
+            },
+            {
+              "id": "negative-bus",
+              "type": "busbar-negative",
+              "name": "Negative Distribution Bus",
+              "x": 600,
+              "y": 600,
+              "properties": {}
+            },
+            {
+              "id": "lighting-fuse",
+              "type": "fuse",
+              "name": "10A Blade Fuse - Lighting",
+              "x": 800,
+              "y": 300,
+              "properties": {
+                "fuseType": "blade",
+                "fuseRating": 10
+              }
+            },
+            {
+              "id": "lighting-load",
+              "type": "dc-load",
+              "name": "10A LED Lighting Circuit",
+              "x": 1000,
+              "y": 300,
+              "properties": {
+                "watts": 120
+              }
+            },
+            {
+              "id": "usb-fuse",
+              "type": "fuse",
+              "name": "5A Blade Fuse - USB Charging",
+              "x": 800,
+              "y": 500,
+              "properties": {
+                "fuseType": "blade",
+                "fuseRating": 5
+              }
+            },
+            {
+              "id": "usb-load",
+              "type": "dc-load",
+              "name": "5A USB Charging Circuit",
+              "x": 1000,
+              "y": 500,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "pump-fuse",
+              "type": "fuse",
+              "name": "15A Blade Fuse - Water Pump",
+              "x": 800,
+              "y": 700,
+              "properties": {
+                "fuseType": "blade",
+                "fuseRating": 15
+              }
+            },
+            {
+              "id": "pump-load",
+              "type": "dc-load",
+              "name": "15A Water Pump",
+              "x": 1000,
+              "y": 700,
+              "properties": {
+                "watts": 180
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "out",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "lighting-fuse",
+              "fromTerminal": "pos-2",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "lighting-fuse",
+              "toComponentId": "lighting-load",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "lighting-load",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-2",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "usb-fuse",
+              "fromTerminal": "pos-3",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "usb-fuse",
+              "toComponentId": "usb-load",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "usb-load",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-3",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "pump-fuse",
+              "fromTerminal": "pos-4",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "pump-fuse",
+              "toComponentId": "pump-load",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "pump-load",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-4",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "small-branch-fusing",
+        "repeat": 2,
+        "success": true,
+        "score": 91,
+        "errorCount": 0,
+        "warningCount": 8,
+        "componentCount": 7,
+        "wireCount": 9,
+        "repairCount": 0,
+        "iterationsUsed": 1,
+        "scorePath": [
+          91
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4040,
+        "outputTokens": 1310,
+        "costUsd": null,
+        "durationMs": 13450,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Fuse \"10A Lighting Fuse\" (10A) is near capacity: 10.0A (100.0% utilization)",
+            "componentIds": [
+              "fuse-lighting"
+            ],
+            "suggestion": "Consider increasing the rating to 10A for safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Fuse \"5A USB Fuse\" (5A) is near capacity: 5.0A (100.0% utilization)",
+            "componentIds": [
+              "fuse-usb"
+            ],
+            "suggestion": "Consider increasing the rating to 5A for safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Fuse \"15A Pump Fuse\" (15A) is near capacity: 15.0A (100.0% utilization)",
+            "componentIds": [
+              "fuse-pump"
+            ],
+            "suggestion": "Consider increasing the rating to 15A for safety margin"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Lithium battery main uses a Blade / ATO fuse (1,000A interrupt)",
+            "componentIds": [
+              "battery-1",
+              "fuse-lighting"
+            ],
+            "suggestion": "Use a Class T (20,000A) or MRBF (10,000A) fuse for the main battery connection on a lithium bank"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Lithium battery main uses a Blade / ATO fuse (1,000A interrupt)",
+            "componentIds": [
+              "battery-1",
+              "fuse-usb"
+            ],
+            "suggestion": "Use a Class T (20,000A) or MRBF (10,000A) fuse for the main battery connection on a lithium bank"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "Lithium battery main uses a Blade / ATO fuse (1,000A interrupt)",
+            "componentIds": [
+              "battery-1",
+              "fuse-pump"
+            ],
+            "suggestion": "Use a Class T (20,000A) or MRBF (10,000A) fuse for the main battery connection on a lithium bank"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "DC loads (360W) will drain battery quickly (1.7 hours at full load)",
+            "componentIds": [
+              "led-light",
+              "usb-charger",
+              "water-pump"
+            ],
+            "suggestion": "Consider increasing battery capacity or reducing loads for longer runtime."
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "battery-1",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 200,
+              "y": 400,
+              "properties": {
+                "voltage": 12,
+                "capacity": 100,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "fuse-lighting",
+              "type": "fuse",
+              "name": "10A Lighting Fuse",
+              "x": 400,
+              "y": 250,
+              "properties": {
+                "fuseType": "blade",
+                "fuseRating": 10
+              }
+            },
+            {
+              "id": "fuse-usb",
+              "type": "fuse",
+              "name": "5A USB Fuse",
+              "x": 400,
+              "y": 400,
+              "properties": {
+                "fuseType": "blade",
+                "fuseRating": 5
+              }
+            },
+            {
+              "id": "fuse-pump",
+              "type": "fuse",
+              "name": "15A Pump Fuse",
+              "x": 400,
+              "y": 550,
+              "properties": {
+                "fuseType": "blade",
+                "fuseRating": 15
+              }
+            },
+            {
+              "id": "led-light",
+              "type": "dc-load",
+              "name": "LED Lighting",
+              "x": 600,
+              "y": 250,
+              "properties": {
+                "watts": 120
+              }
+            },
+            {
+              "id": "usb-charger",
+              "type": "dc-load",
+              "name": "USB Charging",
+              "x": 600,
+              "y": 400,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "water-pump",
+              "type": "dc-load",
+              "name": "Water Pump",
+              "x": 600,
+              "y": 550,
+              "properties": {
+                "watts": 180
+              }
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "fuse-lighting",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "fuse-lighting",
+              "toComponentId": "led-light",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "fuse-usb",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "fuse-usb",
+              "toComponentId": "usb-charger",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "battery-1",
+              "toComponentId": "fuse-pump",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "fuse-pump",
+              "toComponentId": "water-pump",
+              "fromTerminal": "out",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "led-light",
+              "toComponentId": "battery-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "usb-charger",
+              "toComponentId": "battery-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "water-pump",
+              "toComponentId": "battery-1",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "alternator-charging",
+        "repeat": 1,
+        "success": true,
+        "score": 0,
+        "errorCount": 8,
+        "warningCount": 5,
+        "componentCount": 11,
+        "wireCount": 18,
+        "repairCount": 5,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4058,
+        "outputTokens": 2506,
+        "costUsd": null,
+        "durationMs": 17757,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse or breaker.",
+            "componentIds": [
+              "starter-battery"
+            ],
+            "suggestion": "Add overcurrent protection immediately after the battery positive terminal. A 30A MRBF (terminal fuse) fuse suits this circuit."
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-4",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 2 AWG",
+            "wireId": "bench-wire-1-7",
+            "wireIds": [
+              "bench-wire-1-8",
+              "bench-wire-1-7"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 2 AWG",
+            "wireId": "bench-wire-1-7",
+            "wireIds": [
+              "bench-wire-1-8",
+              "bench-wire-1-7"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 2 AWG",
+            "wireId": "bench-wire-1-8",
+            "wireIds": [
+              "bench-wire-1-7",
+              "bench-wire-1-8"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 2 AWG",
+            "wireId": "bench-wire-1-8",
+            "wireIds": [
+              "bench-wire-1-7",
+              "bench-wire-1-8"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for negative wire - gauge validation skipped",
+            "wireId": "bench-wire-1-9",
+            "suggestion": "Negative wires should match positive wire gauge in the same circuit"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for negative wire - gauge validation skipped",
+            "wireId": "bench-wire-1-10",
+            "suggestion": "Negative wires should match positive wire gauge in the same circuit"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"House Bank\" and \"200A Negative Bus\" overlap",
+            "componentIds": [
+              "house-battery",
+              "negative-bus"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"200A Positive Bus\" and \"12V Fridge\" overlap",
+            "componentIds": [
+              "positive-bus",
+              "fridge"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"200A Negative Bus\" and \"BMV-712 Smart\" overlap",
+            "componentIds": [
+              "negative-bus",
+              "bmv"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "warning",
+            "category": "ai-quality",
+            "message": "1 component(s) not connected to any wires",
+            "componentIds": [
+              "bmv"
+            ],
+            "suggestion": "Wire all components or remove unused ones"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "starter-battery",
+              "type": "battery",
+              "name": "Starter Battery",
+              "x": 200,
+              "y": 200,
+              "properties": {
+                "voltage": 12,
+                "capacity": 70,
+                "batteryType": "AGM"
+              }
+            },
+            {
+              "id": "house-battery",
+              "type": "battery",
+              "name": "House Bank",
+              "x": 800,
+              "y": 400,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "solar-panel-1",
+              "type": "solar-panel",
+              "name": "300W Solar Panel",
+              "x": 200,
+              "y": 600,
+              "properties": {
+                "watts": 300,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "mppt",
+              "type": "mppt",
+              "name": "SmartSolar MPPT 100|30",
+              "x": 500,
+              "y": 600,
+              "properties": {
+                "maxCurrent": 30,
+                "model": "100|30",
+                "maxPVVoltage": 100
+              }
+            },
+            {
+              "id": "orion-dc-dc",
+              "type": "orion-dc-dc",
+              "name": "Orion-Tr Smart 12|12-30",
+              "x": 500,
+              "y": 200,
+              "properties": {
+                "amps": 30
+              }
+            },
+            {
+              "id": "cyrix-ct",
+              "type": "cyrix-ct",
+              "name": "Cyrix-ct 120A Combiner",
+              "x": 500,
+              "y": 400,
+              "properties": {
+                "amps": 120
+              }
+            },
+            {
+              "id": "main-fuse",
+              "type": "fuse",
+              "name": "200A Class-T Main Fuse",
+              "x": 650,
+              "y": 400,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 200
+              }
+            },
+            {
+              "id": "positive-bus",
+              "type": "busbar-positive",
+              "name": "200A Positive Bus",
+              "x": 950,
+              "y": 300,
+              "rotation": 90
+            },
+            {
+              "id": "negative-bus",
+              "type": "busbar-negative",
+              "name": "200A Negative Bus",
+              "x": 950,
+              "y": 500,
+              "rotation": 90
+            },
+            {
+              "id": "fridge",
+              "type": "dc-load",
+              "name": "12V Fridge",
+              "x": 1100,
+              "y": 200,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "bmv",
+              "type": "bmv",
+              "name": "BMV-712 Smart",
+              "x": 1100,
+              "y": 400
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "starter-battery",
+              "toComponentId": "orion-dc-dc",
+              "fromTerminal": "positive",
+              "toTerminal": "input-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "starter-battery",
+              "toComponentId": "orion-dc-dc",
+              "fromTerminal": "negative",
+              "toTerminal": "input-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "orion-dc-dc",
+              "toComponentId": "cyrix-ct",
+              "fromTerminal": "output-positive",
+              "toTerminal": "batt-1-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "orion-dc-dc",
+              "toComponentId": "cyrix-ct",
+              "fromTerminal": "output-negative",
+              "toTerminal": "ground",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "house-battery",
+              "toComponentId": "main-fuse",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "main-fuse",
+              "toComponentId": "cyrix-ct",
+              "fromTerminal": "out",
+              "toTerminal": "batt-2-positive",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "house-battery",
+              "toComponentId": "cyrix-ct",
+              "fromTerminal": "negative",
+              "toTerminal": "ground",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "cyrix-ct",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "batt-1-positive",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "cyrix-ct",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "batt-2-positive",
+              "toTerminal": "pos-2",
+              "polarity": "positive",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "house-battery",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "starter-battery",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "negative",
+              "toTerminal": "neg-2",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "cyrix-ct",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "ground",
+              "toTerminal": "neg-3",
+              "polarity": "negative",
+              "gauge": "2 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 3,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "mppt",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "pos-3",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "mppt",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "neg-4",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "fridge",
+              "fromTerminal": "pos-4",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "negative-bus",
+              "toComponentId": "fridge",
+              "fromTerminal": "neg-5",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            }
+          ]
+        }
+      },
+      {
+        "caseId": "alternator-charging",
+        "repeat": 2,
+        "success": true,
+        "score": 0,
+        "errorCount": 13,
+        "warningCount": 5,
+        "componentCount": 12,
+        "wireCount": 19,
+        "repairCount": 1,
+        "iterationsUsed": 1,
+        "scorePath": [
+          0
+        ],
+        "expectationsMet": true,
+        "failedExpectations": [],
+        "inputTokens": 4058,
+        "outputTokens": 2536,
+        "costUsd": null,
+        "durationMs": 30534,
+        "judgeScore": null,
+        "judgeStdDev": null,
+        "judgeCostUsd": null,
+        "judgeDetails": null,
+        "issues": [
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "MPPT \"SmartSolar MPPT 75|15\" PV current exceeded: 16.7A PV exceeds maximum 15A output",
+            "componentIds": [
+              "mppt",
+              "solar-panel-1",
+              "solar-panel-2"
+            ],
+            "suggestion": "Reduce number of panels in parallel or use an MPPT with higher current rating (e.g., 16A or higher)"
+          },
+          {
+            "severity": "warning",
+            "category": "electrical",
+            "message": "No disconnect switches found in design",
+            "suggestion": "Add a main battery disconnect switch for safety and maintenance."
+          },
+          {
+            "severity": "error",
+            "category": "electrical",
+            "message": "Unfused battery cable! Battery positive must connect DIRECTLY to a fuse or breaker.",
+            "componentIds": [
+              "starter-battery"
+            ],
+            "suggestion": "Add overcurrent protection immediately after the battery positive terminal. A 30A MRBF (terminal fuse) fuse suits this circuit."
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-0",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for wire - gauge validation skipped",
+            "wireId": "bench-wire-1-1",
+            "suggestion": "Set load properties (watts/amps) or wire current for accurate gauge validation"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for negative wire - gauge validation skipped",
+            "wireId": "bench-wire-1-2",
+            "suggestion": "Negative wires should match positive wire gauge in the same circuit"
+          },
+          {
+            "severity": "warning",
+            "category": "wire-sizing",
+            "message": "Cannot determine current for negative wire - gauge validation skipped",
+            "wireId": "bench-wire-1-3",
+            "suggestion": "Negative wires should match positive wire gauge in the same circuit"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 4 AWG",
+            "wireId": "bench-wire-1-16",
+            "wireIds": [
+              "bench-wire-1-17",
+              "bench-wire-1-16"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 4 AWG",
+            "wireId": "bench-wire-1-16",
+            "wireIds": [
+              "bench-wire-1-17",
+              "bench-wire-1-16"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel wire runs must use identical 4/0 AWG conductors. Found mixed gauges: 4 AWG",
+            "wireId": "bench-wire-1-17",
+            "wireIds": [
+              "bench-wire-1-16",
+              "bench-wire-1-17"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "All parallel conductors must be 4/0 AWG. Update all 2 wires to 4/0 AWG"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Parallel conductors must be at least 1/0 AWG per NEC/ABYC. Found: 4 AWG",
+            "wireId": "bench-wire-1-17",
+            "wireIds": [
+              "bench-wire-1-16",
+              "bench-wire-1-17"
+            ],
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "Update all parallel conductors to at least 1/0 AWG (preferably 4/0 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Wire gauge 10 AWG insufficient for 120.0A (max 60.0A at 75°C per wire)",
+            "wireId": "bench-wire-1-18",
+            "componentIds": [
+              "cyrix-ct",
+              "negative-bus"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 4 AWG)"
+          },
+          {
+            "severity": "error",
+            "category": "wire-sizing",
+            "message": "Excessive voltage drop: 4.0% (max 3% per ABYC) at 120.0A, 2ft, 12V",
+            "wireId": "bench-wire-1-18",
+            "componentIds": [
+              "cyrix-ct",
+              "negative-bus"
+            ],
+            "suggestion": "Use larger gauge wire (e.g., 8 AWG) or shorten run (current: 2ft)"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"12V Starter Battery\" and \"SmartSolar MPPT 75|15\" overlap",
+            "componentIds": [
+              "starter-battery",
+              "mppt"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Orion-Tr Smart 12/12-30\" and \"150W Solar Panel\" overlap",
+            "componentIds": [
+              "orion-dc-dc",
+              "solar-panel-2"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Orion-Tr Smart 12/12-30\" and \"SmartSolar MPPT 75|15\" overlap",
+            "componentIds": [
+              "orion-dc-dc",
+              "mppt"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"Cyrix-ct 12/24-120 Combiner\" and \"200A Positive Bus\" overlap",
+            "componentIds": [
+              "cyrix-ct",
+              "positive-bus"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          },
+          {
+            "severity": "error",
+            "category": "layout",
+            "message": "Components \"200A Negative Bus\" and \"12V Fridge 60W\" overlap",
+            "componentIds": [
+              "negative-bus",
+              "fridge"
+            ],
+            "suggestion": "Move components apart by at least 50px"
+          }
+        ],
+        "output": {
+          "components": [
+            {
+              "id": "house-battery",
+              "type": "battery",
+              "name": "200Ah LiFePO4 House Bank",
+              "x": 400,
+              "y": 400,
+              "properties": {
+                "voltage": 12,
+                "capacity": 200,
+                "batteryType": "LiFePO4"
+              }
+            },
+            {
+              "id": "starter-battery",
+              "type": "battery",
+              "name": "12V Starter Battery",
+              "x": 400,
+              "y": 100,
+              "properties": {
+                "voltage": 12,
+                "capacity": 70,
+                "batteryType": "AGM"
+              }
+            },
+            {
+              "id": "orion-dc-dc",
+              "type": "orion-dc-dc",
+              "name": "Orion-Tr Smart 12/12-30",
+              "x": 180,
+              "y": 250,
+              "properties": {
+                "amps": 30
+              }
+            },
+            {
+              "id": "solar-panel-1",
+              "type": "solar-panel",
+              "name": "150W Solar Panel",
+              "x": 100,
+              "y": 100,
+              "properties": {
+                "watts": 150,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "solar-panel-2",
+              "type": "solar-panel",
+              "name": "150W Solar Panel",
+              "x": 100,
+              "y": 250,
+              "properties": {
+                "watts": 150,
+                "voltage": 18
+              }
+            },
+            {
+              "id": "mppt",
+              "type": "mppt",
+              "name": "SmartSolar MPPT 75|15",
+              "x": 260,
+              "y": 180,
+              "properties": {
+                "maxCurrent": 15,
+                "model": "75|15",
+                "maxPVVoltage": 75
+              }
+            },
+            {
+              "id": "cyrix-ct",
+              "type": "cyrix-ct",
+              "name": "Cyrix-ct 12/24-120 Combiner",
+              "x": 620,
+              "y": 250,
+              "properties": {
+                "amps": 120
+              }
+            },
+            {
+              "id": "fuse-main",
+              "type": "fuse",
+              "name": "250A Class-T Main Fuse",
+              "x": 580,
+              "y": 400,
+              "properties": {
+                "fuseType": "class-t",
+                "fuseRating": 250
+              }
+            },
+            {
+              "id": "positive-bus",
+              "type": "busbar-positive",
+              "name": "200A Positive Bus",
+              "x": 740,
+              "y": 300,
+              "rotation": 0
+            },
+            {
+              "id": "negative-bus",
+              "type": "busbar-negative",
+              "name": "200A Negative Bus",
+              "x": 740,
+              "y": 500,
+              "rotation": 0
+            },
+            {
+              "id": "fridge",
+              "type": "dc-load",
+              "name": "12V Fridge 60W",
+              "x": 900,
+              "y": 400,
+              "properties": {
+                "watts": 60
+              }
+            },
+            {
+              "id": "smartshunt",
+              "type": "smartshunt",
+              "name": "SmartShunt 500A",
+              "x": 580,
+              "y": 600,
+              "properties": {}
+            }
+          ],
+          "wires": [
+            {
+              "fromComponentId": "house-battery",
+              "toComponentId": "fuse-main",
+              "fromTerminal": "positive",
+              "toTerminal": "in",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-0"
+            },
+            {
+              "fromComponentId": "fuse-main",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "out",
+              "toTerminal": "pos-1",
+              "polarity": "positive",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-1"
+            },
+            {
+              "fromComponentId": "house-battery",
+              "toComponentId": "smartshunt",
+              "fromTerminal": "negative",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-2"
+            },
+            {
+              "fromComponentId": "smartshunt",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "system-minus",
+              "toTerminal": "neg-1",
+              "polarity": "negative",
+              "gauge": "4/0 AWG",
+              "length": 2,
+              "id": "bench-wire-1-3"
+            },
+            {
+              "fromComponentId": "positive-bus",
+              "toComponentId": "fridge",
+              "fromTerminal": "pos-2",
+              "toTerminal": "positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-4"
+            },
+            {
+              "fromComponentId": "negative-bus",
+              "toComponentId": "fridge",
+              "fromTerminal": "neg-2",
+              "toTerminal": "negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-5"
+            },
+            {
+              "fromComponentId": "orion-dc-dc",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "output-positive",
+              "toTerminal": "pos-3",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-6"
+            },
+            {
+              "fromComponentId": "orion-dc-dc",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "output-negative",
+              "toTerminal": "neg-3",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-7"
+            },
+            {
+              "fromComponentId": "starter-battery",
+              "toComponentId": "orion-dc-dc",
+              "fromTerminal": "positive",
+              "toTerminal": "input-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-8"
+            },
+            {
+              "fromComponentId": "starter-battery",
+              "toComponentId": "orion-dc-dc",
+              "fromTerminal": "negative",
+              "toTerminal": "input-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-9"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-10"
+            },
+            {
+              "fromComponentId": "solar-panel-1",
+              "toComponentId": "mppt",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-11"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt",
+              "fromTerminal": "positive",
+              "toTerminal": "pv-positive",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-12"
+            },
+            {
+              "fromComponentId": "solar-panel-2",
+              "toComponentId": "mppt",
+              "fromTerminal": "negative",
+              "toTerminal": "pv-negative",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-13"
+            },
+            {
+              "fromComponentId": "mppt",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "batt-positive",
+              "toTerminal": "pos-4",
+              "polarity": "positive",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-14"
+            },
+            {
+              "fromComponentId": "mppt",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "batt-negative",
+              "toTerminal": "neg-4",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-15"
+            },
+            {
+              "fromComponentId": "cyrix-ct",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "batt-1-positive",
+              "toTerminal": "pos-5",
+              "polarity": "positive",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-16"
+            },
+            {
+              "fromComponentId": "cyrix-ct",
+              "toComponentId": "positive-bus",
+              "fromTerminal": "batt-2-positive",
+              "toTerminal": "pos-6",
+              "polarity": "positive",
+              "gauge": "4 AWG",
+              "length": 2,
+              "id": "bench-wire-1-17"
+            },
+            {
+              "fromComponentId": "cyrix-ct",
+              "toComponentId": "negative-bus",
+              "fromTerminal": "ground",
+              "toTerminal": "neg-5",
+              "polarity": "negative",
+              "gauge": "10 AWG",
+              "length": 2,
+              "id": "bench-wire-1-18"
+            }
+          ]
+        }
+      }
+    ],
+    "stats": {
+      "caseCount": 10,
+      "completedCount": 10,
+      "meanScore": 21.22222222222222,
+      "medianScore": 0,
+      "minScore": 0,
+      "maxScore": 100,
+      "scoreStdDev": 42.17160708870891,
+      "passRate": 20,
+      "totalInputTokens": 36409,
+      "totalOutputTokens": 29592,
+      "totalCostUsd": null,
+      "meanDurationMs": 42573,
+      "totalRepairs": 31,
+      "meanIterations": 1,
+      "meanJudgeScore": null,
+      "totalJudgeCostUsd": null
+    }
+  }
+}
