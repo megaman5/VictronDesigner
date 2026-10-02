@@ -1179,9 +1179,9 @@ CRITICAL FIXES NEEDED:
         // place and not the other.
         const systemMessage = systemDesignSkill.buildSystemPrompt({ systemVoltage });
 
-        const userMessage = iteration === 0
-          ? prompt
-          : `${prompt}\n\nImprove the previous design based on the feedback above.`;
+        const userMessage = bestDesign
+          ? `${prompt}\n\nPrevious best design:\n${JSON.stringify({ components: bestDesign.components, wires: bestDesign.wires })}${feedbackContext}\n\nReturn a corrected COMPLETE design that addresses this feedback and preserves the original requirements.`
+          : prompt;
 
         // From the second round on, show the model what it just built.
         const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
@@ -1533,9 +1533,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         // place and not the other.
         const systemMessage = systemDesignSkill.buildSystemPrompt({ systemVoltage });
 
-        const userMessage = iteration === 0
-          ? prompt
-          : `${prompt}\n\nImprove the previous design based on the feedback above.`;
+        const userMessage = bestDesign
+          ? `${prompt}\n\nPrevious best design:\n${JSON.stringify({ components: bestDesign.components, wires: bestDesign.wires })}${feedbackContext}\n\nReturn a corrected COMPLETE design that addresses this feedback and preserves the original requirements.`
+          : prompt;
 
         // Store full messages for observability (update on each iteration)
         fullSystemMessage = systemMessage;

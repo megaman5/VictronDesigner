@@ -167,4 +167,40 @@ describe("Production AI endpoints during a billing outage", () => {
     expect(mocks.create).toHaveBeenCalledTimes(4);
   });
 
+  it.each(["/api/ai-generate-system-iterative", "/api/ai-generate-system-stream"])(
+    "%s sends the best design, correction feedback and PNG together", async endpoint => {
+      let attempt = 0;
+      mocks.create.mockImplementation(async body => {
+        const content = JSON.stringify({ components: [{ ...design.components[0], id: `candidate-${++attempt}` }], wires: [] });
+        if (body.stream) return (async function* () {
+          yield { choices: [{ delta: { content } }] };
+        })();
+        return { choices: [{ message: { content } }] };
+      });
+      mocks.validate.mockImplementation(components => {
+        const id = components[0].id;
+        return { score: id === "candidate-1" ? 50 : id === "candidate-2" ? 10 : 100,
+          issues: id === "candidate-3" ? [] : [{ severity: "error", category: "component",
+            message: `Required protection for ${id} is missing`, suggestion: "Connect a battery fuse" }] };
+      });
+      const { response, text } = await post(endpoint, { prompt: "Keep my 400Ah battery bank", maxIterations: 3 });
+      expect(response.status).toBe(200);
+      if (endpoint.endsWith("-stream")) expect(text).toContain("event: complete");
+      expect(mocks.create).toHaveBeenCalledTimes(3);
+      expect(mocks.create.mock.calls[0][0].messages[1].content).toBe("Keep my 400Ah battery bank");
+      for (const call of mocks.create.mock.calls.slice(1)) {
+        const content = call[0].messages[1].content;
+        expect(content).toEqual(expect.arrayContaining([
+          expect.objectContaining({ type: "image_url", image_url: { url: expect.stringMatching(/^data:image\/png;base64,/) } }),
+        ]));
+        const feedback = content.find((part: any) => part.type === "text").text;
+        expect(feedback).toContain("Keep my 400Ah battery bank");
+        expect(feedback).toContain('"id":"candidate-1"');
+        expect(feedback).toContain("Required protection for candidate-1 is missing");
+        expect(feedback).toContain("Connect a battery fuse");
+        expect(feedback).not.toContain("candidate-2");
+      }
+    }
+  );
+
 });
