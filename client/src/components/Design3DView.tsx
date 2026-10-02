@@ -10,7 +10,8 @@ import type { WireGaugeFormat, LengthUnit } from '@/lib/wire-calculator';
 import type { SchematicComponent, Wire, WireCalculation } from '@shared/schema';
 import type { WireRoutingOptions } from '@/lib/wire-routing';
 import { snapToGrid } from '@/lib/wire-routing';
-import { deviceDetails } from '@/lib/device-3d-details';
+import { getFuseType } from '@shared/protection-devices';
+import { deviceDetails, fuseNameplate } from '@/lib/device-3d-details';
 import { build3DLayout } from '@/lib/design-3d';
 
 interface Props {
@@ -150,13 +151,29 @@ export default function Design3DView({ components, wires, routingOptions, onComp
       outlineGeometry.dispose(); edges.position.set(c.x + w / 2, -(c.y + h / 2), depth / 2);
       scene.add(edges); outlines.set(c.id, edges);
       const small = c.type.startsWith('busbar') || c.type === 'fuse' || c.type === 'smartshunt';
-      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, h * (small ? 0.18 : 0.2)),
+      const fusePlate = c.type === 'fuse' ? fuseNameplate(w, h, depth) : undefined;
+      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(fusePlate?.width ?? w * 0.7, fusePlate?.height ?? h * (c.type === 'switch' ? 0.13 : small ? 0.18 : 0.2)),
         new THREE.MeshBasicMaterial({ map: labelTexture(c, ['ac-panel', 'dc-panel'].includes(c.type) ? '#d5dbdc' : '#24333d'), toneMapped: false }));
-      plaque.position.set(c.x + w / 2, -(c.y + h * (c.type === 'solar-panel' ? 0.13 : 0.27)), depth + 2.5);
+      plaque.position.set(c.x + (fusePlate?.x ?? w / 2), -(c.y + (fusePlate?.y ?? h * (c.type === 'switch' ? 0.13 : c.type === 'solar-panel' ? 0.13 : 0.27))), fusePlate?.z ?? depth + 2.5);
       plaque.userData.component = c; scene.add(plaque); clickable.push(plaque);
-      for (const detail of deviceDetails(c.type, w, h, depth)) {
+      for (const detail of deviceDetails(c.type, w, h, depth, terminals, getFuseType(c))) {
         detail.position.x += c.x; detail.position.y -= c.y;
         detail.userData.component = c; scene.add(detail); clickable.push(detail);
+      }
+      if (c.type === 'switch') {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#f4f1e7'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 23px Inter, sans-serif'; ctx.fillText('OFF', 128, 28);
+        ctx.font = 'bold 20px Inter, sans-serif'; ctx.fillText('ON', 200, 57);
+        ctx.strokeStyle = '#aab1ac'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(128, 128, 88, -Math.PI * 0.4, -0.23); ctx.stroke();
+        const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+        const diameter = Math.min(w, h) * 0.66;
+        const markings = new THREE.Mesh(new THREE.PlaneGeometry(diameter, diameter),
+          new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false }));
+        markings.position.set(c.x + w / 2, -(c.y + h * 0.55), depth + 2.9);
+        markings.userData.component = c; scene.add(markings); clickable.push(markings);
       }
       for (const t of terminals) {
         const color = t.type.includes('negative') ? '#9bafc2' : t.type === 'ground' ? '#53df99'
