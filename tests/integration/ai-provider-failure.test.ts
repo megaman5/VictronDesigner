@@ -138,4 +138,33 @@ describe("Production AI endpoints during a billing outage", () => {
     expect(mocks.create).toHaveBeenCalledTimes(2); expect(mocks.log).toHaveBeenCalledOnce();
   });
 
+  it("sends the previous wiring and validator feedback on the next correction pass", async () => {
+    const wire = { id: "previous-wire", fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: 1 };
+    mocks.create.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ wires: [wire] }) } }] });
+    mocks.validate.mockReturnValue({ score: 50, issues: [{ severity: "error", category: "component", message: "Required protection is missing", suggestion: "Connect the available fuse" }] });
+    await post("/api/ai-wire-components", { components: design.components, maxIterations: 2 });
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+    const correction = mocks.create.mock.calls[1][0].messages[1].content;
+    expect(correction).toContain("previous-wire");
+    expect(correction).toContain("Required protection is missing");
+    expect(correction).toContain("Connect the available fuse");
+  });
+
+  it("stops identical unsuccessful corrections after two retries and explains why", async () => {
+    mocks.create.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ wires: [] }) } }] });
+    mocks.validate.mockReturnValue({ score: 0, issues: [{ severity: "error", category: "component", message: "Missing protection" }] });
+    const { text } = await post("/api/ai-wire-components", { components: design.components, maxIterations: 6 });
+    expect(mocks.create).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(text).recommendations[0]).toContain("same result");
+    expect(JSON.parse(text).qualityScore).toBe(0);
+  });
+
+  it("does not stop changing candidates just because scores remain tied", async () => {
+    let attempt = 0;
+    mocks.create.mockImplementation(async () => ({ choices: [{ message: { content: JSON.stringify({ wires: [{ fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: ++attempt }] }) } }] }));
+    mocks.validate.mockReturnValue({ score: 50, issues: [{ severity: "error", category: "component", message: "Missing protection" }] });
+    await post("/api/ai-wire-components", { components: design.components, maxIterations: 4 });
+    expect(mocks.create).toHaveBeenCalledTimes(4);
+  });
+
 });
