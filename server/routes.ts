@@ -916,7 +916,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         model: aiModel,
         response: {
           wires: bestWires,
-          description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
+          description: `${stoppedForStagnation ? "Stopped because repeated corrections produced the same result. Review the remaining validation issues. " : ""}Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
           recommendations: stoppedForStagnation ? ["AI Wire stopped because repeated correction attempts produced the same result. Review the remaining validation issues and component settings before trying again."] : [],
         },
         validationFeedback: {
@@ -930,7 +930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         ...aiSession.responseMetadata,
         wires: bestWires,
-        description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
+        description: `${stoppedForStagnation ? "Stopped because repeated corrections produced the same result. Review the remaining validation issues. " : ""}Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
         recommendations: stoppedForStagnation ? ["AI Wire stopped because repeated correction attempts produced the same result. Review the remaining validation issues and component settings before trying again."] : [],
         iterations: iterationHistory.length,
         qualityScore: bestScore,

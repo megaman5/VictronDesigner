@@ -1,0 +1,523 @@
+[
+  {
+    "case": "solar-3kw",
+    "config": "gemini-concise",
+    "model": "gemini-3.8-flash",
+    "score": 100,
+    "warnings": 3,
+    "components": 28,
+    "wires": 46,
+    "repairs": 3,
+    "usage": {
+      "completion_tokens": 6074,
+      "prompt_tokens": 4159,
+      "total_tokens": 11544
+    },
+    "finishReason": "stop",
+    "seconds": 18.945,
+    "stage": "screen-16k",
+    "errorCount": 0
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gemini-original",
+    "model": "gemini-3.8-flash",
+    "error": "Expected ',' or ']' after array element in JSON at position 1320 (line 68 column 6)",
+    "seconds": 49.906,
+    "stage": "screen-16k"
+  },
+  {
+    "case": "solar-3kw",
+    "config": "nemotron-concise",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "score": 2,
+    "warnings": 2,
+    "components": 23,
+    "wires": 34,
+    "repairs": 7,
+    "usage": {
+      "prompt_tokens": 4060,
+      "completion_tokens": 4158,
+      "total_tokens": 8218,
+      "cost": 0,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0,
+        "upstream_inference_prompt_cost": 0,
+        "upstream_inference_completions_cost": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 48.753,
+    "stage": "screen-16k",
+    "errorCount": 4
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gpt54-concise",
+    "model": "gpt-5.4",
+    "error": "Request was aborted.",
+    "seconds": 90.005,
+    "stage": "screen-16k"
+  },
+  {
+    "case": "rv-complex",
+    "config": "gemini-original",
+    "model": "gemini-3.8-flash",
+    "error": "Expected ',' or ']' after array element in JSON at position 1276 (line 62 column 6)",
+    "seconds": 47.398,
+    "stage": "screen-16k"
+  },
+  {
+    "case": "rv-complex",
+    "config": "gemini-concise",
+    "model": "gemini-3.8-flash",
+    "score": 39,
+    "warnings": 11,
+    "components": 21,
+    "wires": 43,
+    "repairs": 1,
+    "usage": {
+      "completion_tokens": 5409,
+      "prompt_tokens": 4413,
+      "total_tokens": 15765
+    },
+    "finishReason": "stop",
+    "seconds": 32.72,
+    "stage": "screen-16k",
+    "errorCount": 4
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gemini-original",
+    "model": "gemini-3.8-flash",
+    "score": 0,
+    "warnings": 4,
+    "components": 18,
+    "wires": 23,
+    "repairs": 0,
+    "usage": {
+      "completion_tokens": 2346,
+      "prompt_tokens": 7102,
+      "total_tokens": 14689
+    },
+    "finishReason": "stop",
+    "seconds": 22.107,
+    "stage": "screen-16k",
+    "errorCount": 17
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gemini-concise",
+    "model": "gemini-3.8-flash",
+    "score": 0,
+    "warnings": 4,
+    "components": 18,
+    "wires": 23,
+    "repairs": 0,
+    "usage": {
+      "completion_tokens": 1535,
+      "prompt_tokens": 7136,
+      "total_tokens": 12719
+    },
+    "finishReason": "stop",
+    "seconds": 14.435,
+    "stage": "screen-16k",
+    "errorCount": 17
+  },
+  {
+    "case": "rv-complex",
+    "config": "nemotron-concise",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "score": 0,
+    "warnings": 11,
+    "components": 18,
+    "wires": 33,
+    "repairs": 1,
+    "usage": {
+      "prompt_tokens": 4319,
+      "completion_tokens": 3635,
+      "total_tokens": 7954,
+      "cost": 0,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0,
+        "upstream_inference_prompt_cost": 0,
+        "upstream_inference_completions_cost": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 70.508,
+    "stage": "screen-16k",
+    "errorCount": 6
+  },
+  {
+    "case": "rv-complex",
+    "config": "gpt54-concise",
+    "model": "gpt-5.4",
+    "error": "Request was aborted.",
+    "seconds": 90.003,
+    "stage": "screen-16k"
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gpt54-concise",
+    "model": "gpt-5.4",
+    "score": 0,
+    "warnings": 4,
+    "components": 18,
+    "wires": 23,
+    "repairs": 0,
+    "usage": {
+      "prompt_tokens": 5880,
+      "completion_tokens": 3011,
+      "total_tokens": 8891,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1776,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 43.127,
+    "stage": "screen-16k",
+    "errorCount": 16
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "nemotron-concise",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "score": 0,
+    "warnings": 7,
+    "components": 18,
+    "wires": 23,
+    "repairs": 0,
+    "usage": {
+      "prompt_tokens": 7128,
+      "completion_tokens": 2247,
+      "total_tokens": 9375,
+      "cost": 0,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0,
+        "upstream_inference_prompt_cost": 0,
+        "upstream_inference_completions_cost": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 22.401,
+    "stage": "screen-16k",
+    "errorCount": 11
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gpt54mini-concise",
+    "model": "gpt-5.4-mini",
+    "rawScore": 0,
+    "rawErrors": 10,
+    "score": 23,
+    "warnings": 13,
+    "components": 24,
+    "wires": 42,
+    "repairs": 11,
+    "usage": {
+      "prompt_tokens": 3573,
+      "completion_tokens": 6991,
+      "total_tokens": 10564,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 2261,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 26.5,
+    "stage": "additional-16k",
+    "errorCount": 5
+  },
+  {
+    "case": "rv-complex",
+    "config": "gpt54mini-concise",
+    "model": "gpt-5.4-mini",
+    "rawScore": 62,
+    "rawErrors": 2,
+    "score": 62,
+    "warnings": 10,
+    "components": 19,
+    "wires": 38,
+    "repairs": 1,
+    "usage": {
+      "prompt_tokens": 3793,
+      "completion_tokens": 6522,
+      "total_tokens": 10315,
+      "prompt_tokens_details": {
+        "cached_tokens": 3328,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 2418,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 23.516,
+    "stage": "additional-16k",
+    "errorCount": 2
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gemini-concise-repeat",
+    "model": "gemini-3.8-flash",
+    "error": "Expected ',' or ']' after array element in JSON at position 1296 (line 68 column 6)",
+    "seconds": 50.144,
+    "stage": "additional-16k"
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gpt54mini-concise",
+    "model": "gpt-5.4-mini",
+    "rawScore": 0,
+    "rawErrors": 17,
+    "score": 0,
+    "warnings": 4,
+    "components": 18,
+    "wires": 26,
+    "repairs": 0,
+    "usage": {
+      "prompt_tokens": 5880,
+      "completion_tokens": 2845,
+      "total_tokens": 8725,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1424,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "finishReason": "stop",
+    "seconds": 11.568,
+    "stage": "additional-16k",
+    "errorCount": 17
+  },
+  {
+    "case": "rv-complex",
+    "config": "gemini-concise-repeat",
+    "model": "gemini-3.8-flash",
+    "rawScore": 91,
+    "rawErrors": 0,
+    "score": 91,
+    "warnings": 7,
+    "components": 21,
+    "wires": 41,
+    "repairs": 1,
+    "usage": {
+      "completion_tokens": 5251,
+      "prompt_tokens": 4413,
+      "total_tokens": 11933
+    },
+    "finishReason": "stop",
+    "seconds": 20.655,
+    "stage": "additional-16k",
+    "errorCount": 0
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gemini-feedback",
+    "model": "gemini-3.8-flash",
+    "error": "Expected ',' or ']' after array element in JSON at position 1471 (line 56 column 6)",
+    "seconds": 49.994,
+    "stage": "additional-16k"
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gemini-original-debug",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 636,
+      "prompt_tokens": 4125,
+      "total_tokens": 20121
+    },
+    "finishReason": "length",
+    "error": "Expected ',' or ']' after array element in JSON at position 1495 (line 78 column 6)",
+    "seconds": 49.565,
+    "stage": "truncation-check-16k"
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gemini-low-thinking",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 5576,
+      "prompt_tokens": 4125,
+      "total_tokens": 9701
+    },
+    "finishReason": "stop",
+    "rawScore": 100,
+    "rawErrors": 0,
+    "score": 100,
+    "warnings": 1,
+    "components": 24,
+    "wires": 42,
+    "repairs": 2,
+    "seconds": 14.257,
+    "stage": "reasoning-32k",
+    "errorCount": 0
+  },
+  {
+    "case": "rv-complex",
+    "config": "gemini-32k",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 6193,
+      "prompt_tokens": 4379,
+      "total_tokens": 22345
+    },
+    "finishReason": "stop",
+    "rawScore": 40,
+    "rawErrors": 6,
+    "score": 40,
+    "warnings": 4,
+    "components": 22,
+    "wires": 45,
+    "repairs": 1,
+    "seconds": 48.824,
+    "stage": "reasoning-32k",
+    "errorCount": 6
+  },
+  {
+    "case": "solar-3kw",
+    "config": "gemini-32k",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 6895,
+      "prompt_tokens": 4125,
+      "total_tokens": 28874
+    },
+    "finishReason": "stop",
+    "rawScore": 36,
+    "rawErrors": 7,
+    "score": 38,
+    "warnings": 8,
+    "components": 28,
+    "wires": 53,
+    "repairs": 7,
+    "seconds": 74.757,
+    "stage": "reasoning-32k",
+    "errorCount": 5
+  },
+  {
+    "case": "rv-complex",
+    "config": "gemini-low-thinking",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 6349,
+      "prompt_tokens": 4379,
+      "total_tokens": 10728
+    },
+    "finishReason": "stop",
+    "rawScore": 0,
+    "rawErrors": 4,
+    "score": 14,
+    "warnings": 26,
+    "components": 24,
+    "wires": 47,
+    "repairs": 3,
+    "seconds": 15.531,
+    "stage": "reasoning-32k",
+    "errorCount": 2
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gemini-feedback-low",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 2162,
+      "prompt_tokens": 10113,
+      "total_tokens": 12275
+    },
+    "finishReason": "stop",
+    "rawScore": 0,
+    "rawErrors": 9,
+    "score": 0,
+    "warnings": 11,
+    "components": 18,
+    "wires": 20,
+    "repairs": 0,
+    "seconds": 5.57,
+    "stage": "reasoning-32k",
+    "errorCount": 9
+  },
+  {
+    "case": "wire-18-reconstructed",
+    "config": "gemini-32k",
+    "model": "gemini-3.8-flash",
+    "usage": {
+      "completion_tokens": 2374,
+      "prompt_tokens": 7102,
+      "prompt_tokens_details": {
+        "cached_tokens": 4037
+      },
+      "total_tokens": 14564
+    },
+    "finishReason": "stop",
+    "rawScore": 0,
+    "rawErrors": 17,
+    "score": 0,
+    "warnings": 4,
+    "components": 18,
+    "wires": 23,
+    "repairs": 0,
+    "seconds": 23.347,
+    "stage": "reasoning-32k",
+    "errorCount": 17
+  }
+]
