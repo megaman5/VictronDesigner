@@ -891,7 +891,7 @@ export default function ObservabilityAdmin() {
                             )}
                           </TableCell>
                           <TableCell>{formatDuration(log.durationMs)}</TableCell>
-                          <TableCell>{log.qualityScore || "-"}</TableCell>
+                          <TableCell>{log.qualityScore ?? "-"}</TableCell>
                           <TableCell className="max-w-[200px] truncate" title={log.prompt}>
                             {log.prompt.substring(0, 50)}...
                           </TableCell>
@@ -1156,7 +1156,7 @@ export default function ObservabilityAdmin() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-sm text-muted-foreground">Quality Score</div>
-                  <div className="mt-1 font-medium">{selectedAILog.qualityScore || "-"}</div>
+                  <div className="mt-1 font-medium">{selectedAILog.qualityScore ?? "-"}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Iterations</div>

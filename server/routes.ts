@@ -485,6 +485,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let bestWires: any[] = [];
       let bestScore = 0;
       let bestValidation: any = null;
+      let unchangedPasses = 0;
+      let previousAttempt = "";
+      let stoppedForStagnation = false;
       const iterationHistory: any[] = [];
       const existingWires = wires.length > 0 ? wires : [];
 
@@ -703,160 +706,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : currentWireCalculationIssues;
 
 
-        // Build iteration feedback if not first iteration
-        let iterationFeedback = "";
-        if (iteration > 0 && currentValidation) {
-          // Separate wire-related issues from other issues
-          const wireErrors = allValidationErrors.filter((e: any) => 
-            e.category === "wire-sizing" || e.wireId || e.wireIds
-          );
-          const wireWarnings = allValidationWarnings.filter((w: any) => 
-            w.category === "wire-sizing" || w.wireId || w.wireIds
-          );
-          const nonWireErrors = allValidationErrors.filter((e: any) => 
-            e.category !== "wire-sizing" && !e.wireId && !e.wireIds
-          );
-          const nonWireWarnings = allValidationWarnings.filter((w: any) => 
-            w.category !== "wire-sizing" && !w.wireId && !w.wireIds
-          );
-          
-          const wireSizingIssues = allWireCalculationIssues.map((issue: any) => 
-            `Wire ${issue.fromComponentId} → ${issue.toComponentId}: ${issue.issue}${issue.currentGauge ? ` (Current: ${issue.currentGauge})` : ""}${issue.recommendedGauge ? ` (Recommended: ${issue.recommendedGauge})` : ""}${issue.current ? ` (Current: ${issue.current}A)` : ""}${issue.voltageDrop ? ` (Voltage Drop: ${issue.voltageDrop.toFixed(2)}%)` : ""}`
-          ).join("\n");
-          
-          iterationFeedback = `
-
-PREVIOUS ITERATION FEEDBACK (Iteration ${iteration}, Score: ${currentValidation.score}/100):
-
-${wireErrors.length > 0 ? `WIRE ERRORS (MUST FIX):
-${wireErrors.map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}${e.componentIds ? ` (Components: ${e.componentIds.join(", ")})` : ""}${e.wireId ? ` (Wire ID: ${e.wireId})` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
-` : ""}
-${wireWarnings.length > 0 ? `WIRE WARNINGS (MUST FIX):
-${wireWarnings.map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}${w.componentIds ? ` (Components: ${w.componentIds.join(", ")})` : ""}${w.wireId ? ` (Wire ID: ${w.wireId})` : ""}${w.wireIds ? ` (Wire IDs: ${w.wireIds.join(", ")})` : ""}`).join("\n")}
-` : ""}
-${wireSizingIssues ? `WIRE CALCULATION ISSUES (MUST FIX):
-${wireSizingIssues}
-` : ""}
-${nonWireErrors.length > 0 ? `OTHER ERRORS:
-${nonWireErrors.map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}`).join("\n")}
-` : ""}
-${nonWireWarnings.length > 0 ? `OTHER WARNINGS:
-${nonWireWarnings.map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}`).join("\n")}
-` : ""}
-
-CRITICAL: You MUST fix ALL wire errors and wire warnings. Use the recommended wire gauges from wire calculation issues. Update wire gauges based on calculated current and voltage drop requirements.`;
-        }
-
-        // Build validation feedback section for AI prompt (all iterations)
-        let validationSection = "";
-        if (allValidationErrors.length > 0 || allValidationWarnings.length > 0 || allWireCalculationIssues.length > 0) {
-          // Separate wire-related issues
-          const wireErrors = allValidationErrors.filter((e: any) => 
-            e.category === "wire-sizing" || e.wireId || e.wireIds
-          );
-          const wireWarnings = allValidationWarnings.filter((w: any) => 
-            w.category === "wire-sizing" || w.wireId || w.wireIds
-          );
-          
-          validationSection = `
-
-CURRENT DESIGN VALIDATION FEEDBACK (CRITICAL - FIX THESE ISSUES):
-
-${wireErrors.length > 0 ? `WIRE ERRORS (MUST FIX):
-${wireErrors.map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}${e.componentIds ? ` (Components: ${e.componentIds.join(", ")})` : ""}${e.wireId ? ` (Wire ID: ${e.wireId})` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
-` : ""}
-
-${wireWarnings.length > 0 ? `WIRE WARNINGS (MUST FIX):
-${wireWarnings.map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}${w.componentIds ? ` (Components: ${w.componentIds.join(", ")})` : ""}${w.wireId ? ` (Wire ID: ${w.wireId})` : ""}${w.wireIds ? ` (Wire IDs: ${w.wireIds.join(", ")})` : ""}`).join("\n")}
-` : ""}
-
-${allWireCalculationIssues.length > 0 ? `WIRE CALCULATION ISSUES (MUST FIX):
-${allWireCalculationIssues.map((issue: any, i: number) => `${i + 1}. Wire ${issue.fromComponentId} → ${issue.toComponentId}: ${issue.issue}${issue.currentGauge ? ` (Current: ${issue.currentGauge})` : ""}${issue.recommendedGauge ? ` (Recommended: ${issue.recommendedGauge})` : ""}${issue.current ? ` (Current: ${issue.current}A)` : ""}${issue.voltageDrop ? ` (Voltage Drop: ${issue.voltageDrop.toFixed(2)}%)` : ""}`).join("\n")}
-` : ""}
-
-${allValidationErrors.filter((e: any) => e.message?.includes("Parallel wire") || e.message?.includes("parallel") || e.message?.includes("Parallel conductors")).length > 0 ? `PARALLEL WIRE ERRORS (CRITICAL - MUST FIX):
-${allValidationErrors.filter((e: any) => e.message?.includes("Parallel wire") || e.message?.includes("parallel") || e.message?.includes("Parallel conductors")).map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - ${e.suggestion}` : ""}${e.wireIds ? ` (Wire IDs: ${e.wireIds.join(", ")})` : ""}`).join("\n")}
-
-CRITICAL PARALLEL WIRE RULES:
-- If current ≤370A: REMOVE parallel runs, use single larger gauge wire (4/0 AWG carries 445A per ABYC 105°C free air)
-- If current >370A: Use parallel runs, but ALL wires must be 4/0 AWG (identical gauges)
-- NEVER mix different gauges in parallel runs
-- NEVER use parallel runs for currents ≤370A
-` : ""}
-
-${allValidationErrors.filter((e: any) => e.category !== "wire-sizing" && !e.wireId && !e.wireIds).length > 0 ? `OTHER ERRORS:
-${allValidationErrors.filter((e: any) => e.category !== "wire-sizing" && !e.wireId && !e.wireIds).map((e: any, i: number) => `${i + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}`).join("\n")}
-` : ""}
-
-${allValidationWarnings.filter((w: any) => w.category !== "wire-sizing" && !w.wireId && !w.wireIds).length > 0 ? `OTHER WARNINGS:
-${allValidationWarnings.filter((w: any) => w.category !== "wire-sizing" && !w.wireId && !w.wireIds).map((w: any, i: number) => `${i + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}`).join("\n")}
-` : ""}
-
-${currentValidation ? `Current Design Quality Score: ${currentValidation.score}/100` : ""}
-
-CRITICAL: Your generated wires MUST fix ALL wire errors and wire warnings. Pay special attention to:
-- Wire gauge sizing (use recommended gauges from wire calculation issues)
-- Wire current calculations (ensure all wires have proper current values)
-- Voltage drop requirements (keep voltage drop under 3% per ABYC)
-- Terminal connection correctness
-- Electrical safety rules (fuses, SmartShunt placement, etc.)
-
-WIRE CAPACITY WARNINGS (REDUCE QUALITY SCORE):
-- Wires running at >90% capacity will generate warnings and reduce quality score
-- If you see "running at 95% capacity" or "running at 100% capacity" warnings:
-  * IMMEDIATELY use the next larger gauge (e.g., 2 AWG → 1 AWG → 1/0 AWG → 2/0 AWG → 3/0 AWG → 4/0 AWG)
-  * Example: 2 AWG at 99% → use 1 AWG
-  * Example: 3/0 AWG at 100% → use 4/0 AWG
-  * Example: 4/0 AWG at 100% → use 2 parallel 4/0 AWG wires (divide current by 2)
-- These warnings prevent achieving high quality scores (>90)
-- Fix capacity warnings in early iterations to improve quality faster
-
-PARALLEL WIRE RUNS - STRICT RULES (ABYC - CRITICAL):
-- ONLY create parallel wire runs when current exceeds 370A (4/0 AWG carries 445A per ABYC 105°C free air; 370A keeps a 20% margin)
-- NEVER create parallel runs for currents ≤370A - use single larger gauge instead
-- ALL parallel conductors MUST be 4/0 AWG (per NEC/ABYC standard practice)
-- NEVER mix different gauges in parallel runs (e.g., don't use 2 AWG + 1 AWG in parallel)
-- When creating parallel runs, each wire must have the SAME gauge (all 4/0 AWG)
-- Each parallel wire's "current" field should be the TOTAL current (system divides automatically)
-- Example CORRECT: 500A load → 2 parallel 4/0 AWG wires, each wire has current: 500 (system calculates 250A per wire automatically)
-- Example CORRECT: 800A load → 3 parallel 4/0 AWG wires, each wire has current: 800 (system calculates 267A per wire automatically)
-- CRITICAL: When creating parallel wires, set current field to TOTAL current on EACH wire (don't divide it yourself)
-- Example WRONG: 300A load → 2 parallel 2/0 AWG wires (should use single 4/0 AWG instead)
-- Example WRONG: 100A load → 2 parallel 1/0 AWG wires (should use single 6 AWG instead)
-- Example WRONG: 16.7A load → 3 parallel 6 AWG wires (should use single 10 AWG instead)
-- If you see errors about "insufficient for XA" where X > 370A, use parallel 4/0 AWG runs
-- If you see errors about "Parallel wire runs used for XA" where X ≤ 370A, REMOVE parallel runs and use single gauge
-
-QUALITY IMPROVEMENT GUIDELINES:
-- For complex systems with multiple components, prioritize clean organization:
-  * Use bus bars to consolidate connections (3+ connections to same component type)
-  * Distribute connections across bus bar terminals (pos-1, pos-2, pos-3, etc.) for better organization
-  * Avoid daisy-chaining when bus bars would be cleaner
-- WIRE CAPACITY MANAGEMENT (CRITICAL FOR QUALITY):
-  * NEVER size wires at >90% of their ampacity - always leave 10-20% safety margin
-  * If a wire would run at >90% capacity, use the next larger gauge
-  * Example: 190A load → use 2 AWG (210A max) OR 1 AWG (245A max)
-  * Example: 300A load → use 3/0 AWG (385A max) OR 4/0 AWG (445A max)
-  * ONLY use parallel wire runs when you've reached 4/0 AWG (445A) and still need more capacity
-  * Parallel runs require each conductor to be at least 1/0 AWG per NEC/ABYC
-  * Example: 500A load → use 2 parallel 4/0 AWG wires (250A each) since single 4/0 AWG maxes at 445A
-  * Wires at 95-100% capacity will generate warnings and reduce quality score
-- When multiple parallel wires exist between the same components:
-  * Each wire carries total current ÷ number of parallel wires
-  * Calculate current per wire correctly (e.g., 154.3A total ÷ 2 wires = 77.1A per wire)
-  * Size each wire based on its per-wire current, not total current
-- For high current applications exceeding 4/0 AWG capacity (445A per ABYC 105°C free air), use parallel wire runs:
-  * ONLY suggest parallel runs when single 4/0 AWG (445A max) is insufficient (current >370A with 20% margin)
-  * Each parallel conductor must be at least 1/0 AWG per NEC/ABYC requirements
-  * Use multiple 4/0 AWG wires in parallel for currents >370A
-  * Example: 500A load → use 2 parallel 4/0 AWG wires (250A each, 445A max per wire = 56% capacity)
-  * Example: 700A load → use 2 parallel 4/0 AWG wires (350A each, 445A max = 79% capacity)
-- Ground wire gauge matching is CRITICAL:
-  * Always match ground gauge to hot/neutral in the same circuit
-  * This is a safety requirement and will cause validation errors if violated
-
-`;
-        }
+        // Send actionable feedback with the best candidate, rather than repeating
+        // the original request. The old feedback string was never sent to the AI.
+        const iterationFeedback = currentValidation
+          ? `Current score: ${currentValidation.score}/100. Correct these issues in the supplied wiring:\n${[
+              ...allValidationErrors.map((issue: any) => `ERROR: ${issue.message}${issue.suggestion ? ` — ${issue.suggestion}` : ""}`),
+              ...allValidationWarnings.map((issue: any) => `WARNING: ${issue.message}${issue.suggestion ? ` — ${issue.suggestion}` : ""}`),
+              ...allWireCalculationIssues.map((issue: any) => issue.issue).filter(Boolean),
+            ].filter((issue, index, issues) => issues.indexOf(issue) === index).join("\n")}\nReturn the complete corrected wire list. Components and their positions are fixed; do not invent missing equipment.`
+          : "";
 
       const completion = await aiSession.create({
         model: aiModel,
@@ -868,7 +726,11 @@ QUALITY IMPROVEMENT GUIDELINES:
           },
           {
             role: "user",
-            content: `Create wiring connections for these ${systemVoltage}V components: ${JSON.stringify(components)}${wires.length > 0 ? `\n\nExisting wires (review and improve if needed): ${JSON.stringify(wires)}` : ""}`,
+            content: wireComponentsSkill.buildUserPrompt("Create the complete wiring for these components.", {
+              systemVoltage,
+              existingDesign: { components, wires: wiresToValidate },
+              feedback: iterationFeedback,
+            }),
           },
         ],
         response_format: { type: "json_object" },
@@ -1011,6 +873,19 @@ QUALITY IMPROVEMENT GUIDELINES:
           console.log(`Only capacity warnings remaining (${wireWarnings.length}). These are informational and acceptable.`);
         }
 
+        // Only stop when both the candidate and its issues repeat, not merely
+        // when scores tie. Two correction attempts get a chance to improve it.
+        const attempt = JSON.stringify({
+          wires: mergedWires.map(({ id, ...wire }: any) => JSON.stringify(wire)).sort(),
+          issues: validation.issues.map((issue: any) => `${issue.severity}:${issue.message}`).sort(),
+        });
+        unchangedPasses = attempt === previousAttempt ? unchangedPasses + 1 : 0;
+        previousAttempt = attempt;
+        if (unchangedPasses >= 2) {
+          stoppedForStagnation = true;
+          break;
+        }
+
         // If this is the last iteration, use best result
         if (iteration === maxIterations - 1) {
           console.log(`Reached max iterations. Using best result (score: ${bestScore})`);
@@ -1041,8 +916,8 @@ QUALITY IMPROVEMENT GUIDELINES:
         model: aiModel,
         response: {
           wires: bestWires,
-          description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
-          recommendations: [],
+          description: `${stoppedForStagnation ? "Stopped because repeated corrections produced the same result. Review the remaining validation issues. " : ""}Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
+          recommendations: stoppedForStagnation ? ["AI Wire stopped because repeated correction attempts produced the same result. Review the remaining validation issues and component settings before trying again."] : [],
         },
         validationFeedback: {
           score: bestScore,
@@ -1055,8 +930,8 @@ QUALITY IMPROVEMENT GUIDELINES:
       res.json({
         ...aiSession.responseMetadata,
         wires: bestWires,
-        description: `Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
-        recommendations: [],
+        description: `${stoppedForStagnation ? "Stopped because repeated corrections produced the same result. Review the remaining validation issues. " : ""}Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
+        recommendations: stoppedForStagnation ? ["AI Wire stopped because repeated correction attempts produced the same result. Review the remaining validation issues and component settings before trying again."] : [],
         iterations: iterationHistory.length,
         qualityScore: bestScore,
         validation: bestValidation,
