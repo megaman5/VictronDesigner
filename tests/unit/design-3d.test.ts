@@ -12,10 +12,10 @@ const wire: Wire = { id: 'w', fromComponentId: 'a', toComponentId: 'b', fromTerm
   toTerminal: 'dc-negative', polarity: 'negative', gauge: '2/0 AWG', length: 10 };
 
 describe('3D design projection', () => {
-  it('uses exact transformed terminals and does not mutate saved design data', () => {
+  it('ends cables at the transformed model terminals without mutating saved design data', () => {
     const before = JSON.stringify({ components, wire });
     const layout = build3DLayout(components, [wire], DEFAULT_WIRE_ROUTING_OPTIONS);
-    const terminal = getComponentTerminals('multiplus', components[1].properties).find(t => t.id === 'dc-negative')!;
+    const terminal = layout.parts[1].terminals.find(t => t.id === 'dc-negative')!;
     expect(layout.paths[0].points[0]).toMatchObject({ x: 431.6, y: 341.6 });
     expect(layout.paths[0].points.at(-1)).toMatchObject({ x: 969.4 + terminal.x, y: 103 + terminal.y });
     expect(JSON.stringify({ components, wire })).toBe(before);
@@ -106,4 +106,37 @@ describe('3D labels follow existing display settings', () => {
     expect(componentLoadLabel('mppt', { maxCurrent: 50 })).toBe('50A');
     expect(componentLoadLabel('busbar-positive', {})).toBeNull();
   });
+});
+
+import {buildSchematicRoutes,schematicRoutingParts} from '@/lib/schematic-routing';
+describe('Shared 2D and 3D routing', () => {
+  const parts: SchematicComponent[] = [
+    {id:'inv',type:'inverter',name:'Inverter',x:30,y:120,properties:{}},
+    {id:'panel',type:'ac-panel',name:'Panel',x:360,y:20,properties:{}},
+  ];
+  const wires: Wire[] = ['hot','neutral','ground'].map((domain,i)=>({...wire,id:`ac-${i}`,
+    fromComponentId:'inv',toComponentId:'panel',fromTerminal:`ac-out-${domain}`,toTerminal:`main-in-${domain}`}));
+  it('uses identical planar paths and stable ordering for the inverter AC bundle', () => {
+    const planar = buildSchematicRoutes(schematicRoutingParts(parts),wires,DEFAULT_WIRE_ROUTING_OPTIONS);
+    const scene = build3DLayout(parts,wires,DEFAULT_WIRE_ROUTING_OPTIONS);
+    expect(buildSchematicRoutes(schematicRoutingParts(parts),[...wires].reverse(),DEFAULT_WIRE_ROUTING_OPTIONS)).toEqual(planar);
+    scene.paths.forEach((route,i)=>expect(route.points.map(({x,y})=>({x,y}))).toEqual(planar[i].pathPoints));
+  });
+  it('preserves absolute live waypoint and endpoint previews without mutating wires', () => {
+    const preview = {from:{x:190,y:190},waypoints:[{x:280,y:400}]};
+    const routes = buildSchematicRoutes(schematicRoutingParts(parts),[wires[0]],DEFAULT_WIRE_ROUTING_OPTIONS,new Map([[wires[0].id,preview]]));
+    expect(routes[0].pathPoints[0]).toEqual(preview.from);
+    expect(routes[0].pathPoints).toContainEqual(preview.waypoints[0]);
+    expect(wires[0].waypoints).toBeUndefined();
+  });
+});
+it('keeps busbar slots stable when connected equipment has the same horizontal position', () => {
+  const parts: SchematicComponent[] = [
+    {id:'bus',type:'busbar-positive',name:'Bus',x:400,y:400,properties:{}},
+    {id:'a',type:'dc-load',name:'A',x:100,y:100,properties:{}},
+    {id:'b',type:'dc-load',name:'B',x:100,y:200,properties:{}},
+  ];
+  const wires: Wire[] = ['a','b'].map((id,i)=>({...wire,id,fromComponentId:'bus',toComponentId:id,fromTerminal:`pos-${i+1}`,toTerminal:'positive'}));
+  expect(buildSchematicRoutes(schematicRoutingParts(parts),wires,DEFAULT_WIRE_ROUTING_OPTIONS))
+    .toEqual(buildSchematicRoutes(schematicRoutingParts(parts),[...wires].reverse(),DEFAULT_WIRE_ROUTING_OPTIONS));
 });

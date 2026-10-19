@@ -61,7 +61,7 @@ export function computeBusbarTerminalOverrides(
 
     // Order wires by the position of the component they connect to, then lay
     // them across the slots in that same order.
-    conns.sort((a, b) => a.otherX - b.otherX);
+    conns.sort((a, b) => a.otherX - b.otherX || a.wireId.localeCompare(b.wireId));
 
     conns.forEach((conn, i) => {
       // Use unique slots when there's room; otherwise distribute evenly and let

@@ -190,7 +190,15 @@ export function calculateRoute(
   const points = interior
     ? [...from, ...interior.pathPoints, ...to.reverse()]
     : [start, end];
-  const pathPoints = points.filter((p, i) => i === 0 || p.x !== points[i - 1].x || p.y !== points[i - 1].y);
+  const pathPoints: typeof points = [];
+  for (const point of points) {
+    const last = pathPoints[pathPoints.length - 1];
+    if (last && last.x === point.x && last.y === point.y) continue;
+    const previous = pathPoints[pathPoints.length - 2];
+    if (previous && last && ((previous.x === last.x && last.x === point.x && (last.y-previous.y)*(point.y-last.y) >= 0)
+      || (previous.y === last.y && last.y === point.y && (last.x-previous.x)*(point.x-last.x) >= 0))) pathPoints.pop();
+    pathPoints.push(point);
+  }
   let labelX = start.x, labelY = start.y, labelRotation = 0, longest = -1;
   for (let i = 1; i < pathPoints.length; i++) {
     const p = pathPoints[i - 1], q = pathPoints[i];
@@ -371,6 +379,15 @@ function calculateGridRoute(
     ];
 
     for (const neighbor of neighbors) {
+      // The first grid step must not double back toward the terminal.
+      if (!current.parent && ((startOrientation === 'right' && neighbor.x < current.x)
+        || (startOrientation === 'left' && neighbor.x > current.x)
+        || (startOrientation === 'bottom' && neighbor.y < current.y)
+        || (startOrientation === 'top' && neighbor.y > current.y))) continue;
+      if (neighbor.x === end.x && neighbor.y === end.y && ((endOrientation === 'right' && current.x < end.x)
+        || (endOrientation === 'left' && current.x > end.x)
+        || (endOrientation === 'bottom' && current.y < end.y)
+        || (endOrientation === 'top' && current.y > end.y))) continue;
       const neighborKey = getKey(neighbor.x, neighbor.y);
 
       // Check bounds

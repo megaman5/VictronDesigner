@@ -59,6 +59,20 @@ function plywoodTexture(width: number, height: number) {
 
 function labelTexture(component: SchematicComponent, color: string) {
   const canvas = document.createElement('canvas');
+  const family = ['cerbo', 'multiplus', 'quattro'].includes(component.type);
+  if (family) {
+    canvas.width = 1024; canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+    ctx.textAlign = 'center'; ctx.fillStyle = '#eef8ff';
+    ctx.font = '500 30px Inter, sans-serif'; ctx.fillText('victron energy', 512, 44);
+    ctx.font = '600 68px Inter, sans-serif';
+    ctx.fillText(component.name || ({ cerbo: 'Cerbo GX', multiplus: 'MultiPlus', quattro: 'Quattro' }[component.type]) || component.type, 512, 140, 950);
+    ctx.font = '400 25px Inter, sans-serif';
+    ctx.fillText(component.type === 'cerbo' ? 'COMMUNICATION CENTRE' : 'INVERTER / CHARGER', 512, 205);
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    return texture;
+  }
   canvas.width = 512; canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = color; ctx.fillRect(0, 0, 512, 128);
@@ -151,10 +165,11 @@ export default function Design3DView({ components, wires, routingOptions, onComp
       outlineGeometry.dispose(); edges.position.set(c.x + w / 2, -(c.y + h / 2), depth / 2);
       scene.add(edges); outlines.set(c.id, edges);
       const small = c.type.startsWith('busbar') || c.type === 'fuse' || c.type === 'smartshunt';
+      const family = ['cerbo', 'multiplus', 'quattro'].includes(c.type);
       const fusePlate = c.type === 'fuse' ? fuseNameplate(w, h, depth) : undefined;
-      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(fusePlate?.width ?? w * 0.7, fusePlate?.height ?? h * (c.type === 'switch' ? 0.13 : small ? 0.18 : 0.2)),
-        new THREE.MeshBasicMaterial({ map: labelTexture(c, ['ac-panel', 'dc-panel'].includes(c.type) ? '#d5dbdc' : '#24333d'), toneMapped: false }));
-      plaque.position.set(c.x + (fusePlate?.x ?? w / 2), -(c.y + (fusePlate?.y ?? h * (c.type === 'switch' ? 0.13 : c.type === 'solar-panel' ? 0.13 : 0.27))), fusePlate?.z ?? depth + 2.5);
+      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(fusePlate?.width ?? w * 0.7, fusePlate?.height ?? h * (c.type === 'cerbo' ? 0.32 : family ? 0.23 : c.type === 'switch' ? 0.13 : small ? 0.18 : 0.2)),
+        new THREE.MeshBasicMaterial({ map: labelTexture(c, ['ac-panel', 'dc-panel'].includes(c.type) ? '#d5dbdc' : '#24333d'), transparent: family, toneMapped: false }));
+      plaque.position.set(c.x + (fusePlate?.x ?? w / 2), -(c.y + (fusePlate?.y ?? h * (c.type === 'switch' ? 0.13 : c.type === 'solar-panel' ? 0.13 : family ? 0.22 : 0.27))), fusePlate?.z ?? depth + 2.5);
       plaque.userData.component = c; scene.add(plaque); clickable.push(plaque);
       for (const detail of deviceDetails(c.type, w, h, depth, terminals, getFuseType(c))) {
         detail.position.x += c.x; detail.position.y -= c.y;
@@ -176,6 +191,8 @@ export default function Design3DView({ components, wires, routingOptions, onComp
         markings.userData.component = c; scene.add(markings); clickable.push(markings);
       }
       for (const t of terminals) {
+        // Cerbo connectors are sockets, not high-current binding posts.
+        if (c.type === 'cerbo') continue;
         const color = t.type.includes('negative') ? '#9bafc2' : t.type === 'ground' ? '#53df99'
           : t.type.includes('positive') ? '#ff535b' : '#ffad49';
         for (const [radius, thickness, z, tint, sides] of [[5.3, 2, depth + 1, color, 24], [4, 1, depth + 2.5, '#b4bdc2', 24], [2.7, 3, depth + 4.5, '#d6dade', 6]] as const) {
