@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { initTracking } from "@/lib/tracking";
 import { initPostHog } from "@/lib/posthog";
 import SchematicDesigner from "@/pages/SchematicDesigner";
+import { DesignerErrorBoundary } from "@/components/DesignerErrorBoundary";
 import FeedbackAdmin from "@/pages/FeedbackAdmin";
 import ObservabilityAdmin from "@/pages/ObservabilityAdmin";
 import SettingsAdmin from "@/pages/SettingsAdmin";
@@ -18,7 +19,7 @@ import { KofiWidget } from "@/components/KofiWidget";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={SchematicDesigner} />
+      <Route path="/"><DesignerErrorBoundary><SchematicDesigner /></DesignerErrorBoundary></Route>
       <Route path="/feedback-admin" component={FeedbackAdmin} />
       <Route path="/observability-admin" component={ObservabilityAdmin} />
       <Route path="/settings-admin" component={SettingsAdmin} />

@@ -1,3 +1,4 @@
+import { DesignRevisionHistory } from "./DesignRevisionHistory";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -41,6 +42,8 @@ interface OpenDesignDialogProps {
     components: any[];
     wires: any[];
     systemVoltage: number;
+    version?: number;
+    [key:string]:any;
   }) => void;
 }
 
@@ -50,6 +53,7 @@ export function OpenDesignDialog({
   onLoad,
 }: OpenDesignDialogProps) {
   const { toast } = useToast();
+  const [historyId,setHistoryId]=useState<string|null>(null);
   const [designs, setDesigns] = useState<DesignSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDesignId, setLoadingDesignId] = useState<string | null>(null);
@@ -83,6 +87,7 @@ export function OpenDesignDialog({
 
   useEffect(() => {
     if (open) {
+      setHistoryId(null);
       loadDesigns();
     }
   }, [open]);
@@ -100,13 +105,7 @@ export function OpenDesignDialog({
       }
       const design = await response.json();
       
-      onLoad({
-        id: design.id,
-        name: design.name,
-        components: design.components,
-        wires: design.wires,
-        systemVoltage: design.systemVoltage,
-      });
+      onLoad(design);
 
       toast({
         title: "Design loaded",
@@ -198,7 +197,7 @@ export function OpenDesignDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
+        {historyId ? <DesignRevisionHistory designId={historyId} onLoad={onLoad} onClose={()=>{setHistoryId(null);onOpenChange(false);}}/> : loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
@@ -244,6 +243,7 @@ export function OpenDesignDialog({
                       </p>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
+                      <Button size="sm" variant="outline" onClick={()=>setHistoryId(design.id)}>History</Button>
                       <Button
                         size="sm"
                         onClick={() => handleLoad(design.id)}
