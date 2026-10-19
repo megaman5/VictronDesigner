@@ -24,6 +24,8 @@ interface ExportDialogProps {
   designName?: string;
   wireGaugeFormat?: WireGaugeFormat;
   lengthUnit?: LengthUnit;
+  requirementIssues?: string[];
+  revision?: string;
 }
 
 export function ExportDialog({
@@ -34,10 +36,44 @@ export function ExportDialog({
   systemVoltage,
   designName = "Design",
   wireGaugeFormat = "awg",
-  lengthUnit = "ft"
+  lengthUnit = "ft",
+  requirementIssues = [],
+  revision,
 }: ExportDialogProps) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState<string | null>(null);
+  const [paperSize, setPaperSize] = useState("Letter");
+  const [orientation, setOrientation] = useState("landscape");
+  const [diagramMode, setDiagramMode] = useState("fit");
+  const [draftPackage, setDraftPackage] = useState(false);
+  const [packageIssues, setPackageIssues] = useState<string[]>([]);
+
+  const exportInstallationPackage = async () => {
+    // Freeze all export inputs before the request so edits during generation cannot mix revisions.
+    const snapshot = structuredClone({ components, wires, systemVoltage, name: designName, wireGaugeFormat, lengthUnit, paperSize, orientation, diagramMode, draft: draftPackage, requirementIssues, revision });
+    setExporting("package");
+    setPackageIssues([]);
+    try {
+      const response = await fetch("/api/export/installation-package", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot),
+      });
+      if (!response.ok) {
+        const failure = await response.json();
+        if (response.status === 409) setPackageIssues(failure.issues || []);
+        throw new Error(failure.error || "Export failed");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${designName}-installation-package.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast({ title: "Exported!", description: "Installation package downloaded as PDF" });
+    } catch (error) {
+      toast({ title: "Package needs review", description: error instanceof Error ? error.message : "Unable to export package", variant: "destructive" });
+    } finally { setExporting(null); }
+  };
 
   const exportShoppingList = async () => {
     setExporting("shopping");
@@ -568,7 +604,7 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5 text-primary" />
@@ -586,6 +622,18 @@ export function ExportDialog({
           </div>
         ) : (
           <div className="space-y-3 pt-4">
+            <Button variant="outline" className="w-full justify-start gap-3 h-auto py-3" onClick={exportInstallationPackage} disabled={!!exporting} data-testid="export-installation-package">
+              {exporting === "package" ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
+              <div className="text-left"><div className="font-medium">Installation Package</div><div className="text-xs text-muted-foreground">PDF diagram, schedules, parts, labels and review issues</div></div>
+            </Button>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <label>Paper<select aria-label="PDF paper size" className="mt-1 w-full rounded border bg-background p-1" value={paperSize} onChange={e => setPaperSize(e.target.value)}><option>Letter</option><option>A4</option></select></label>
+              <label>Orientation<select aria-label="PDF orientation" className="mt-1 w-full rounded border bg-background p-1" value={orientation} onChange={e => setOrientation(e.target.value)}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>
+              <label>Diagram<select aria-label="PDF diagram layout" className="mt-1 w-full rounded border bg-background p-1" value={diagramMode} onChange={e => setDiagramMode(e.target.value)}><option value="fit">Fit to page</option><option value="tiled">Readable tiles</option></select></label>
+            </div>
+            <label className="flex gap-2 text-xs"><input type="checkbox" checked={draftPackage} onChange={e => setDraftPackage(e.target.checked)} />Export a marked draft if checks are incomplete or errors remain</label>
+            {packageIssues.length > 0 && <div className="max-h-32 overflow-auto rounded border border-destructive p-2 text-xs" role="alert">{packageIssues.map((issue, i) => <p key={i} className="mb-1">{issue}</p>)}</div>}
+            <Separator />
             <Button
               variant="outline"
               className="w-full justify-start gap-3 h-auto py-3"

@@ -16,17 +16,17 @@ interface WireEditDialogProps {
 // Helper function to detect if a wire is AC
 function isACWire(wire: Wire | null): boolean {
     if (!wire) return false;
-    
+
     // Check if polarity is already AC type
     if (wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground") {
         return true;
     }
-    
+
     // Check if terminals are AC type
     if (wire.fromTerminal?.startsWith("ac-") || wire.toTerminal?.startsWith("ac-")) {
         return true;
     }
-    
+
     return false;
 }
 
@@ -60,6 +60,7 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
                 gauge: formattedGauge,
                 polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
                 length: parseFloat(length),
+            lengthEstimated: false,
                 conductorMaterial: material as "copper" | "aluminum"
             });
         } else {
@@ -73,6 +74,7 @@ export function WireEditDialog({ wire, open, onOpenChange, onSave }: WireEditDia
             gauge: formattedGauge,
                 polarity: polarity as "positive" | "negative" | "ground" | "hot" | "neutral",
             length: parseFloat(length),
+            lengthEstimated: false,
             conductorMaterial: material as "copper" | "aluminum"
         });
         }

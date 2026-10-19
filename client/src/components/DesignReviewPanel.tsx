@@ -1,274 +1,76 @@
-import { useState, useEffect } from "react";
-import { AlertCircle, CheckCircle, Info, TrendingUp, Zap, Layout, Terminal, Cpu } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
-import type { ValidationResult, ValidationIssue } from "@shared/schema";
+import { useState } from 'react';
+import { AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { reviewHeadline, type DesignReviewResult, type ReviewIssue, type ReviewStatus } from '@shared/design-review';
+import type { ValidationResult, ValidationIssue } from '@shared/schema';
 
 interface DesignReviewPanelProps {
-  components: any[];
-  wires: any[];
-  systemVoltage: number;
-  validationResult?: ValidationResult | null;
-  onValidate?: () => void;
-  onIssueClick?: (issue: ValidationIssue) => void;
+  components: any[]; wires: any[]; systemVoltage: number;
+  validationResult?: ValidationResult | null; status?: ReviewStatus; error?: string;
+  onValidate?: () => void | Promise<void>; onIssueClick?: (issue: ValidationIssue) => void;
+  onApplyGaugeFix?: (wireId: string, gauge: string) => void;
 }
-
-export function DesignReviewPanel({
-  components,
-  wires,
-  systemVoltage,
-  validationResult,
-  onValidate,
-  onIssueClick,
-}: DesignReviewPanelProps) {
-  const [isValidating, setIsValidating] = useState(false);
-
-  const handleValidateClick = async () => {
-    setIsValidating(true);
-    try {
-      await onValidate?.();
-    } finally {
-      setIsValidating(false);
-    }
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-green-600";
-    if (score >= 70) return "text-yellow-600";
-    if (score >= 50) return "text-orange-600";
-    return "text-red-600";
-  };
-
-  const getScoreLabel = (score: number) => {
-    if (score >= 90) return "Excellent";
-    if (score >= 70) return "Good";
-    if (score >= 50) return "Fair";
-    return "Poor";
-  };
-
-  const getSeverityIcon = (severity: ValidationIssue["severity"]) => {
-    switch (severity) {
-      case "error":
-        return <AlertCircle className="h-4 w-4 text-red-600" />;
-      case "warning":
-        return <AlertCircle className="h-4 w-4 text-yellow-600" />;
-      case "info":
-        return <Info className="h-4 w-4 text-blue-600" />;
-    }
-  };
-
-  const getSeverityColor = (severity: ValidationIssue["severity"]) => {
-    switch (severity) {
-      case "error":
-        return "border-red-500 bg-red-50 dark:bg-red-950/30";
-      case "warning":
-        return "border-yellow-500 bg-yellow-50 dark:bg-yellow-950/30";
-      case "info":
-        return "border-blue-500 bg-blue-50 dark:bg-blue-950/30";
-    }
-  };
-
-  const getCategoryIcon = (category: ValidationIssue["category"]) => {
-    switch (category) {
-      case "electrical":
-        return <Zap className="h-4 w-4" />;
-      case "wire-sizing":
-        return <TrendingUp className="h-4 w-4" />;
-      case "layout":
-        return <Layout className="h-4 w-4" />;
-      case "terminal":
-        return <Terminal className="h-4 w-4" />;
-      case "ai-quality":
-        return <Cpu className="h-4 w-4" />;
-    }
-  };
-
-  const groupedIssues = validationResult?.issues.reduce((acc, issue) => {
-    if (!acc[issue.category]) {
-      acc[issue.category] = [];
-    }
-    acc[issue.category].push(issue);
-    return acc;
-  }, {} as Record<string, ValidationIssue[]>) || {};
-
-  const errorCount = validationResult?.issues.filter(i => i.severity === "error").length || 0;
-  const warningCount = validationResult?.issues.filter(i => i.severity === "warning").length || 0;
-  const infoCount = validationResult?.issues.filter(i => i.severity === "info").length || 0;
-
-  if (!validationResult && !isValidating) {
-    return (
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>Design Review</CardTitle>
-          <CardDescription>Validate your electrical system design</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={handleValidateClick} className="w-full">
-            Run Validation
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Overall Score Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Design Quality Score</span>
-            {validationResult?.valid ? (
-              <CheckCircle className="h-5 w-5 text-green-600" />
-            ) : (
-              <AlertCircle className="h-5 w-5 text-red-600" />
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-center flex-1">
-              <div className={`text-5xl font-bold ${getScoreColor(validationResult?.score || 0)}`}>
-                {validationResult?.score || 0}
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">
-                {getScoreLabel(validationResult?.score || 0)}
-              </div>
-            </div>
-            <div className="flex-1 space-y-2">
-              <Progress value={validationResult?.score || 0} className="h-2" />
-              <div className="flex gap-2 text-xs">
-                <Badge variant="destructive" className="flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  {errorCount} Errors
-                </Badge>
-                <Badge variant="outline" className="flex items-center gap-1 border-yellow-500 text-yellow-700">
-                  <AlertCircle className="h-3 w-3" />
-                  {warningCount} Warnings
-                </Badge>
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <Info className="h-3 w-3" />
-                  {infoCount} Info
-                </Badge>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="space-y-1">
-              <div className="text-muted-foreground">Components</div>
-              <div className="font-semibold">{validationResult?.metrics?.componentCount}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-muted-foreground">Wires</div>
-              <div className="font-semibold">{validationResult?.metrics?.wireCount}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-muted-foreground">Avg Spacing</div>
-              <div className="font-semibold">{validationResult?.metrics?.avgComponentSpacing?.toFixed(0) || 'N/A'}px</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-muted-foreground">Layout Efficiency</div>
-              <div className="font-semibold">{validationResult?.metrics?.layoutEfficiency?.toFixed(0) || 'N/A'}%</div>
-            </div>
-          </div>
-
-          <Button
-            onClick={handleValidateClick}
-            className="w-full"
-            variant="outline"
-            disabled={isValidating}
-          >
-            {isValidating ? "Validating..." : "Re-validate Design"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Issues List */}
-      {validationResult && validationResult.issues.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Issues & Recommendations</CardTitle>
-            <CardDescription>
-              {errorCount > 0 && `${errorCount} critical issues found. `}
-              {warningCount > 0 && `${warningCount} warnings. `}
-              Click an issue for details.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[400px] pr-4">
-              <div className="space-y-4">
-                {Object.entries(groupedIssues).map(([category, issues]) => (
-                  <div key={category} className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-semibold capitalize">
-                      {getCategoryIcon(category as any)}
-                      <span>{category.replace(/-/g, " ")}</span>
-                      <Badge variant="secondary" className="ml-auto">
-                        {issues.length}
-                      </Badge>
-                    </div>
-
-                    <div className="space-y-2">
-                      {issues.map((issue, idx) => (
-                        <div
-                          key={`${category}-${idx}`}
-                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${getSeverityColor(issue.severity)}`}
-                          onClick={() => onIssueClick?.(issue)}
-                        >
-                          <div className="flex items-start gap-2">
-                            {getSeverityIcon(issue.severity)}
-                            <div className="flex-1 space-y-1">
-                              <div className="text-sm font-medium leading-tight">
-                                {issue.message}
-                              </div>
-                              {issue.suggestion && (
-                                <div className="text-xs text-muted-foreground italic">
-                                  💡 {issue.suggestion}
-                                </div>
-                              )}
-                              {issue.componentIds && issue.componentIds.length > 0 && (
-                                <div className="flex gap-1 mt-2">
-                                  {issue.componentIds.map(id => (
-                                    <Badge key={id} variant="outline" className="text-xs">
-                                      {id}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* No Issues */}
-      {validationResult && validationResult.issues.length === 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center space-y-2">
-              <CheckCircle className="h-12 w-12 text-green-600 mx-auto" />
-              <div className="font-semibold">No Issues Found!</div>
-              <div className="text-sm text-muted-foreground">
-                Your design follows all electrical standards and best practices.
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
+export function DesignReviewPanel({components, wires, systemVoltage, validationResult = null, status = 'unchecked', error, onValidate, onIssueClick, onApplyGaugeFix}: DesignReviewPanelProps) {
+  const [filter, setFilter] = useState('all');
+  const [objectFilter, setObjectFilter] = useState('');
+  const [fix, setFix] = useState<{wireId: string; previous: string; gauge: string} | null>(null);
+  const issues = validationResult?.issues ?? [];
+  const errors = issues.filter(i => i.severity === 'error').length;
+  const unresolved = issues.filter(i => i.category === 'unresolved').length;
+  const current = status === 'current';
+  const visible = issues.filter(i => filter === 'all' || (filter === 'electrical' ? !['layout','ai-quality'].includes(i.category) : filter === i.category || filter === i.severity))
+    .filter(i => !objectFilter || [...(i.componentIds ?? []), ...(i.wireIds ?? []), i.wireId ?? ''].some(id => id.includes(objectFilter)))
+    .sort((a,b) => ({error:0,warning:1,info:2}[a.severity] - {error:0,warning:1,info:2}[b.severity]));
+  const analysis = (validationResult as DesignReviewResult | null)?.analysis;
+  const assumptions = Array.from(new Set([...(analysis?.assumptions ?? []), ...Object.values(analysis?.wires ?? {}).flatMap(w => w.assumptions)]));
+  return <div className="space-y-4">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex gap-2 items-center">{current && errors === 0 && unresolved === 0 ? <CheckCircle className="h-5 w-5"/> : <AlertCircle className="h-5 w-5"/>}Design Review</CardTitle>
+        <CardDescription role="status" aria-live="polite">{reviewHeadline(validationResult, status)}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {error && status === 'failed' && <p className="text-sm text-destructive">{error}</p>}
+        {current && <div className="flex flex-wrap gap-2"><Badge variant="destructive">{errors} errors</Badge><Badge variant="outline">{unresolved} unresolved</Badge><Badge variant="outline">{issues.filter(i => i.severity === 'warning').length} warnings</Badge></div>}
+        <p className="text-sm text-muted-foreground">{components.length} components · {wires.length} wires · {systemVoltage} V DC</p>
+        {wires.some(w => w.lengthEstimated) && <p className="text-sm text-muted-foreground">AI-estimated wire lengths: {wires.filter(w => w.lengthEstimated).length}. Calculations use these values. Edit a wire's length or ask AI Iterate to change it.</p>}
+        {!current && validationResult && <p className="text-sm text-muted-foreground">Previous review results are hidden. Check the current design to see its issues.</p>}
+        <Button variant="outline" disabled={status === 'checking'} onClick={() => void onValidate?.()}>{status === 'checking' ? 'Checking…' : status === 'failed' ? 'Retry review' : 'Check current design'}</Button>
+      </CardContent>
+    </Card>
+    {current && validationResult && <Card><CardHeader><CardTitle>Issues and unresolved calculations</CardTitle><CardDescription>Select an issue to locate the affected equipment or wire.</CardDescription></CardHeader><CardContent className="space-y-3">
+      <div className="flex gap-2 flex-wrap">
+        <select aria-label="Filter review issues" className="rounded border bg-background p-2 text-sm" value={filter} onChange={e => setFilter(e.target.value)}>{[['all','All issues'],['error','Errors'],['warning','Warnings'],['electrical','Electrical and connections'],['unresolved','Unresolved calculations'],['layout','Layout']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <input aria-label="Filter by component or wire ID" className="rounded border bg-background p-2 text-sm" placeholder="Component or wire ID" value={objectFilter} onChange={e => setObjectFilter(e.target.value)}/>
+      </div>
+      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+        {visible.map((issue,index) => {
+          const wire = issue.wireId ? analysis?.wires[issue.wireId] : undefined;
+          const recommendation = wire?.status === 'known' && wire.calculation?.status !== 'error' ? wire?.calculation?.recommendedGauge : undefined;
+          return <div key={(issue as ReviewIssue).id ?? index}>
+          <button type="button" onClick={() => onIssueClick?.(issue)} disabled={!current} className={`w-full text-left border rounded p-3 space-y-1 ${issue.severity === 'error' ? 'border-red-500' : 'border-border'} disabled:opacity-60`}>
+          <div className="flex gap-2 text-sm font-medium"><Info className="h-4 w-4 shrink-0"/>{issue.message}</div>
+          <p className="text-xs text-muted-foreground">{issue.category} · {issue.severity}</p>
+          {issue.suggestion && <p className="text-xs">{issue.suggestion}</p>}
+          <p className="text-xs text-muted-foreground">{[...(issue.componentIds ?? []), ...(issue.wireIds ?? []), issue.wireId].filter(Boolean).join(' · ')}</p>
+          </button>
+          {onApplyGaugeFix && issue.category === 'wire-sizing' && issue.severity === 'error' && wire && recommendation && recommendation !== wire.selectedGauge && <Button variant="outline" size="sm" disabled={!current} className="mt-1" onClick={() => setFix({wireId: wire.wireId, previous: wire.selectedGauge || 'Not specified', gauge: recommendation})}>Preview gauge change</Button>}
+          </div>;
+        })}
+        {!visible.length && <p className="text-sm text-muted-foreground">{issues.length ? 'No issues match these filters.' : 'No issues found in supported checks. Unmodeled scenarios still require review.'}</p>}
+      </div>
+    </CardContent></Card>}
+    {current && analysis && <Card><CardHeader><CardTitle>Calculation assumptions and limits</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">{assumptions.map(a => <p key={a}>{a}</p>)}<p className="text-muted-foreground">Analysis version {analysis.engineVersion}. Unknown and unsupported currents are not verified sizing results.</p></CardContent></Card>}
+    {validationResult && <details className="text-sm border rounded p-3"><summary>Layout and legacy quality metrics</summary><p className="mt-2">Legacy combined score: {validationResult.score}/100. This score includes layout and does not establish electrical readiness.</p><p>Average spacing: {(validationResult as DesignReviewResult).layoutMetrics?.avgComponentSpacing?.toFixed(0) ?? 'Unresolved'} px · Layout efficiency: {(validationResult as DesignReviewResult).layoutMetrics?.layoutEfficiency?.toFixed(0) ?? 'Unresolved'}%</p></details>}
+    <Dialog open={!!fix} onOpenChange={open => { if (!open) setFix(null); }}>
+      <DialogContent><DialogHeader><DialogTitle>Review wire gauge change</DialogTitle><DialogDescription>This changes one conductor using the current supported calculation. Connections and physical length stay the same.</DialogDescription></DialogHeader>
+        <p>{fix?.wireId}: {fix?.previous} → {fix?.gauge}</p>
+        <p className="text-sm text-muted-foreground">You can reverse this change with Undo. Other electrical issues still need review.</p>
+        <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFix(null)}>Cancel</Button><Button disabled={!current} onClick={() => { if (fix && current) onApplyGaugeFix?.(fix.wireId, fix.gauge); setFix(null); }}>Apply gauge change</Button></div>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }

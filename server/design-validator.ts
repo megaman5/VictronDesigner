@@ -1064,12 +1064,16 @@ export class DesignValidator {
             : `${currentThrough.toFixed(1)}A is above the largest size in this family - use a larger fuse type`,
         });
       } else if (utilizationPercent > 80) {
+        const marginSize = isBreaker ? DC_BREAKER_RATINGS.find(r => r >= currentThrough / 0.8)
+          : smallestRatingFor(getFuseType(device), currentThrough / 0.8);
         this.issues.push({
           severity: 'warning',
           category: 'electrical',
           message: `${noun} "${device.name}" (${rating}A) is near capacity: ${currentThrough.toFixed(1)}A (${utilizationPercent.toFixed(1)}% utilization)`,
           componentIds: [device.id],
-          suggestion: `Consider increasing the rating to ${sizeHint} for safety margin`,
+          suggestion: marginSize && marginSize > rating
+            ? `Review a ${marginSize}A rating for more operating margin, within the protected conductor and equipment limits.`
+            : 'Review operating margin and the protected conductor and equipment limits before changing this rating.',
         });
       }
     });
@@ -1125,11 +1129,54 @@ export class DesignValidator {
     // clean cut - refuse rather than guess.
     if (fromSide.has(wire.toComponentId) || toSide.has(wire.fromComponentId)) return null;
 
+    // For "does this side already have its own supply", a battery bank
+    // combiner or a charger reaching back to a second bank must NOT count as
+    // one continuous supply the way a bus bar or switch does - those pass
+    // current unconditionally, a combiner/charger only conditionally and
+    // partially. Without this, a second bank bridged in ANY way (a Cyrix
+    // combiner, or simply a DC-DC charger whose input taps the other bank)
+    // made nearly every wire on the main bank's own trunk look "ambiguous",
+    // even though the two banks are electrically distinct for sizing purposes.
+    // The unrestricted fromSide/toSide sets above are still used for the
+    // actual load/source sum below - this narrower walk is only to decide
+    // whether the cut is trustworthy.
+    const SOURCE_ISOLATING = new Set([
+      "cyrix-ct", "argofet", "mppt", "blue-smart-charger", "orion-dc-dc", "alternator",
+    ]);
+    const reachableWithoutCrossingSources = (startId: string): Set<string> => {
+      const seen = new Set<string>([startId]);
+      const queue = [startId];
+      while (queue.length) {
+        const id = queue.shift()!;
+        // Stop expanding past a source/combiner reached mid-walk - its other
+        // terminals lead to a separately-rated supply, not this one. Still
+        // allow expansion when it is the wire's own endpoint (id === startId):
+        // asking what a wire's OTHER end feeds must look past that endpoint.
+        if (id !== startId) {
+          const comp = this.components.find(c => c.id === id);
+          if (comp && SOURCE_ISOLATING.has(comp.type)) continue;
+        }
+        for (const w of samePolarity) {
+          let next: string | null = null;
+          if (w.fromComponentId === id) next = w.toComponentId;
+          else if (w.toComponentId === id) next = w.fromComponentId;
+          if (next && !seen.has(next)) {
+            seen.add(next);
+            queue.push(next);
+          }
+        }
+      }
+      return seen;
+    };
+
     const hasBattery = (side: Set<string>) =>
       this.components.some(c => c.type === "battery" && side.has(c.id));
 
-    const fromHasBattery = hasBattery(fromSide);
-    const toHasBattery = hasBattery(toSide);
+    const fromHasBattery = hasBattery(reachableWithoutCrossingSources(wire.fromComponentId));
+    const toHasBattery = hasBattery(reachableWithoutCrossingSources(wire.toComponentId));
+    if (process.env.DEBUG_CUT === wire.id) {
+      console.error("DEBUG_CUT", wire.id, wire.fromComponentId, "->", wire.toComponentId, wire.polarity, { fromHasBattery, toHasBattery });
+    }
     if (fromHasBattery === toHasBattery) return null; // both or neither - ambiguous
 
     const loadSide = fromHasBattery ? toSide : fromSide;
@@ -1170,6 +1217,9 @@ export class DesignValidator {
       }
     }
 
+    if (process.env.DEBUG_CUT === wire.id) {
+      console.error("DEBUG_CUT loadA/sourceA", wire.id, { loadA, sourceA, loadSideMembers: Array.from(loadSide) });
+    }
     // A branch that only feeds a charger carries that charger's output; the
     // caller's existing source handling covers it, so report nothing here.
     if (loadA === 0) return null;
@@ -3157,9 +3207,9 @@ export class DesignValidator {
         this.issues.push({
           severity: "warning",
           category: "electrical",
-          message: `Solar panel output (${totalSolarWatts}W) may be insufficient for battery charging`,
+          message: `Solar-only battery recharge may be slow with ${totalSolarWatts}W of panels`,
           componentIds: this.components.filter(c => c.type === "solar-panel").map(c => c.id),
-          suggestion: `Recommended: ${recommendedSolarWatts.toFixed(0)}W solar for ${batteryAh}Ah battery. Current: ${totalSolarWatts}W.`,
+          suggestion: `A full ${batteryAh}Ah, ${systemVoltage}V battery stores about ${(batteryAh * systemVoltage).toFixed(0)}Wh. Replacing that energy at ${totalSolarWatts}W takes at least ${(batteryAh * systemVoltage / totalSolarWatts).toFixed(1)} hours at rated panel output, before loads and losses. Check your daily energy use and other charging sources.`,
         });
       }
     }
