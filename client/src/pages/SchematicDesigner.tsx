@@ -759,7 +759,7 @@ export default function SchematicDesigner() {
                 streamingText: '', receivedCharacters: 0, lastActivityAt: undefined,
               }));
             } else if (currentEventType === "ai-fallback") {
-              toast({ title: "Using backup AI", description: "The primary AI is unavailable. Continuing with OpenRouter." });
+              toast({ title: "Using backup AI", description: "The main AI isn't responding. Continuing with a backup AI." });
               setIterationProgress(prev => prev ? { ...prev, phase: 'waiting', usedFallback: true, streamingText: '', receivedCharacters: 0, lastActivityAt: undefined } : null);
             } else if (currentEventType === "ai-request-start") {
               setIterationProgress(prev => prev ? { ...prev, phase: prev.iteration > 1 ? 'refining' : 'waiting', streamingText: '', receivedCharacters: 0, lastActivityAt: undefined } : null);
@@ -2338,12 +2338,14 @@ export default function SchematicDesigner() {
 
       <AIPromptDialog
         open={aiDialogOpen}
-        onOpenChange={(open) => {
-          if (!open && isAiGenerating) {
-            aiGenerationController.current?.abort();
-            setIterationProgress(null);
-          }
-          setAiDialogOpen(open);
+        // Closing (Esc, outside click, X) only hides the dialog; the run keeps
+        // going in the floating progress panel. Only Stop cancels it - a stray
+        // click used to silently kill users' generations.
+        onOpenChange={setAiDialogOpen}
+        onStop={() => {
+          aiGenerationController.current?.abort();
+          setIterationProgress(null);
+          setAiDialogOpen(false);
         }}
         onGenerate={(prompt, requirements) => handleAIGenerateWithStreaming(prompt, requirements)}
         systemVoltage={systemVoltage}

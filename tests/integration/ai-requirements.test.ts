@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import type { Server } from "node:http";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), log: vi.fn(), logError: vi.fn(), alert: vi.fn(), validate: vi.fn(), budgetMs: 240_000 }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), log: vi.fn(), logError: vi.fn(), alert: vi.fn(), validate: vi.fn(), budgetMs: 280_000 }));
 vi.mock('../../server/ai/requirements', async importOriginal => {
   const actual = await importOriginal<typeof import('../../server/ai/requirements')>();
   return { ...actual, createAIRunBudget: (res: any, iterations: unknown) => actual.createAIRunBudget(res, iterations, mocks.budgetMs) };
@@ -52,7 +52,7 @@ describe("Requirement-aware AI endpoints", () => {
     if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   });
   beforeEach(() => {
-    mocks.budgetMs = 240_000;
+    mocks.budgetMs = 280_000;
     vi.stubEnv("AI_FALLBACK_ENABLED", "false");
     vi.clearAllMocks();
     mocks.create.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ components: [{ id: "battery-1", type: "battery", name: "House", x: 100, y: 100, properties: { voltage: 12, capacity: 100 } }], wires: [] }) }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 20 } });

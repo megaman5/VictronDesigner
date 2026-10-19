@@ -22,7 +22,7 @@ import { registerInstallationPackageRoute } from "./installation-package";
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import { hasKeyForModel } from "./ai/model-client";
-import { AISession, canUseOpenRouterFallback, type FallbackEvent } from "./ai/fallback";
+import { AISession, canUseAIFallback, type FallbackEvent } from "./ai/fallback";
 import { notifyAIFailure } from "./ai/failure-alerts";
 import { describeAIError, isPermanentAIError } from "./ai/errors";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
@@ -324,7 +324,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       aiSession.signal = runBudget.signal;
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
-      if (!hasKeyForModel(aiModel) && !canUseOpenRouterFallback()) {
+      if (!hasKeyForModel(aiModel) && !canUseAIFallback()) {
         console.log("No OpenAI API key found, returning mock response");
         const mockResponse = {
           components: [

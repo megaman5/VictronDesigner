@@ -81,11 +81,13 @@ export function preserveRepairEquipment(candidate: any, best: any, fixed: any[] 
   });
   for (const remaining of Array.from(stableWires.values())) candidate.wires.push(...remaining);
 }
-export const AI_RUN_TIMEOUT_MS = 240_000;
+// nginx closes proxied requests at 300s and non-streaming AI Wire sends no
+// bytes until it finishes, so the whole run must end comfortably before that.
+export const AI_RUN_TIMEOUT_MS = 280_000;
 
 export function createAIRunBudget(res: Response, requestedIterations: unknown, timeoutMs = AI_RUN_TIMEOUT_MS) {
   const controller = new AbortController();
-  const abort = (cause: string) => controller.abort(Object.assign(new Error(cause === 'run-deadline' ? 'AI reached the four-minute time limit. Review the best draft or try a smaller request.' : 'AI request disconnected or cancelled.'), { name: 'AbortError', abortCause: cause, status: cause === 'run-deadline' ? 504 : undefined }));
+  const abort = (cause: string) => controller.abort(Object.assign(new Error(cause === 'run-deadline' ? 'AI reached the time limit (about 4.5 minutes). Review the best draft or try a smaller request.' : 'AI request disconnected or cancelled.'), { name: 'AbortError', abortCause: cause, status: cause === 'run-deadline' ? 504 : undefined }));
   const timer = setTimeout(() => abort('run-deadline'), timeoutMs);
   timer.unref?.();
   const cleanup = () => { clearTimeout(timer); res.off('close', close); res.off('finish', cleanup); };

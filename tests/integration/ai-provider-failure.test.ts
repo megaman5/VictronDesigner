@@ -76,7 +76,7 @@ describe("Production AI endpoints during a billing outage", () => {
     }));
   });
 
-  const backupModel = "nvidia/nemotron-3-super-120b-a12b:free";
+  const backupModel = "gemini-3.8-flash";
   const design = { components: [{ id: "battery-1", type: "battery", x: 100, y: 100, properties: { voltage: 12, capacity: 100 } }, { id: "fuse-1", type: "fuse", x: 450, y: 100, properties: { fuseRating: 100 } }], wires: [] };
   const endpoints = [
     ["/api/ai-generate-system", { prompt: "Test system", maxIterations: 1 }],
@@ -87,7 +87,7 @@ describe("Production AI endpoints during a billing outage", () => {
   function enableFallback() {
     vi.stubEnv("AI_FALLBACK_ENABLED", "true");
     mocks.create.mockImplementation(async body => {
-      if (body.model !== backupModel) throw Object.assign(new Error("Credits depleted"), { status: 402 });
+      if (body.reasoning_effort !== "low") throw Object.assign(new Error("Credits depleted"), { status: 402 });
       const content = JSON.stringify(design);
       if (body.stream) return (async function* () {
         yield { choices: [{ delta: { content } }] };
@@ -108,7 +108,7 @@ describe("Production AI endpoints during a billing outage", () => {
     expect(mocks.alert).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.8-flash", errorMessage: expect.stringContaining("HTTP 402") }));
     expect(mocks.logError).toHaveBeenCalledOnce();
     expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({
-      success: true, provider: "openrouter", model: backupModel,
+      success: true, provider: "gemini", model: backupModel,
       aiRouting: expect.objectContaining({ primaryModel: "gemini-3.8-flash", usedFallback: true }),
       modelUsage: [{ model: backupModel, inputTokens: 20, outputTokens: 10 }],
     }));

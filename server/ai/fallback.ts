@@ -8,9 +8,21 @@ import { inferProvider } from "./providers";
 import { describeAIError } from "./errors";
 import { redactSecrets } from "./key-vault";
 
-export const OPENROUTER_FALLBACK_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
-export const AI_REQUEST_IDLE_TIMEOUT_MS = 90_000;
-export const AI_COMPLETION_TIMEOUT_MS = 120_000;
+// The backup is the production model again, thinking briefly. Every primary
+// failure in Oct 2026 was Gemini thinking past the idle limit, not an outage,
+// and the old free OpenRouter Nemotron backup failed 21 of 21 of them. On
+// core-designs (2 passes) low-effort gemini-3.8-flash scored median 89 in
+// 15-78s; low-effort gpt-5.5 scored median 32, and Nemotron 44.
+export const AI_FALLBACK_MODEL = "gemini-3.8-flash";
+export const AI_FALLBACK_REASONING_EFFORT = "low";
+// Healthy Gemini runs went silent for up to 86s before the first token, so
+// the old 90s limit was cutting off normal answers. 180s gives slow-but-healthy
+// answers twice that, and still leaves the backup ~100s of the 280s run budget
+// (its quick retry took 15-78s in benchmarks).
+export const AI_REQUEST_IDLE_TIMEOUT_MS = 180_000;
+// Non-streaming calls must return the whole design within this; an AI Wire
+// call that would have succeeded hit the old 120s limit.
+export const AI_COMPLETION_TIMEOUT_MS = 180_000;
 
 export interface ModelUsage {
   model: string;
@@ -21,12 +33,12 @@ export interface ModelUsage {
 export interface FallbackEvent {
   primaryModel: string;
   model: string;
-  provider: "openrouter";
+  provider: string;
   reason: string;
 }
 
-export function canUseOpenRouterFallback(): boolean {
-  return process.env.AI_FALLBACK_ENABLED !== "false" && hasKeyForModel(OPENROUTER_FALLBACK_MODEL);
+export function canUseAIFallback(): boolean {
+  return process.env.AI_FALLBACK_ENABLED !== "false" && hasKeyForModel(AI_FALLBACK_MODEL);
 }
 
 export function shouldFallback(error: any): boolean {
@@ -73,12 +85,21 @@ export class AISession {
     return { aiModel: this.model, aiProvider: inferProvider(this.model), usedFallback: this.usedFallback };
   }
 
-  assertValidFallback(validation: { score: number; issues: { severity: string; message: string; category?: string }[] } | null | undefined, minScore: number, requirementCheck?: { complete: boolean }) {
+  assertValidFallback(validation: { score: number; issues: { severity: string; message: string; category?: string }[] } | null | undefined, minScore: number, requirementCheck?: { complete: boolean; issues?: { message: string }[] }) {
     if (!this.usedFallback) return;
     const errors = validation?.issues.filter(issue => issue.severity === "error") ?? [];
-    if (!validation || validation.score < minScore || errors.length || validation.issues.some(issue => issue.category === 'unresolved') || (requirementCheck && !requirementCheck.complete)) {
+    const unresolved = validation?.issues.filter(issue => issue.category === 'unresolved') ?? [];
+    // Name the reason that actually failed: a 97-point design rejected for an
+    // unmet request used to be reported as "Required score: 70; received: 97".
+    const reasons = !validation ? ["The design could not be checked."]
+      : errors.length ? errors.slice(0, 3).map(issue => issue.message)
+      : validation.score < minScore ? [`Quality score ${validation.score} is below the required ${minScore}.`]
+      : unresolved.length ? unresolved.slice(0, 3).map(issue => issue.message)
+      : requirementCheck && !requirementCheck.complete ? (requirementCheck.issues?.length ? requirementCheck.issues.slice(0, 3).map(issue => issue.message) : ["It did not include everything you asked for."])
+      : [];
+    if (reasons.length) {
       throw Object.assign(new Error(
-        `The backup AI could not produce a design that passes validation. ${errors.slice(0, 3).map(issue => issue.message).join("; ") || `Required score: ${minScore}; received: ${validation?.score ?? 0}.`} Try simplifying the request or correcting the component settings.`
+        `The backup AI could not produce a design that passes validation. ${reasons.join("; ")} Try simplifying the request or correcting the component settings.`
       ), { status: 422 });
     }
   }
@@ -92,39 +113,33 @@ export class AISession {
 
   private switchToFallback(error: any): boolean {
     if (this.signal?.aborted) return false;
-    if (this.usedFallback || this.model === OPENROUTER_FALLBACK_MODEL || !canUseOpenRouterFallback() || !shouldFallback(error)) return false;
+    if (this.usedFallback || !canUseAIFallback() || !shouldFallback(error)) return false;
     this.primaryFailure = redactSecrets(describeAIError(error));
-    this.model = OPENROUTER_FALLBACK_MODEL;
+    this.model = AI_FALLBACK_MODEL;
     this.usedFallback = true;
-    const event: FallbackEvent = { primaryModel: this.primaryModel, model: this.model, provider: "openrouter", reason: this.primaryFailure };
-    console.warn(`[ai-fallback] ${event.primaryModel} failed: ${event.reason}; switching to ${event.model}`);
+    const event: FallbackEvent = { primaryModel: this.primaryModel, model: this.model, provider: inferProvider(this.model), reason: this.primaryFailure };
+    console.warn(`[ai-fallback] ${event.primaryModel} failed: ${event.reason}; switching to ${event.model} (${AI_FALLBACK_REASONING_EFFORT} reasoning)`);
     this.onFallback?.(event);
     return true;
   }
 
   private failure(error: any) {
     if (!this.usedFallback) return error;
-    return Object.assign(new Error(`Primary AI failed: ${this.primaryFailure}. OpenRouter backup also failed: ${describeAIError(error)}`), {
+    return Object.assign(new Error(`Primary AI failed: ${this.primaryFailure}. Backup AI also failed: ${describeAIError(error)}`), {
       status: error?.status, abortCause: error?.abortCause, fallbackExhausted: true,
     });
   }
 
   private body(body: ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming) {
     if (!this.usedFallback) return { ...body, model: this.model };
-    // Nemotron is text-only. Keep the textual design context if the primary
-    // request also included a picture, and use the settings we benchmarked.
+    // The backup only gets the time the primary left, so think briefly. This
+    // also makes it a real second chance when it is the same model as the
+    // primary. It can see images, so the iteration picture is kept.
     return {
       ...body, model: this.model,
-      messages: body.messages.map(message => ({
-        ...message,
-        content: Array.isArray(message.content)
-          ? message.content.filter(part => part.type === "text")
-          : message.content,
-      })),
       response_format: { type: "json_object" },
       max_completion_tokens: Math.min(body.max_completion_tokens ?? 32_000, 32_000),
-      reasoning: { enabled: false },
-      provider: { max_price: { prompt: 0, completion: 0 } },
+      reasoning_effort: AI_FALLBACK_REASONING_EFFORT,
       ...(body.stream ? { stream_options: { include_usage: true } } : {}),
     };
   }

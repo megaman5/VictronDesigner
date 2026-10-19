@@ -17,6 +17,8 @@ import { extractDesignRequirements, type DesignRequirements } from "@shared/desi
 interface AIPromptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Cancels a running generation. Closing the dialog only hides it. */
+  onStop?: () => void;
   onGenerate?: (prompt: string, requirements?: DesignRequirements) => void;
   systemVoltage?: number;
   existingComponents?: Array<{ id: string; name: string; type: string }>;
@@ -26,7 +28,7 @@ interface AIPromptDialogProps {
   existingComponentsCount?: number; // Number of components in current design
 }
 
-export function AIPromptDialog({ open, onOpenChange, onGenerate, systemVoltage = 12, existingComponents = [], isGenerating = false, iterationProgress, isIterating = false, existingComponentsCount = 0 }: AIPromptDialogProps) {
+export function AIPromptDialog({ open, onOpenChange, onStop, onGenerate, systemVoltage = 12, existingComponents = [], isGenerating = false, iterationProgress, isIterating = false, existingComponentsCount = 0 }: AIPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
   const [solarWatts, setSolarWatts] = useState('');
   const [batteryAh, setBatteryAh] = useState('');
@@ -74,10 +76,13 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, systemVoltage =
         </DialogHeader>
 
         {isGenerating ? (
-          <AIGenerationProgress
-            progress={iterationProgress ?? { iteration: 1, maxIterations: 6, phase: 'waiting', startedAt: Date.now() }}
-            onStop={() => onOpenChange(false)}
-          />
+          <>
+            <AIGenerationProgress
+              progress={iterationProgress ?? { iteration: 1, maxIterations: 6, phase: 'waiting', startedAt: Date.now() }}
+              onStop={onStop ?? (() => onOpenChange(false))}
+            />
+            <p className="text-xs text-muted-foreground">You can close this window. The AI keeps working and the design appears on your canvas when it's done.</p>
+          </>
         ) : (
           <div className="space-y-4 pt-4">
             <div className="space-y-2">

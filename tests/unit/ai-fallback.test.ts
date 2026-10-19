@@ -5,9 +5,10 @@ import { APIConnectionError, APIConnectionTimeoutError, APIUserAbortError } from
 const mocks = vi.hoisted(() => ({ primary: vi.fn(), backup: vi.fn(), hasKey: vi.fn() }));
 vi.mock("../../server/ai/model-client", () => ({
   hasKeyForModel: mocks.hasKey,
-  clientForModel: (model: string) => ({ chat: { completions: { create: model.includes("/") ? mocks.backup : mocks.primary } } }),
+  // The backup is the same model asked to think briefly; route on that.
+  clientForModel: () => ({ chat: { completions: { create: (body: any, options: any) => (body.reasoning_effort === "low" ? mocks.backup : mocks.primary)(body, options) } } }),
 }));
-import { AISession, OPENROUTER_FALLBACK_MODEL, AI_REQUEST_IDLE_TIMEOUT_MS, AI_COMPLETION_TIMEOUT_MS, shouldFallback } from "../../server/ai/fallback";
+import { AISession, AI_FALLBACK_MODEL, AI_FALLBACK_REASONING_EFFORT, AI_REQUEST_IDLE_TIMEOUT_MS, AI_COMPLETION_TIMEOUT_MS, shouldFallback } from "../../server/ai/fallback";
 import { estimateCostUsd } from "../../server/ai/pricing";
 
 const body = { model: "gemini-3.8-flash", messages: [{ role: "user" as const, content: "Return JSON" }] };
@@ -30,31 +31,32 @@ describe("AI fallback routing", () => {
     await session.create(body); await session.create(body);
     expect(mocks.primary).toHaveBeenCalledTimes(1); expect(mocks.backup).toHaveBeenCalledTimes(2);
     expect(notify).toHaveBeenCalledOnce();
-    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ primaryModel: body.model, model: OPENROUTER_FALLBACK_MODEL, reason: expect.stringContaining("HTTP 402") }));
-    expect(session.metadata.modelUsage).toEqual([{ model: OPENROUTER_FALLBACK_MODEL, inputTokens: 20, outputTokens: 10 }]);
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ primaryModel: body.model, model: AI_FALLBACK_MODEL, reason: expect.stringContaining("HTTP 402") }));
+    expect(session.metadata.modelUsage).toEqual([{ model: AI_FALLBACK_MODEL, inputTokens: 20, outputTokens: 10 }]);
   });
 
-  it("uses the tested JSON settings and caps provider pricing at zero", async () => {
+  it("retries the same model with brief thinking, JSON output and the design picture", async () => {
     const session = new AISession(body.model);
-    await session.create({ ...body, max_completion_tokens: 128_000, messages: [{ role: "user", content: [{ type: "text", text: "Design context" }, { type: "image_url", image_url: { url: "data:image/png;base64,test" } }] }] });
-    expect(mocks.backup.mock.calls[0][0]).toMatchObject({
-      model: OPENROUTER_FALLBACK_MODEL, response_format: { type: "json_object" }, max_completion_tokens: 32_000,
-      reasoning: { enabled: false }, provider: { max_price: { prompt: 0, completion: 0 } },
-      messages: [{ content: [{ type: "text", text: "Design context" }] }],
+    const content = [{ type: "text" as const, text: "Design context" }, { type: "image_url" as const, image_url: { url: "data:image/png;base64,test" } }];
+    await session.create({ ...body, max_completion_tokens: 128_000, messages: [{ role: "user", content }] });
+    const sent = mocks.backup.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      model: AI_FALLBACK_MODEL, response_format: { type: "json_object" }, max_completion_tokens: 32_000,
+      reasoning_effort: AI_FALLBACK_REASONING_EFFORT, messages: [{ content }],
     });
+    // OpenRouter-only fields from the old free backup must not leak through.
+    expect(sent).not.toHaveProperty("provider"); expect(sent).not.toHaveProperty("reasoning");
     expect(mocks.backup.mock.calls[0][1]).toMatchObject({ maxRetries: 0, signal: expect.any(AbortSignal) });
   });
 
-  it("keeps a working primary and records usage separately if a later pass fails", async () => {
+  it("keeps a working primary and only switches when a later pass fails", async () => {
     mocks.primary.mockResolvedValueOnce(completion);
     const session = new AISession(body.model);
     await session.create(body); expect(mocks.backup).not.toHaveBeenCalled();
     await session.create(body);
-    expect(session.metadata.modelUsage).toEqual([
-      { model: body.model, inputTokens: 10, outputTokens: 5 },
-      { model: OPENROUTER_FALLBACK_MODEL, inputTokens: 10, outputTokens: 5 },
-    ]);
-    expect(estimateCostUsd(OPENROUTER_FALLBACK_MODEL, { inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBe(0);
+    expect(session.metadata.aiRouting.attempts.map((a: any) => a.settings.reasoningEffort)).toEqual([null, null, AI_FALLBACK_REASONING_EFFORT]);
+    expect(session.metadata.modelUsage).toEqual([{ model: AI_FALLBACK_MODEL, inputTokens: 20, outputTokens: 10 }]);
+    expect(estimateCostUsd(AI_FALLBACK_MODEL, { inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBeGreaterThan(0);
   });
 
   it.each([400, 403, 422])("does not hide an HTTP %i request or policy rejection", async status => {
@@ -89,7 +91,7 @@ describe("AI fallback routing", () => {
     const result = collect(await session.create({ ...body, stream: true }));
     await vi.advanceTimersByTimeAsync(AI_REQUEST_IDLE_TIMEOUT_MS);
     expect((await result)[0]).toEqual(chunk('{"ok":true}'));
-    expect(session.metadata.aiRouting).toMatchObject({ usedFallback: true, primaryFailure: "AI provider sent no response data for 90 seconds." });
+    expect(session.metadata.aiRouting).toMatchObject({ usedFallback: true, primaryFailure: "AI provider sent no response data for 180 seconds." });
     expect(session.metadata.aiRouting.attempts[0].abortCause).toBe("provider-timeout");
     expect(session.metadata.aiRouting.abortCause).toBeUndefined();
     expect(mocks.backup).toHaveBeenCalledOnce();
@@ -167,19 +169,19 @@ describe("AI fallback routing", () => {
   });
   it("preserves both failure reasons and stops when the backup fails", async () => {
     mocks.backup.mockRejectedValue(outage(429));
-    await expect(new AISession(body.model).create(body)).rejects.toMatchObject({ message: expect.stringMatching(/Primary AI failed:.*HTTP 402.*backup also failed/), fallbackExhausted: true, status: 429 });
+    await expect(new AISession(body.model).create(body)).rejects.toMatchObject({ message: expect.stringMatching(/Primary AI failed:.*HTTP 402.*backup AI also failed/i), fallbackExhausted: true, status: 429 });
     expect(mocks.primary).toHaveBeenCalledOnce(); expect(mocks.backup).toHaveBeenCalledOnce();
   });
   it("honors the disable setting and unavailable backup credentials", async () => {
     vi.stubEnv("AI_FALLBACK_ENABLED", "false");
     await expect(new AISession(body.model).create(body)).rejects.toMatchObject({ status: 402 });
-    vi.stubEnv("AI_FALLBACK_ENABLED", "true"); mocks.hasKey.mockImplementation(model => !model.includes("/"));
-    await expect(new AISession(body.model).create(body)).rejects.toMatchObject({ status: 402 });
+    vi.stubEnv("AI_FALLBACK_ENABLED", "true"); mocks.hasKey.mockImplementation(model => model !== AI_FALLBACK_MODEL);
+    await expect(new AISession("gpt-5.4").create({ ...body, model: "gpt-5.4" })).rejects.toMatchObject({ status: 402 });
     expect(mocks.backup).not.toHaveBeenCalled();
   });
   it("uses the backup if the primary key is missing", async () => {
-    mocks.hasKey.mockImplementation(model => model.includes("/"));
-    await new AISession(body.model).create(body); expect(mocks.primary).not.toHaveBeenCalled(); expect(mocks.backup).toHaveBeenCalledOnce();
+    mocks.hasKey.mockImplementation(model => model === AI_FALLBACK_MODEL);
+    await new AISession("gpt-5.4").create({ ...body, model: "gpt-5.4" }); expect(mocks.primary).not.toHaveBeenCalled(); expect(mocks.backup).toHaveBeenCalledOnce();
   });
   it("falls back on an empty provider response", async () => {
     mocks.primary.mockResolvedValue({ choices: [] });
@@ -202,7 +204,7 @@ describe("AI fallback routing", () => {
     const clean = await collect(await session.create({ ...body, stream: true }));
     expect(clean[0]).toEqual(chunk('{"ok":true}')); expect(mocks.primary).toHaveBeenCalledOnce();
   });
-  it("handles OpenRouter errors embedded in stream chunks", async () => {
+  it("handles provider errors embedded in stream chunks", async () => {
     mocks.primary.mockImplementation(async function* () { yield { error: { code: 503, message: "Provider down" } }; });
     mocks.backup.mockImplementation(() => chunks());
     await collect(await new AISession(body.model).create({ ...body, stream: true }));
@@ -214,7 +216,14 @@ describe("AI fallback routing", () => {
     expect(() => session.assertValidFallback(invalid, 70)).not.toThrow();
     await session.create(body);
     expect(() => session.assertValidFallback(invalid, 70)).toThrow("Battery disconnected");
-    expect(() => session.assertValidFallback({ score: 69, issues: [] }, 70)).toThrow("Required score: 70");
+    expect(() => session.assertValidFallback({ score: 69, issues: [] }, 70)).toThrow("Quality score 69 is below the required 70");
     expect(() => session.assertValidFallback({ score: 94, issues: [{ severity: "warning", message: "Check capacity" }] }, 70)).not.toThrow();
+  });
+  it("names the real reason when a high-scoring backup design misses the request", async () => {
+    const session = new AISession(body.model); await session.create(body);
+    const check = { complete: false, issues: [{ message: "Missing: Lynx Distributor" }] };
+    const thrown = (() => { try { session.assertValidFallback({ score: 97, issues: [] }, 70, check); } catch (error: any) { return error.message; } })();
+    expect(thrown).toContain("Missing: Lynx Distributor");
+    expect(thrown).not.toContain("score");
   });
 });

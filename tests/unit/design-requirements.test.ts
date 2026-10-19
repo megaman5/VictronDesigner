@@ -50,7 +50,7 @@ describe('requirement-aware AI candidates', () => {
 
 import { EventEmitter } from 'node:events';
 import { vi } from 'vitest';
-import { createAIRunBudget } from '../../server/ai/requirements';
+import { createAIRunBudget, AI_RUN_TIMEOUT_MS } from '../../server/ai/requirements';
 describe('AI run budgets', () => {
   it('caps excessive requests and cancels disconnected responses', () => {
     vi.useFakeTimers();
@@ -62,12 +62,12 @@ describe('AI run budgets', () => {
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
   });
-  it('keeps connected requests alive past the old total time budget', () => {
+  it('keeps connected requests alive up to the run deadline', () => {
     vi.useFakeTimers();
     const response = Object.assign(new EventEmitter(), { writableEnded: false });
     const budget = createAIRunBudget(response as any, 0);
     expect(budget.maxIterations).toBe(1);
-    vi.advanceTimersByTime(240000);
+    vi.advanceTimersByTime(AI_RUN_TIMEOUT_MS - 1);
     expect(budget.exhausted()).toBe(false);
     response.emit('finish');
     expect(vi.getTimerCount()).toBe(0);
