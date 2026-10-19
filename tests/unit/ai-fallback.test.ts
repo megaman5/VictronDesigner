@@ -1,12 +1,13 @@
 /** @vitest-environment node */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { APIConnectionError, APIConnectionTimeoutError, APIUserAbortError } from "openai";
 
 const mocks = vi.hoisted(() => ({ primary: vi.fn(), backup: vi.fn(), hasKey: vi.fn() }));
 vi.mock("../../server/ai/model-client", () => ({
   hasKeyForModel: mocks.hasKey,
   clientForModel: (model: string) => ({ chat: { completions: { create: model.includes("/") ? mocks.backup : mocks.primary } } }),
 }));
-import { AISession, OPENROUTER_FALLBACK_MODEL, shouldFallback } from "../../server/ai/fallback";
+import { AISession, OPENROUTER_FALLBACK_MODEL, AI_REQUEST_IDLE_TIMEOUT_MS, AI_COMPLETION_TIMEOUT_MS, shouldFallback } from "../../server/ai/fallback";
 import { estimateCostUsd } from "../../server/ai/pricing";
 
 const body = { model: "gemini-3.8-flash", messages: [{ role: "user" as const, content: "Return JSON" }] };
@@ -22,7 +23,7 @@ describe("AI fallback routing", () => {
     mocks.hasKey.mockReturnValue(true);
     mocks.primary.mockRejectedValue(outage()); mocks.backup.mockResolvedValue(completion);
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
   it("switches once, alerts once, and keeps the backup for subsequent passes", async () => {
     const notify = vi.fn(); const session = new AISession(body.model, notify);
@@ -67,6 +68,102 @@ describe("AI fallback routing", () => {
   });
   it("recognizes connection failures and timeouts", () => {
     for (const name of ["APIConnectionError", "APIConnectionTimeoutError", "APIUserAbortError", "TimeoutError", "AbortError"]) expect(shouldFallback({ name })).toBe(true);
+  });
+  it.each([
+    new APIConnectionError({ message: "Connection lost" }),
+    new APIConnectionTimeoutError(),
+    new APIUserAbortError(),
+  ])("recovers real SDK errors whose name is Error: %s", async error => {
+    expect(error.name).toBe("Error");
+    mocks.primary.mockRejectedValue(error);
+    await new AISession(body.model).create(body);
+    expect(mocks.backup).toHaveBeenCalledOnce();
+  });
+  it("recovers an idle timeout before streaming starts", async () => {
+    vi.useFakeTimers();
+    mocks.primary.mockImplementation((_body, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new APIUserAbortError()), { once: true });
+    }));
+    mocks.backup.mockImplementation(() => chunks());
+    const session = new AISession(body.model);
+    const result = collect(await session.create({ ...body, stream: true }));
+    await vi.advanceTimersByTimeAsync(AI_REQUEST_IDLE_TIMEOUT_MS);
+    expect((await result)[0]).toEqual(chunk('{"ok":true}'));
+    expect(session.metadata.aiRouting).toMatchObject({ usedFallback: true, primaryFailure: "AI provider sent no response data for 90 seconds." });
+    expect(session.metadata.aiRouting.attempts[0].abortCause).toBe("provider-timeout");
+    expect(session.metadata.aiRouting.abortCause).toBeUndefined();
+    expect(mocks.backup).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('bounds a non-streaming provider request and uses the remaining run time for fallback', async () => {
+    vi.useFakeTimers();
+    mocks.primary.mockImplementation((_body, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new APIUserAbortError()), { once: true });
+    }));
+    const result = new AISession(body.model).create(body);
+    await vi.advanceTimersByTimeAsync(AI_COMPLETION_TIMEOUT_MS);
+    expect(await result).toEqual(completion);
+    expect(mocks.backup).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('never starts fallback after the overall run deadline', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const session = new AISession(body.model); session.signal = controller.signal;
+    mocks.primary.mockImplementation((_body, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new APIUserAbortError()), { once: true });
+    }));
+    const result = session.create(body).catch(error => error);
+    controller.abort(Object.assign(new Error('Run deadline reached'), { abortCause: 'run-deadline', status: 504 }));
+    expect(await result).toMatchObject({ abortCause: 'run-deadline', status: 504, message: 'Run deadline reached' });
+    expect(mocks.backup).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("keeps a stream alive beyond both old limits while data keeps arriving", async () => {
+    vi.useFakeTimers();
+    mocks.primary.mockImplementation(async (_body, { signal }) => {
+      await new Promise(resolve => setTimeout(resolve, 60_000));
+      return (async function* () {
+        for (let i = 0; i < 5; i++) {
+          expect(signal.aborted).toBe(false);
+          yield chunk(i === 0 ? '{' : ' ');
+          await new Promise(resolve => setTimeout(resolve, 60_000));
+        }
+        yield chunk('}');
+      })();
+    });
+    const result = collect(await new AISession(body.model).create({ ...body, stream: true }));
+    await vi.advanceTimersByTimeAsync(360_000);
+    expect(await result).toHaveLength(6);
+    expect(mocks.backup).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("detects a stalled stream after partial content and restarts with a clean backup", async () => {
+    vi.useFakeTimers();
+    mocks.primary.mockImplementation(async (_body, { signal }) => (async function* () {
+      yield chunk('{"partial":');
+      await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new APIUserAbortError()), { once: true }));
+    })());
+    mocks.backup.mockImplementation(() => chunks());
+    const session = new AISession(body.model);
+    const result = collect(await session.create({ ...body, stream: true })).catch(error => error);
+    await vi.advanceTimersByTimeAsync(AI_REQUEST_IDLE_TIMEOUT_MS);
+    expect(await result).toMatchObject({ retryWithFallback: true });
+    expect(session.metadata.aiRouting.attempts[0]).toMatchObject({ abortCause: 'provider-timeout', durationMs: AI_REQUEST_IDLE_TIMEOUT_MS });
+    expect((await collect(await session.create({ ...body, stream: true })))[0]).toEqual(chunk('{"ok":true}'));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each([false, true])("does not try backup after user cancellation (stream=%s)", async stream => {
+    const controller = new AbortController();
+    const session = new AISession(body.model);
+    session.signal = controller.signal;
+    mocks.primary.mockImplementation(() => {
+      controller.abort(Object.assign(new Error("Cancelled"), { abortCause: "client-cancelled" }));
+      throw new APIUserAbortError();
+    });
+    const request = stream ? collect(await session.create({ ...body, stream: true })) : session.create(body);
+    await expect(request).rejects.toMatchObject({ abortCause: "client-cancelled" });
+    expect(mocks.backup).not.toHaveBeenCalled();
   });
   it("preserves both failure reasons and stops when the backup fails", async () => {
     mocks.backup.mockRejectedValue(outage(429));

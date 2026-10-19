@@ -117,7 +117,7 @@ Commands:
   run --suite <id> --model <m> Run a suite against a model (records to DB)
       [--provider openai|openrouter|anthropic|gemini|local] (else inferred from model id)
       [--case a,b] [--repeats N] [--iterations N] [--target-score N]
-      [--judge] [--judges m1,m2] [--label text] [--max-output-tokens N]
+      [--judge] [--judges m1,m2] [--label text] [--max-output-tokens N] [--reasoning-effort low|medium|high]
   list [--limit N]             Recent runs
   show <runId>                 One run with per-case results
   compare <runA> <runB>        Case-by-case diff of two runs
@@ -239,6 +239,7 @@ async function main() {
           iterations: num(flags.iterations) ?? 1,
           targetScore: num(flags["target-score"]),
           maxOutputTokens: num(flags["max-output-tokens"]),
+          reasoningEffort: str(flags["reasoning-effort"]) as "low" | "medium" | "high" | undefined,
           judge: wantJudge,
           judges,
           label: str(flags.label),
@@ -248,6 +249,7 @@ async function main() {
       );
 
       const s = summary.stats;
+      console.log(`  acceptable ${fixed(s.acceptableRate)}% | no electrical errors ${fixed(s.noElectricalErrorRate)}% | electrical passed ${fixed(s.electricalPassedRate)}% | requirements complete ${fixed(s.requirementCompleteRate)}% | p50 ${s.latencyP50Ms}ms p95 ${s.latencyP95Ms}ms | cost/acceptable ${money(s.costPerAcceptableUsd)}`);
       console.log(`\nRun ${runId}`);
       console.log(
         `  skill ${summary.skill.id} v${summary.skill.version} | model ${summary.model} (${summary.providerId})`

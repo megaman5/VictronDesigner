@@ -79,6 +79,7 @@ export interface ChatRequest {
   /** Ask for a JSON object back. Providers apply their own native mechanism. */
   json?: boolean;
   maxOutputTokens?: number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
   /**
    * Only applied where the provider still accepts it. Current Anthropic and
    * OpenAI reasoning models reject sampling parameters outright, so this is a

@@ -1,11 +1,15 @@
+import { buildDesignReview } from "@shared/design-review";
+import { wirePreflight, prefersAICandidate, candidateDecision, AICorrectionTracker } from "@shared/ai-policy";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { feedbackStorage } from "./feedback-storage";
-import { userDesignsStorage } from "./user-designs-storage";
+import { registerDesignRoutes } from "./design-routes";
 import { observabilityStorage } from "./observability-storage";
 import { appSettingsStorage, DEFAULT_AI_MODEL, DEFAULT_WIRE_ROUTING_STYLE, WIRE_ROUTING_STYLE_VALUES } from "./app-settings-storage";
 import { normalizeAIDesign } from "./ai-design-normalizer";
+import { parseAIDesign } from "./ai/parse-design";
+import { createRequirementContext, annotateCandidate, requirementFeedback, preserveRepairEquipment, createAIRunBudget, repairFeedback, reviewFeedback } from "./ai/requirements";
 import { registerAIRoutes } from "./ai/routes";
 import { systemDesignSkill, wireComponentsSkill } from "./ai/skills";
 import { insertSchematicSchema, updateSchematicSchema, insertCustomComponentSchema, updateCustomComponentSchema, type AISystemRequest, type AISystemResponse } from "@shared/schema";
@@ -14,6 +18,7 @@ import { DEVICE_DEFINITIONS } from "@shared/device-definitions";
 import { calculateWireSize, calculateLoadRequirements, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
 import { calculateRuntimeEstimates } from "./runtime-calculator";
 import { generateShoppingList, generateWireLabels, generateCSV, generateSystemReport } from "./export-utils";
+import { registerInstallationPackageRoute } from "./installation-package";
 import { validateDesign } from "./design-validator";
 import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import { hasKeyForModel } from "./ai/model-client";
@@ -21,6 +26,7 @@ import { AISession, canUseOpenRouterFallback, type FallbackEvent } from "./ai/fa
 import { notifyAIFailure } from "./ai/failure-alerts";
 import { describeAIError, isPermanentAIError } from "./ai/errors";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
+import { handleOAuthCallbackError, oauthReturnPath } from "./oauth-callback";
 import { checkQuota } from "./ai/usage-limits";
 import { buildIterationUserMessage } from "./ai/schematic-image";
 
@@ -32,12 +38,6 @@ function recordFallbackFailure(req: Request, action: string, event: FallbackEven
     userId: (req.user as AuthUser)?.id, message: event.reason,
     metadata: { primaryModel: event.primaryModel, fallbackModel: event.model, fallbackStarted: true },
   }).catch(error => console.error("[ai-fallback] Error logging failed:", error));
-}
-
-function prefersFallbackCandidate(candidate: ReturnType<typeof validateDesign>, best: ReturnType<typeof validateDesign>) {
-  const clean = (value: typeof candidate) => !value.issues.some(issue => issue.severity === "error");
-  if (clean(candidate) !== clean(best)) return clean(candidate);
-  return candidate.score > best.score;
 }
 
 // Helper to extract visitor ID from request
@@ -148,20 +148,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get(
     "/auth/google/callback",
     passport.authenticate("google", { failureRedirect: "/?auth=failed" }),
-    (req, res) => {
+    (req: Request, res: Response) => {
       // Decode returnTo from state parameter
       let returnTo = "/";
       try {
         const state = req.query.state as string;
         if (state) {
           const decoded = JSON.parse(Buffer.from(state, "base64").toString());
-          returnTo = decoded.returnTo || "/";
+          returnTo = oauthReturnPath(decoded.returnTo);
         }
       } catch (e) {
         console.error("Error decoding OAuth state:", e);
       }
       res.redirect(returnTo);
-    }
+    },
+    handleOAuthCallbackError
   );
 
   app.get("/auth/user", (req, res) => {
@@ -290,7 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
 
       const validation = validateDesign(components, wiresWithIds, systemVoltage);
-      res.json(validation);
+      res.json(buildDesignReview({ components, wires, systemVoltage, options: req.body.options, requirements: req.body.requirements }, validation));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -308,13 +309,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const clientIP = getClientIP(req);
     let aiModel = DEFAULT_AI_MODEL;
     let aiSession: AISession | undefined;
+    let attemptContext: ReturnType<typeof createRequirementContext> | undefined;
+    let attemptedIterations = 0;
+    const requestHistory: any[] = [];
     
     try {
+      const requirementContext = attemptContext = createRequirementContext(req.body);
+      const runBudget = createAIRunBudget(res, req.body.maxIterations);
       aiModel = await getAIModel();
       aiSession = new AISession(aiModel, event => {
         aiModel = event.model;
         recordFallbackFailure(req, "generate-system", event);
       });
+      aiSession.signal = runBudget.signal;
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
       if (!hasKeyForModel(aiModel) && !canUseOpenRouterFallback()) {
@@ -348,9 +355,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: "Mock system generated without OpenAI API key. Includes battery, solar, busbars, and basic load.",
           recommendations: ["Connect solar panels in series/parallel as needed", "Fuse battery connections"]
         };
-        return res.json(mockResponse);
+        return res.json(annotateCandidate(mockResponse, requirementContext));
       }
 
+      attemptedIterations = 1;
       const completion = await aiSession.create({
         model: aiModel,
         messages: [
@@ -361,7 +369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
           {
             role: "user",
-            content: `Design a ${systemVoltage}V electrical system with the following requirements: ${prompt}`,
+            content: `Design a ${systemVoltage}V electrical system with the following requirements: ${prompt}${requirementFeedback(requirementContext)}`,
           },
         ],
         response_format: { type: "json_object" },
@@ -369,7 +377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       tokenUsage.inputTokens += completion.usage?.prompt_tokens ?? 0;
       tokenUsage.outputTokens += completion.usage?.completion_tokens ?? 0;
-      const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
+      const response = parseAIDesign(completion.choices[0].message.content || "{}");
 
       // Log AI response for debugging
       console.log("AI Response:", JSON.stringify(response, null, 2));
@@ -386,7 +394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...wire,
           id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
         }));
-        const normalized = normalizeAIDesign(response.components, wiresWithIds, systemVoltage);
+        const normalized = normalizeAIDesign(response.components, wiresWithIds, systemVoltage, { existingWires: requirementContext.inputSnapshot.existingDesign?.wires ?? [], allowWireLengthChanges: requirementContext.allowWireLengthChanges });
         if (normalized.repairs.length > 0) {
           console.log(`[AI] Normalized design: ${normalized.repairs.length} repair(s)`);
         }
@@ -394,11 +402,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         response.wires = normalized.wires;
       }
 
+      response.validation = validateDesign(response.components || [], response.wires || [], systemVoltage);
+      annotateCandidate(response, requirementContext);
       if (aiSession.usedFallback) {
-        response.validation = validateDesign(response.components || [], response.wires || [], systemVoltage);
-        aiSession.assertValidFallback(response.validation, 70);
+        aiSession.assertValidFallback(response.review, 70, response.requirementCheck);
       }
 
+      requestHistory.push({ iteration: 1, model: aiModel, durationMs: Date.now() - startTime, finishReason: completion.choices[0]?.finish_reason, usage: completion.usage, review: response.review, requirementCheck: response.requirementCheck });
       // Log to observability
       await observabilityStorage.logAIRequest({
         ...tokenUsage,
@@ -410,12 +420,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prompt,
         systemVoltage,
         success: true,
+        qualityScore: response.validation.score,
+        iterationHistory: requestHistory,
         durationMs: Date.now() - startTime,
         componentCount: response.components?.length || 0,
         wireCount: response.wires?.length || 0,
         ...aiSession?.metadata,
         model: aiModel,
+        iterations: attemptedIterations,
         response: {
+          attemptContext: { ...requirementContext, skillVersion: systemDesignSkill.version },
+          requirements: requirementContext.requirements,
+          requirementCheck: response.requirementCheck,
+          runStatus: response.runStatus, review: response.review, stopReason: "single-pass",
           components: response.components,
           wires: response.wires,
           description: response.description,
@@ -423,7 +440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       });
 
-      res.json({ ...response, ...aiSession.responseMetadata });
+      res.json({ ...annotateCandidate(response, requirementContext), ...aiSession.responseMetadata });
     } catch (error: any) {
       console.error("AI generation error:", error);
       error.message = describeAIError(error);
@@ -439,13 +456,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prompt: req.body.prompt || "",
         systemVoltage: req.body.systemVoltage || 12,
         success: false,
+        iterations: attemptedIterations, iterationHistory: requestHistory, response: { attemptContext, abortCause: error.abortCause ?? aiSession?.metadata.aiRouting.abortCause, field: error.field, stopReason: error.abortCause ?? "request-failed" },
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
         ...aiSession?.metadata,
         model: aiModel,
       });
       
-      res.status(error.status === 422 ? 422 : 500).json({ error: error.message });
+      res.status([400, 422, 504].includes(error.status) ? error.status : 500).json({ error: error.message, field: error.field, abortCause: error.abortCause, iterations: attemptedIterations });
     }
   });
 
@@ -461,8 +479,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const clientIP = getClientIP(req);
     let aiModel = DEFAULT_AI_MODEL;
     let aiSession: AISession | undefined;
+    let attemptContext: ReturnType<typeof createRequirementContext> | undefined;
+    let attemptedIterations = 0;
+    const requestHistory: any[] = [];
     
     try {
+      const requirementContext = attemptContext = createRequirementContext(req.body);
+      const runBudget = createAIRunBudget(res, req.body.maxIterations);
       aiModel = await getAIModel();
       aiSession = new AISession(aiModel, event => {
         aiModel = event.model;
@@ -474,7 +497,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         systemVoltage = 12,
         validationFeedback = null,
         wireCalculationIssues = [],
-        maxIterations = 6,
         minQualityScore = 70
       } = req.body;
 
@@ -482,17 +504,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Components array is required" });
       }
 
+      const preflight = wirePreflight(components, requirementContext.requirements);
+      if (preflight.length) {
+        const candidate = annotateCandidate({ components, wires, validation: validateDesign(components, wires, systemVoltage) }, requirementContext);
+        const result = { ...candidate, preflight, iterations: 0, stopReason: "preflight-blocked", description: "Review the required equipment and specifications before AI Wire. No AI request was made." };
+        await observabilityStorage.logAIRequest({ visitorId, userId: user?.id, userEmail: user?.email, ip: clientIP, action: "wire-components", prompt: `Wire ${components.length} components`, systemVoltage, success: false, durationMs: Date.now() - startTime, iterations: 0, errorMessage: preflight.map(issue => issue.message).join(" "), response: { ...result, attemptContext: requirementContext } });
+        return res.json(result);
+      }
+      const maxIterations = runBudget.maxIterations;
+      aiSession.signal = runBudget.signal;
+      const correctionTracker = new AICorrectionTracker();
+      let correctionStopReason: string | undefined;
+      let bestCandidate: any = null;
       let bestWires: any[] = [];
       let bestScore = 0;
       let bestValidation: any = null;
-      let unchangedPasses = 0;
-      let previousAttempt = "";
+      let bestRequirementCheck: any = null;
       let stoppedForStagnation = false;
-      const iterationHistory: any[] = [];
+      const iterationHistory: any[] = requestHistory;
       const existingWires = wires.length > 0 ? wires : [];
 
       // Iterative improvement loop
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        if (runBudget.exhausted()) break;
+        attemptedIterations = Math.max(attemptedIterations, iteration + 1);
+        const iterationStartedAt = Date.now();
         console.log(`\n=== AI Wire Iteration ${iteration + 1}/${maxIterations} ===`);
 
         // If there are existing wires, validate them to get current issues
@@ -506,217 +542,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ...wire,
               id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
             }));
-            currentValidation = validateDesign(components, wiresWithIds, systemVoltage);
+            currentValidation = buildDesignReview({ components, wires: wiresWithIds, systemVoltage }, validateDesign(components, wiresWithIds, systemVoltage));
           } catch (error) {
             console.error("Validation error during AI wire generation:", error);
           }
         }
 
-        // Combine validation feedback from client and server
-        const allValidationErrors = [
-          ...(iteration === 0 ? (validationFeedback?.errors || []) : []),
-          ...(currentValidation?.issues.filter((i: any) => i.severity === "error") || [])
-        ];
-        const allValidationWarnings = [
-          ...(iteration === 0 ? (validationFeedback?.warnings || []) : []),
-          ...(currentValidation?.issues.filter((i: any) => i.severity === "warning") || [])
-        ];
-
-        // Calculate wire sizing issues for current wires (always calculate, not just after first iteration)
-        const currentWireCalculationIssues: any[] = [];
-        const wiresToCalculateForIssues = iteration === 0 ? existingWires : (bestWires.length > 0 ? bestWires : []);
-        
-        if (wiresToCalculateForIssues.length > 0) {
-          for (const wire of wiresToCalculateForIssues) {
-            try {
-              const fromComp = components.find((c: any) => c.id === wire.fromComponentId);
-              const toComp = components.find((c: any) => c.id === wire.toComponentId);
-              
-              let current = wire.current || 0;
-              const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
-                               toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
-                               toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
-                               toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
-                               toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
-                               toComp?.type === "inverter" || fromComp?.type === "inverter";
-              
-              let voltage = isACWire ? getACVoltage(toComp || fromComp) : systemVoltage;
-              if (!isACWire && fromComp?.properties?.voltage) {
-                voltage = fromComp.properties.voltage;
-              } else if (!isACWire && toComp?.properties?.voltage) {
-                voltage = toComp.properties.voltage;
-              }
-              
-              // Calculate current from load if not set
-              if (current === 0) {
-                // Helper to trace loads through components (similar to design-validator logic)
-                const findConnectedLoads = (componentId: string, visited: Set<string> = new Set()): number => {
-                  if (visited.has(componentId)) return 0;
-                  visited.add(componentId);
-                  
-                  const comp = components.find((c: any) => c.id === componentId);
-                  if (!comp) return 0;
-                  
-                  // If this is a load, calculate current from it
-                  if (comp.type === "dc-load" || comp.type === "ac-load") {
-                    const loadWatts = (comp.properties?.watts || comp.properties?.power || 0) as number;
-                    const loadVoltage = comp.type === "ac-load" ? getACVoltage(comp) : (comp.properties?.voltage as number || systemVoltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      return loadWatts / loadVoltage;
-                    }
-                  }
-                  
-                  // If this is an inverter, calculate DC input from connected AC loads
-                  if (comp.type === "multiplus" || comp.type === "phoenix-inverter" || comp.type === "inverter") {
-                    const inverterDC = calculateInverterDCInput(comp.id, components, wiresToCalculateForIssues, systemVoltage);
-                    if (inverterDC.dcCurrent > 0) {
-                      return inverterDC.dcCurrent;
-                    }
-                  }
-                  
-                  // For bus bars, sum up current from all connected loads (excluding sources)
-                  if (comp.type === "busbar-positive" || comp.type === "busbar-negative") {
-                    let totalLoadCurrent = 0;
-                    const connectedWires = wiresToCalculateForIssues.filter((w: any) => 
-                      w.fromComponentId === componentId || w.toComponentId === componentId
-                    );
-                    
-                    for (const connWire of connectedWires) {
-                      const otherCompId = connWire.fromComponentId === componentId 
-                        ? connWire.toComponentId 
-                        : connWire.fromComponentId;
-                      
-                      if (visited.has(otherCompId)) continue;
-                      
-                      const otherComp = components.find((c: any) => c.id === otherCompId);
-                      if (!otherComp) continue;
-                      
-                      // Skip AC loads and AC panels - they're on separate AC system
-                      if (otherComp.type === "ac-load" || otherComp.type === "ac-panel") continue;
-                      
-                      // Skip sources (MPPT, chargers) - they add current, not consume
-                      if (otherComp.type === "mppt" || otherComp.type === "blue-smart-charger" || otherComp.type === "orion-dc-dc") continue;
-                      
-                      // Trace to find loads
-                      const foundCurrent = findConnectedLoads(otherCompId, new Set(visited));
-                      totalLoadCurrent += foundCurrent;
-                    }
-                    
-                    return totalLoadCurrent;
-                  }
-                  
-                  return 0;
-                };
-                
-                if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
-                  const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-                  const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
-                  if (loadWatts > 0 && loadVoltage > 0) {
-                    current = loadWatts / loadVoltage;
-                  }
-                } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
-                  const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
-                  const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
-                  if (loadWatts > 0 && loadVoltage > 0) {
-                    current = loadWatts / loadVoltage;
-                  }
-                } else if (fromComp?.type === "mppt" || fromComp?.type === "blue-smart-charger") {
-                  // For MPPT/charger output wires, use their output current
-                  current = fromComp.type === "mppt"
-                    ? (fromComp.properties?.maxCurrent || fromComp.properties?.amps || 0) as number
-                    : (fromComp.properties?.amps || fromComp.properties?.current || 0) as number;
-                } else if (fromComp?.type === "inverter" || fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter") {
-                  // For inverter AC output wires
-                  if (isACWire && (wire.polarity === "hot" || wire.polarity === "neutral")) {
-                    const inverterDC = calculateInverterDCInput(fromComp.id, components, wiresToCalculateForIssues, systemVoltage);
-                    if (inverterDC.acLoadWatts > 0) {
-                      current = inverterDC.acLoadWatts / inverterDC.acVoltage;
-                    }
-                  } else {
-                    // For inverter DC input wires
-                    const inverterDC = calculateInverterDCInput(fromComp.id, components, wiresToCalculateForIssues, systemVoltage);
-                    if (inverterDC.dcCurrent > 0) {
-                      current = inverterDC.dcCurrent;
-                    }
-                  }
-                } else if (toComp?.type === "busbar-positive" || toComp?.type === "busbar-negative" || 
-                           fromComp?.type === "busbar-positive" || fromComp?.type === "busbar-negative") {
-                  // For bus bar connections, trace to find loads
-                  const targetCompId = toComp?.type?.includes("busbar") ? toComp.id : fromComp?.id;
-                  if (targetCompId) {
-                    current = findConnectedLoads(targetCompId);
-                  }
-                } else {
-                  // Fallback: try tracing from either end
-                  if (toComp) {
-                    current = findConnectedLoads(toComp.id);
-                  }
-                  if (current === 0 && fromComp) {
-                    current = findConnectedLoads(fromComp.id);
-                  }
-                }
-              }
-              
-              if (current > 0 && wire.length) {
-                const calc = calculateWireSize({
-                  current,
-                  length: wire.length,
-                  voltage,
-                  conductorMaterial: (wire as any).conductorMaterial || "copper",
-                  currentGauge: wire.gauge,
-                });
-                
-                // Include all wires with issues: errors, warnings, or gauge mismatches
-                if (calc.status === "error" || calc.status === "warning" || calc.recommendedGauge !== wire.gauge || calc.voltageDropPercent > 3) {
-                  currentWireCalculationIssues.push({
-                    wireId: wire.id,
-                    fromComponentId: wire.fromComponentId,
-                    toComponentId: wire.toComponentId,
-                    issue: calc.message || `${calc.status}: Wire sizing issue`,
-                    currentGauge: wire.gauge,
-                    recommendedGauge: calc.recommendedGauge,
-                    current,
-                    voltageDrop: calc.voltageDropPercent,
-                    status: calc.status,
-                  });
-                }
-              } else if (current === 0 && wire.polarity !== "ground") {
-                // Warn about wires with no current detected
-                currentWireCalculationIssues.push({
-                  wireId: wire.id,
-                  fromComponentId: wire.fromComponentId,
-                  toComponentId: wire.toComponentId,
-                  issue: "Cannot determine current for wire - gauge validation skipped",
-                  currentGauge: wire.gauge,
-                  recommendedGauge: null,
-                  current: 0,
-                  voltageDrop: null,
-                  status: "warning",
-                });
-              }
-            } catch (err) {
-              // Skip wires that can't be calculated
-            }
-          }
-        }
-
-        // Combine wire calculation issues
-        const allWireCalculationIssues = iteration === 0 
-          ? wireCalculationIssues 
-          : currentWireCalculationIssues;
-
-
-        // Send actionable feedback with the best candidate, rather than repeating
-        // the original request. The old feedback string was never sent to the AI.
-        const iterationFeedback = currentValidation
-          ? `Current score: ${currentValidation.score}/100. Correct these issues in the supplied wiring:\n${[
-              ...allValidationErrors.map((issue: any) => `ERROR: ${issue.message}${issue.suggestion ? ` — ${issue.suggestion}` : ""}`),
-              ...allValidationWarnings.map((issue: any) => `WARNING: ${issue.message}${issue.suggestion ? ` — ${issue.suggestion}` : ""}`),
-              ...allWireCalculationIssues.map((issue: any) => issue.issue).filter(Boolean),
-            ].filter((issue, index, issues) => issues.indexOf(issue) === index).join("\n")}\nReturn the complete corrected wire list. Components and their positions are fixed; do not invent missing equipment.`
-          : "";
-
-      const completion = await aiSession.create({
+        const currentCandidate = currentValidation ? { components, wires: wiresToValidate, review: currentValidation, validation: currentValidation } : null;
+        const iterationFeedback = currentCandidate ? repairFeedback(currentCandidate) : "Create the initial wiring. Preserve declared equipment and do not invent specifications.";
+        let completion;
+        try { completion = await aiSession.create({
         model: aiModel,
         messages: [
           {
@@ -729,16 +564,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             content: wireComponentsSkill.buildUserPrompt("Create the complete wiring for these components.", {
               systemVoltage,
               existingDesign: { components, wires: wiresToValidate },
-              feedback: iterationFeedback,
+              feedback: iterationFeedback + requirementFeedback(requirementContext, { requirementCheck: bestRequirementCheck }),
             }),
           },
         ],
         response_format: { type: "json_object" },
       });
+        } catch (error: any) {
+          iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: describeAIError(error), abortCause: error.abortCause, model: aiModel });
+          if (!bestCandidate || error.fallbackExhausted || isPermanentAIError(error)) throw error;
+          correctionStopReason = error.abortCause ?? "provider-error";
+          break;
+        }
 
         tokenUsage.inputTokens += completion.usage?.prompt_tokens ?? 0;
         tokenUsage.outputTokens += completion.usage?.completion_tokens ?? 0;
-        const response = JSON.parse(extractJSON(completion.choices[0].message.content || "{}"));
+        let response;
+        try { response = parseAIDesign(completion.choices[0].message.content || "{}", true); }
+        catch (error: any) {
+          iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: error.message, model: aiModel });
+          if (!bestCandidate) throw error;
+          correctionStopReason = 'invalid-provider-output';
+          break;
+        }
 
         console.log(`AI Wire Generation Response (Iteration ${iteration + 1}):`, JSON.stringify(response, null, 2));
         console.log(`Generated wires count: ${response.wires?.length || 0}`);
@@ -776,48 +624,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Merge with existing wires (preserve valid ones)
-        let mergedWires: any[] = [];
-        if (iteration === 0 && existingWires.length > 0) {
-          // First iteration: merge AI wires with existing wires
-          const newWireMap = new Map<string, any>();
-          (response.wires || []).forEach((wire: any) => {
-            const key = `${wire.fromComponentId}:${wire.fromTerminal}→${wire.toComponentId}:${wire.toTerminal}`;
-            newWireMap.set(key, wire);
-          });
-          
-          // Keep existing wires that don't conflict with new ones
-          const existingWireKeys = new Set(
-            existingWires.map((w: any) => `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`)
-          );
-          
-          const preservedWires = existingWires.filter((w: any) => {
-            const key = `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`;
-            return !newWireMap.has(key);
-          });
-          
-          mergedWires = [...preservedWires, ...(response.wires || [])];
-        } else {
-          // Subsequent iterations: use AI-generated wires
-          mergedWires = response.wires || [];
-        }
+        let mergedWires: any[] = response.wires || [];
 
         // Validate the merged wires (ensure all have unique IDs)
         let mergedWiresWithIds = mergedWires.map((wire: any, index: number) => ({
           ...wire,
           id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}`
         }));
-        if (aiSession.usedFallback) {
-          mergedWiresWithIds = normalizeAIDesign(components, mergedWiresWithIds, systemVoltage).wires;
-          mergedWires = mergedWiresWithIds;
-        }
+        const repairCandidate = { components, wires: mergedWiresWithIds };
+        preserveRepairEquipment(repairCandidate, bestCandidate ?? { components, wires: existingWires, validation: currentValidation }, components, requirementContext.allowWireLengthChanges);
+        mergedWiresWithIds = normalizeAIDesign(components, repairCandidate.wires, systemVoltage, { existingWires: wires, allowWireLengthChanges: requirementContext.allowWireLengthChanges }).wires;
+        mergedWires = mergedWiresWithIds;
         let validation = validateDesign(components, mergedWiresWithIds, systemVoltage);
+        const candidate = annotateCandidate({ components, wires: mergedWiresWithIds, validation }, requirementContext);
+        const candidateCheck = candidate.requirementCheck;
         const score = validation.score;
         
         console.log(`Iteration ${iteration + 1} validation score: ${score}/100`);
         console.log(`Errors: ${validation.issues.filter((i: any) => i.severity === "error").length}, Warnings: ${validation.issues.filter((i: any) => i.severity === "warning").length}`);
 
         iterationHistory.push({
+          durationMs: Date.now() - iterationStartedAt,
+          model: aiModel,
+          skillVersion: wireComponentsSkill.version,
+          requirementCheck: candidateCheck,
+          validationIssues: validation.issues,
+          finishReason: completion.choices[0]?.finish_reason,
+          usage: completion.usage,
+          repairScope: components.map((component: any) => component.id),
           iteration: iteration + 1,
           score,
           errorCount: validation.issues.filter((i: any) => i.severity === "error").length,
@@ -826,75 +660,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         // Keep track of best result
-        if (!bestValidation || (aiSession.usedFallback
-          ? prefersFallbackCandidate(validation, bestValidation)
-          : score > bestScore || (score === bestScore && mergedWires.length > bestWires.length))) {
-          bestScore = score;
-          bestWires = mergedWires;
-          bestValidation = validation;
+        if (prefersAICandidate(candidate, bestCandidate)) {
+          bestCandidate = candidate;
+          bestScore = score; bestWires = mergedWires; bestValidation = validation; bestRequirementCheck = candidateCheck;
         }
-
-        // Check for wire-related errors and warnings
-        const wireErrors = validation.issues.filter((i: any) => 
-          i.severity === "error" && 
-          (i.category === "wire-sizing" || i.wireId || i.wireIds)
-        );
-        const wireWarnings = validation.issues.filter((i: any) => 
-          i.severity === "warning" && 
-          (i.category === "wire-sizing" || i.wireId || i.wireIds)
-        );
-        
-        // If we've achieved the minimum quality score, no errors, AND no critical wire issues, we're done
-        // Allow capacity warnings (95-100%) as they're informational - only stop on errors and critical issues
-        const criticalWireWarnings = wireWarnings.filter((w: any) => 
-          !w.message?.includes("capacity") && 
-          !w.message?.includes("Cannot determine associated hot/neutral wire")
-        );
-        const criticalWireCalcIssues = allWireCalculationIssues.filter((i: any) => 
-          i.status === "error" || 
-          (i.status === "warning" && !i.issue?.includes("capacity"))
-        );
-        
-        if (score >= minQualityScore && 
-            validation.issues.filter((i: any) => i.severity === "error").length === 0 &&
-            criticalWireWarnings.length === 0 &&
-            criticalWireCalcIssues.length === 0) {
-          console.log(`Achieved target quality score (${score} >= ${minQualityScore}) with no errors and no critical wire issues. Stopping iterations.`);
-          break;
-        }
-        
-        // If we have wire errors or critical warnings, we should continue iterating
-        if (wireErrors.length > 0 || criticalWireWarnings.length > 0 || criticalWireCalcIssues.length > 0) {
-          const capacityWarnings = wireWarnings.filter((w: any) => w.message?.includes("capacity"));
-          const parallelErrors = wireErrors.filter((e: any) => e.message?.includes("Parallel wire") || e.message?.includes("parallel"));
-          console.log(`Wire issues found: ${wireErrors.length} errors (${parallelErrors.length} parallel), ${criticalWireWarnings.length} critical warnings, ${criticalWireCalcIssues.length} critical calc issues. ${capacityWarnings.length} capacity warnings (informational). Continuing iteration.`);
-        } else if (wireWarnings.length > 0) {
-          // Only capacity warnings remaining - these are acceptable for early stopping
-          console.log(`Only capacity warnings remaining (${wireWarnings.length}). These are informational and acceptable.`);
-        }
-
-        // Only stop when both the candidate and its issues repeat, not merely
-        // when scores tie. Two correction attempts get a chance to improve it.
-        const attempt = JSON.stringify({
-          wires: mergedWires.map(({ id, ...wire }: any) => JSON.stringify(wire)).sort(),
-          issues: validation.issues.map((issue: any) => `${issue.severity}:${issue.message}`).sort(),
-        });
-        unchangedPasses = attempt === previousAttempt ? unchangedPasses + 1 : 0;
-        previousAttempt = attempt;
-        if (unchangedPasses >= 2) {
-          stoppedForStagnation = true;
+        const progress = correctionTracker.observe(candidate);
+        const decision = candidateDecision(candidate, minQualityScore);
+        iterationHistory.at(-1).review = candidate.review;
+        iterationHistory.at(-1).continuationReasons = decision.continuationReasons;
+        if (decision.stop || progress.stop) {
+          correctionStopReason = decision.stop ? decision.reason : progress.reason;
+          stoppedForStagnation = progress.stop && !decision.stop;
           break;
         }
 
-        // If this is the last iteration, use best result
-        if (iteration === maxIterations - 1) {
-          console.log(`Reached max iterations. Using best result (score: ${bestScore})`);
-          mergedWires = bestWires;
-          validation = bestValidation!;
-        }
+
       }
 
-      aiSession.assertValidFallback(bestValidation, minQualityScore);
+      if (!bestCandidate) throw new Error("No usable AI wiring candidate was returned.");
+      bestCandidate.stopReason = correctionStopReason ?? runBudget.abortCause() ?? "iteration-budget";
+      aiSession.assertValidFallback(bestCandidate.review, minQualityScore, bestCandidate.requirementCheck);
 
       // Log to observability
       await observabilityStorage.logAIRequest({
@@ -908,31 +693,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         systemVoltage,
         success: true,
         durationMs: Date.now() - startTime,
-        iterations: iterationHistory.length,
+        iterations: attemptedIterations,
         qualityScore: Math.round(bestScore), // Round to integer for database
         componentCount: components.length,
         wireCount: bestWires.length,
         ...aiSession?.metadata,
         model: aiModel,
         response: {
+          attemptContext: { ...requirementContext, skillVersion: wireComponentsSkill.version },
+          requirements: requirementContext.requirements,
+          requirementCheck: annotateCandidate({ components, wires: bestWires, validation: bestValidation }, requirementContext).requirementCheck,
+          runStatus: bestCandidate.runStatus, review: bestCandidate.review, stopReason: bestCandidate.stopReason,
           wires: bestWires,
           description: `${stoppedForStagnation ? "Stopped because repeated corrections produced the same result. Review the remaining validation issues. " : ""}Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
           recommendations: stoppedForStagnation ? ["AI Wire stopped because repeated correction attempts produced the same result. Review the remaining validation issues and component settings before trying again."] : [],
         },
-        validationFeedback: {
-          score: bestScore,
-          errors: bestValidation?.issues.filter((i: any) => i.severity === "error").map((i: any) => i.message) || [],
-          warnings: bestValidation?.issues.filter((i: any) => i.severity === "warning").map((i: any) => i.message) || [],
-        },
+        validationFeedback: reviewFeedback(bestCandidate),
         iterationHistory,
       });
 
       res.json({
         ...aiSession.responseMetadata,
+        ...annotateCandidate({ components, wires: bestWires, validation: bestValidation }, requirementContext),
         wires: bestWires,
         description: `${stoppedForStagnation ? "Stopped because repeated corrections produced the same result. Review the remaining validation issues. " : ""}Wiring generated after ${iterationHistory.length} iteration(s). Quality score: ${bestScore}/100`,
         recommendations: stoppedForStagnation ? ["AI Wire stopped because repeated correction attempts produced the same result. Review the remaining validation issues and component settings before trying again."] : [],
-        iterations: iterationHistory.length,
+        iterations: attemptedIterations,
+        stopReason: bestCandidate.stopReason,
         qualityScore: bestScore,
         validation: bestValidation,
       });
@@ -951,13 +738,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prompt: `Wire ${req.body.components?.length || 0} components`,
         systemVoltage: req.body.systemVoltage || 12,
         success: false,
+        iterations: attemptedIterations, iterationHistory: requestHistory, response: { attemptContext, abortCause: error.abortCause ?? aiSession?.metadata.aiRouting.abortCause, field: error.field, stopReason: error.abortCause ?? "request-failed" },
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
         ...aiSession?.metadata,
         model: aiModel,
       });
       
-      res.status(error.status === 422 ? 422 : 500).json({ error: error.message });
+      res.status([400, 422, 504].includes(error.status) ? error.status : 500).json({ error: error.message, field: error.field, abortCause: error.abortCause, iterations: attemptedIterations });
     }
   });
 
@@ -970,8 +758,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const tokenUsage = { inputTokens: 0, outputTokens: 0 };
     let aiModel = DEFAULT_AI_MODEL;
     let aiSession: AISession | undefined;
+    let attemptContext: ReturnType<typeof createRequirementContext> | undefined;
+    let attemptedIterations = 0;
+    const requestHistory: any[] = [];
 
     try {
+      const requirementContext = attemptContext = createRequirementContext(req.body);
+      const runBudget = createAIRunBudget(res, req.body.maxIterations);
       aiModel = await getAIModel();
       aiSession = new AISession(aiModel, event => {
         aiModel = event.model;
@@ -981,7 +774,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prompt,
         systemVoltage = 12,
         minQualityScore = 70,
-        maxIterations = 5,
         existingDesign // Optional: { components, wires } for iteration mode
       } = req.body;
 
@@ -989,194 +781,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Prompt is required" });
       }
 
+      const maxIterations = runBudget.maxIterations;
+      aiSession.signal = runBudget.signal;
       let bestDesign: any = null;
+      let stoppedForRepeatedCandidate = false;
+      let correctionStopReason: string | undefined;
+      const correctionTracker = new AICorrectionTracker();
       let bestScore = 0;
-      const iterationHistory: any[] = [];
+      const iterationHistory: any[] = requestHistory;
       const finishDesign = async (finalIteration: number, achievedQualityThreshold: boolean) => {
-        aiSession!.assertValidFallback(bestDesign?.validation, minQualityScore);
+        if (!bestDesign) throw new Error("No usable AI candidate was returned within the run budget.");
+        annotateCandidate(bestDesign, requirementContext);
+        finalIteration = attemptedIterations;
+        bestDesign.stopReason = correctionStopReason ?? runBudget.abortCause() ?? (achievedQualityThreshold ? "quality-threshold" : "iteration-budget");
+        achievedQualityThreshold = achievedQualityThreshold && candidateDecision(bestDesign, minQualityScore).reason === "quality-threshold";
+        aiSession!.assertValidFallback(bestDesign?.review, minQualityScore, bestDesign?.requirementCheck);
         await observabilityStorage.logAIRequest({
           ...tokenUsage, ...aiSession!.metadata, visitorId: getVisitorId(req),
           userId: (req.user as AuthUser)?.id, userEmail: (req.user as AuthUser)?.email,
           ip: getClientIP(req), action: "iterate-design", prompt, systemVoltage,
           success: true, durationMs: Date.now() - startTime, iterations: finalIteration,
           qualityScore: Math.round(bestScore), componentCount: bestDesign?.components?.length || 0,
-          wireCount: bestDesign?.wires?.length || 0, response: bestDesign, iterationHistory,
+          wireCount: bestDesign?.wires?.length || 0, response: { ...bestDesign, attemptContext: requirementContext }, iterationHistory,
         });
-        res.json({ ...bestDesign, ...aiSession!.responseMetadata, iterationHistory, finalIteration, achievedQualityThreshold });
+        if (res.destroyed) return;
+        res.json({ ...bestDesign, ...aiSession!.responseMetadata, iterationHistory, finalIteration, achievedQualityThreshold: achievedQualityThreshold && bestDesign.requirementCheck.issues.length === 0, stopReason: bestDesign.stopReason });
       };
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        if (runBudget.exhausted()) break;
+        attemptedIterations = Math.max(attemptedIterations, iteration + 1);
+        const iterationStartedAt = Date.now();
         console.log(`\n=== Iteration ${iteration + 1}/${maxIterations} ===`);
 
-        // Build feedback context from previous iteration
-        let feedbackContext = "";
-        if (iteration > 0 && bestDesign) {
-          const validation = bestDesign.validation;
-          
-          // Calculate wire sizing for all wires to provide detailed feedback
-          const wireCalculations: any[] = [];
-          if (bestDesign.wires) {
-            for (const wire of bestDesign.wires) {
-              try {
-                // Find connected components to determine current and voltage
-                const fromComp = bestDesign.components?.find((c: any) => c.id === wire.fromComponentId);
-                const toComp = bestDesign.components?.find((c: any) => c.id === wire.toComponentId);
-                
-                let current = wire.current || 0;
-                
-                // Determine if this is an AC wire based on polarity or component types
-                const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
-                                 toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
-                                 toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
-                                 toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
-                                 toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
-                                 toComp?.type === "inverter" || fromComp?.type === "inverter";
-                
-                // For AC wires, use AC voltage (110V/120V/220V/230V); for DC wires, use component voltage or system voltage
-                let voltage = isACWire ? getACVoltage(toComp || fromComp) : systemVoltage;
-                if (!isACWire) {
-                  if (fromComp?.properties?.voltage) {
-                    voltage = fromComp.properties.voltage;
-                  } else if (toComp?.properties?.voltage) {
-                    voltage = toComp.properties.voltage;
-                  }
-                }
-                
-                // Check if this is an inverter DC connection (dc-positive or dc-negative terminal)
-                const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
-                                      (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
-                                      (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
-                                      (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
-                
-                // Calculate current from load if not set
-                if (current === 0) {
-                  // For inverter DC connections, calculate from connected AC loads
-                  if (isInverterDC) {
-                    const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
-                      ? fromComp.id
-                      : toComp?.id;
-                    if (inverterId && bestDesign.components && bestDesign.wires) {
-                      const inverterDC = calculateInverterDCInput(inverterId, bestDesign.components, bestDesign.wires, systemVoltage);
-                      current = inverterDC.dcCurrent;
-                    }
-                  } else if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
-                    const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
-                    const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      current = loadWatts / loadVoltage;
-                    }
-                  } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
-                    const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
-                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
-                    const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      current = loadWatts / loadVoltage;
-                    }
-                  }
-                }
-                
-                if (current > 0 && wire.length) {
-                  const calc = calculateWireSize({
-                    current,
-                    length: wire.length,
-                    voltage,
-                    conductorMaterial: (wire as any).conductorMaterial || "copper",
-                    currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
-                  });
-                  
-                  wireCalculations.push({
-                    wireId: wire.id,
-                    fromComponent: fromComp?.name || wire.fromComponentId,
-                    toComponent: toComp?.name || wire.toComponentId,
-                    currentGauge: wire.gauge,
-                    recommendedGauge: calc.recommendedGauge,
-                    voltageDrop: calc.voltageDropPercent,
-                    current,
-                    length: wire.length,
-                    status: calc.status,
-                    message: calc.message,
-                  });
-                }
-              } catch (err) {
-                // Skip wires that can't be calculated
-              }
-            }
-          }
-          
-          // Build wire feedback (errors/warnings + calc issues)
-          const wireErrors = validation.issues.filter((i: any) =>
-            i.severity === "error" && (i.category === "wire-sizing" || i.wireId || i.wireIds)
-          );
-          const wireWarnings = validation.issues.filter((i: any) =>
-            i.severity === "warning" && (i.category === "wire-sizing" || i.wireId || i.wireIds)
-          );
+        const feedbackContext = bestDesign ? repairFeedback(bestDesign) : "";
 
-          const wireCalcIssues: string[] = [];
-          wireCalculations.forEach((calc: any) => {
-            if (calc.currentGauge !== calc.recommendedGauge) {
-              wireCalcIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% Vdrop)`
-              );
-            }
-            if (calc.voltageDrop > 3) {
-              wireCalcIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
-              );
-            } else if (calc.voltageDrop > 2.5) {
-              wireCalcIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
-              );
-            }
-          });
-          
-          // Separate voltage drop errors (critical wire sizing issues)
-          const voltageDropErrors = wireErrors.filter((e: any) => 
-            e.message?.includes("voltage drop") || 
-            e.message?.includes("Excessive voltage drop")
-          );
-          
-          // Separate capacity warnings (wires at high capacity)
-          const capacityWarnings = wireWarnings.filter((w: any) => 
-            w.message?.includes("capacity") || 
-            w.message?.includes("running at")
-          );
-          
-          // Separate component errors (missing properties, orphaned, etc.)
-          const componentErrors = validation.issues.filter((i: any) => 
-            i.severity === 'error' && 
-            !(i.category === 'wire-sizing' || i.wireId || i.wireIds) &&
-            (i.message?.includes("missing") || 
-             i.message?.includes("overlap") ||
-             i.message?.includes("orphaned") ||
-             i.message?.includes("not connected") ||
-             i.message?.includes("no properties") ||
-             i.message?.includes("solar panel") ||
-             i.message?.includes("battery") ||
-             i.message?.includes("cerbo"))
-          );
-
-          feedbackContext = `\n\nPREVIOUS ITERATION FEEDBACK (Score: ${validation.score}/100):
-${voltageDropErrors.length > 0 ? `VOLTAGE DROP ERRORS (CRITICAL - MUST FIX IMMEDIATELY):\n${voltageDropErrors.map((e: any, idx: number) => `${idx + 1}. ${e.message}${e.suggestion ? ` - ${e.suggestion}` : ""}${e.componentIds ? ` (${e.componentIds.join(" → ")})` : ""}`).join("\n")}\n\nThese wires exceed 3% voltage drop limit. Use LARGER gauge wire immediately.\n` : ""}
-${wireErrors.filter((e: any) => !voltageDropErrors.includes(e)).length > 0 ? `OTHER WIRE ERRORS (MUST FIX):\n${wireErrors.filter((e: any) => !voltageDropErrors.includes(e)).map((e: any, idx: number) => `${idx + 1}. ${e.message}${e.suggestion ? ` - ${e.suggestion}` : ""}`).join("\n")}\n` : ""}
-${capacityWarnings.length > 0 ? `WIRE CAPACITY WARNINGS (SHOULD FIX):\n${capacityWarnings.map((w: any, idx: number) => `${idx + 1}. ${w.message}${w.suggestion ? ` - ${w.suggestion}` : ""}`).join("\n")}\n\nWires at >80% capacity should use next larger gauge for safety margin.\n` : ""}
-${wireWarnings.filter((w: any) => !capacityWarnings.includes(w)).length > 0 ? `OTHER WIRE WARNINGS:\n${wireWarnings.filter((w: any) => !capacityWarnings.includes(w)).map((w: any, idx: number) => `${idx + 1}. ${w.message}${w.suggestion ? ` - ${w.suggestion}` : ""}`).join("\n")}\n` : ""}
-${wireCalcIssues.length > 0 ? `WIRE CALCULATION ISSUES (GAUGE/VOLTAGE DROP):\n${wireCalcIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}\n` : ""}
-${componentErrors.length > 0 ? `COMPONENT ERRORS (MUST FIX):\n${componentErrors.map((e: any, idx: number) => `${idx + 1}. ${e.message}${e.suggestion ? ` - ${e.suggestion}` : ""}${e.componentIds ? ` (Components: ${e.componentIds.join(", ")})` : ""}`).join("\n")}\n\nIf Cerbo is "not connected" or "orphaned", you MUST add two wires:\n- Battery "positive" → Cerbo "power-positive" (10 AWG, 5ft)\n- Battery "negative" → Cerbo "power-negative" (10 AWG, 5ft)\n` : ""}
-OTHER ERRORS: ${validation.issues.filter((i: any) => i.severity === 'error' && !(i.category === 'wire-sizing' || i.wireId || i.wireIds) && !componentErrors.includes(i)).map((i: any) => i.message).join(', ') || "None"}
-OTHER WARNINGS: ${validation.issues.filter((i: any) => i.severity === 'warning' && !(i.category === 'wire-sizing' || i.wireId || i.wireIds)).map((i: any) => i.message).join(', ') || "None"}
-SUGGESTIONS: ${validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion).join(', ') || "None"}
-
-CRITICAL FIXES NEEDED:
-1. Fix ALL voltage drop errors (exceeds 3% limit) - use larger gauge wire
-2. Fix ALL component errors (missing properties, orphaned components like Cerbo)
-3. Consider fixing capacity warnings (wires at >80% capacity) - use next larger gauge for safety`;
-        }
-
-        // Prompt comes from the versioned system-design skill. It used to be
-        // pasted here and at the streaming endpoint as two identical 287-line
-        // copies, which is how the Lynx terminal ids ended up documented in one
-        // place and not the other.
         const systemMessage = systemDesignSkill.buildSystemPrompt({ systemVoltage });
 
         const userMessage = bestDesign
@@ -1184,9 +823,10 @@ CRITICAL FIXES NEEDED:
           : prompt;
 
         // From the second round on, show the model what it just built.
-        const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
+        const userContent = buildIterationUserMessage(userMessage + requirementFeedback(requirementContext, bestDesign), bestDesign, aiModel);
 
-        const completion = await aiSession.create({
+        let completion;
+        try { completion = await aiSession.create({
           model: aiModel,
           messages: [
             { role: "system", content: systemMessage },
@@ -1194,6 +834,12 @@ CRITICAL FIXES NEEDED:
           ],
           max_completion_tokens: 128000,
         });
+        } catch (error: any) {
+          iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: describeAIError(error), abortCause: error.abortCause, model: aiModel });
+          if (!bestDesign || error.fallbackExhausted || isPermanentAIError(error)) throw error;
+          correctionStopReason = error.abortCause ?? "provider-error";
+          break;
+        }
 
         tokenUsage.inputTokens += completion.usage?.prompt_tokens ?? 0;
         tokenUsage.outputTokens += completion.usage?.completion_tokens ?? 0;
@@ -1204,11 +850,13 @@ CRITICAL FIXES NEEDED:
 
         let response: AISystemResponse;
         try {
-          const extracted = extractJSON(content);
-          response = JSON.parse(extracted);
+          response = parseAIDesign(content);
         } catch (err) {
           console.error(`Failed to parse AI response - AI returned: ${content.substring(0, 500)}...`);
-          throw new Error(`AI returned invalid JSON: ${content.substring(0, 100)}...`);
+          iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: describeAIError(err as Error), model: aiModel });
+          if (!bestDesign) throw err;
+          correctionStopReason = 'invalid-provider-output';
+          break;
         }
 
         // Validate the design (ensure all wires have unique IDs)
@@ -1220,13 +868,15 @@ CRITICAL FIXES NEEDED:
         // Repair the two things the model reliably gets wrong - invented
         // terminal ids and guessed wire gauges - before scoring the design.
         // Both are computable, so spending iterations on them is wasted.
-        const normalized = normalizeAIDesign(response.components, rawWiresWithIds, systemVoltage);
+        preserveRepairEquipment(response, bestDesign, [], requirementContext.allowWireLengthChanges);
+        const normalized = normalizeAIDesign(response.components, (response.wires || []).map((wire: any, index: number) => ({ ...wire, id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}` })), systemVoltage, { existingWires: requirementContext.inputSnapshot.existingDesign?.wires ?? [], allowWireLengthChanges: requirementContext.allowWireLengthChanges });
         if (normalized.repairs.length > 0) {
           console.log(`[AI] Normalized design: ${normalized.repairs.length} repair(s)`);
           for (const r of normalized.repairs.slice(0, 10)) console.log(`  ${r.kind}: ${r.detail}`);
         }
         response.components = normalized.components;
         response.wires = normalized.wires;
+        annotateCandidate(response, requirementContext);
         const wiresWithIds = normalized.wires;
         const validation = validateDesign(
           response.components,
@@ -1264,7 +914,15 @@ CRITICAL FIXES NEEDED:
 
         // Track this iteration
         iterationHistory.push({
+          durationMs: Date.now() - iterationStartedAt,
+          model: aiModel,
+          skillVersion: systemDesignSkill.version,
+          requirementCheck: (response as any).requirementCheck,
+          repairScope: bestDesign?.validation?.issues.flatMap((issue: any) => issue.componentIds || []) || [],
           iteration: iteration + 1,
+          finishReason: completion.choices[0]?.finish_reason,
+          usage: completion.usage,
+          validationIssues: validation.issues,
           score: validation.score,
           errorCount: validation.issues.filter(i => i.severity === 'error').length,
           warningCount: validation.issues.filter(i => i.severity === 'warning').length,
@@ -1272,10 +930,17 @@ CRITICAL FIXES NEEDED:
           validation
         });
 
+        (response as any).validation = validation;
+        annotateCandidate(response, requirementContext);
+        const progress = correctionTracker.observe(response);
+        const decision = candidateDecision(response, minQualityScore);
+        iterationHistory.at(-1).review = (response as any).review;
+        iterationHistory.at(-1).continuationReasons = decision.continuationReasons;
+        if (progress.stop && !decision.stop) { stoppedForRepeatedCandidate = true; correctionStopReason = progress.reason; }
+        if (decision.stop) correctionStopReason = decision.reason;
+
         // Update best design if this is better OR if we don't have one yet
-        if (!bestDesign || (aiSession.usedFallback
-          ? prefersFallbackCandidate(validation, bestDesign.validation)
-          : validation.score > bestScore)) {
+        if (prefersAICandidate(response, bestDesign)) {
           bestScore = validation.score;
           bestDesign = {
             ...response,
@@ -1284,39 +949,17 @@ CRITICAL FIXES NEEDED:
           };
         }
 
-        // Check if we've achieved minimum quality AND no critical errors (reuse variables from above)
-        // Allow early stopping if quality threshold met and no critical errors remain
-        if (validation.score >= minQualityScore && criticalErrorsCount === 0 && (!aiSession.usedFallback || errors.length === 0)) {
-          console.log(`✓ Achieved quality threshold (${validation.score} >= ${minQualityScore}) with no critical errors at iteration ${iteration + 1}`);
-          await finishDesign(iteration + 1, true);
+        if (stoppedForRepeatedCandidate) break;
+
+        if (decision.stop) {
+          await finishDesign(iterationHistory.length, decision.reason === "quality-threshold");
           return;
-        }
-        
-        // Also stop early if we have high quality (>90) even with some minor errors (but not voltage drop or orphaned components)
-        if (validation.score >= 90 && criticalErrorsCount === 0 && errors.length <= 3 && !aiSession.usedFallback) {
-          console.log(`✓ High quality score (${validation.score}) with minimal errors at iteration ${iteration + 1}`);
-          await finishDesign(iteration + 1, true);
-          return;
-        }
-        
-        // Early stop if score has plateaued for 2 iterations (no improvement)
-        if (iteration >= 2) {
-          const recentScores = iterationHistory.slice(-3).map(h => h.score);
-          const maxRecentScore = Math.max(...recentScores);
-          const currentIsBest = validation.score >= maxRecentScore;
-          const notImproving = recentScores.every(s => Math.abs(s - recentScores[0]) <= 5);
-          
-          if (notImproving && criticalErrorsCount === 0 && errors.length <= 3 && !aiSession.usedFallback) {
-            console.log(`✓ Score plateaued (${recentScores.join(' → ')}) with acceptable errors at iteration ${iteration + 1}`);
-            await finishDesign(iteration + 1, bestScore >= minQualityScore);
-            return;
-          }
         }
       }
 
       // Return best design after max iterations
       console.log(`Max iterations reached. Best score: ${bestScore}/${minQualityScore}`);
-      await finishDesign(maxIterations, bestScore >= minQualityScore);
+      await finishDesign(iterationHistory.length, candidateDecision(bestDesign, minQualityScore).reason === "quality-threshold");
 
     } catch (error: any) {
       console.error("Iterative AI generation error:", error);
@@ -1326,11 +969,11 @@ CRITICAL FIXES NEEDED:
         userId: (req.user as AuthUser)?.id, userEmail: (req.user as AuthUser)?.email,
         ip: getClientIP(req), action: "iterate-design",
         prompt: req.body.prompt || "", systemVoltage: req.body.systemVoltage || 12,
-        success: false, durationMs: Date.now() - startTime,
+        success: false, iterations: attemptedIterations, iterationHistory: requestHistory, response: { attemptContext, abortCause: error.abortCause ?? aiSession?.metadata.aiRouting.abortCause, field: error.field, stopReason: error.abortCause ?? "request-failed" }, durationMs: Date.now() - startTime,
         errorMessage: error.message, model: aiModel,
         ...aiSession?.metadata,
       });
-      res.status(error.status === 422 ? 422 : 500).json({ error: error.message });
+      res.status([400, 422, 504].includes(error.status) ? error.status : 500).json({ error: error.message, field: error.field, abortCause: error.abortCause, iterations: attemptedIterations });
     }
   });
 
@@ -1346,14 +989,18 @@ CRITICAL FIXES NEEDED:
     const clientIP = getClientIP(req);
     let aiModel = DEFAULT_AI_MODEL;
     let aiSession: AISession | undefined;
+    let attemptContext: ReturnType<typeof createRequirementContext> | undefined;
+    let attemptedIterations = 0;
+    const requestHistory: any[] = [];
     
     try {
+      const requirementContext = attemptContext = createRequirementContext(req.body);
+      const runBudget = createAIRunBudget(res, req.body.maxIterations);
       aiModel = await getAIModel();
       const {
         prompt,
         systemVoltage = 12,
         minQualityScore = 70,
-        maxIterations = 6,
         existingDesign // Optional: { components, wires } for iteration mode
       } = req.body;
 
@@ -1361,14 +1008,24 @@ CRITICAL FIXES NEEDED:
         return res.status(400).json({ error: "Prompt is required" });
       }
 
-      console.log(`[SSE] Starting generation: ${maxIterations} iterations, min score ${minQualityScore}`);
+      console.log(`[SSE] Starting generation: ${runBudget.maxIterations} iterations, min score ${minQualityScore}`);
 
       // Set SSE headers
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+      // Keep proxies connected while the provider is planning. These comments
+      // are transport keepalives, never evidence of model activity.
+      const heartbeat = setInterval(() => {
+        if (!res.destroyed && !res.writableEnded) res.write(': keep-alive\n\n');
+      }, 15_000);
+      res.once('close', () => clearInterval(heartbeat));
+      res.once('finish', () => clearInterval(heartbeat));
 
       const sendEvent = (event: string, data: any) => {
+        if (res.destroyed || res.writableEnded) return;
         console.log(`[SSE] Sending event: ${event}`, data);
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -1380,9 +1037,14 @@ CRITICAL FIXES NEEDED:
         sendEvent("ai-fallback", { model: event.model, provider: event.provider });
       });
 
+      const maxIterations = runBudget.maxIterations;
+      aiSession.signal = runBudget.signal;
       let bestDesign: any = null;
+      let stoppedForRepeatedCandidate = false;
+      let correctionStopReason: string | undefined;
+      const correctionTracker = new AICorrectionTracker();
       let bestScore = 0;
-      const iterationHistory: any[] = [];
+      const iterationHistory: any[] = requestHistory;
       
       // Store full messages at the start for observability
       let fullSystemMessage = "";
@@ -1391,146 +1053,15 @@ CRITICAL FIXES NEEDED:
       console.log(`[SSE] Starting iteration loop: ${maxIterations} iterations`);
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        if (runBudget.exhausted()) break;
+        attemptedIterations = Math.max(attemptedIterations, iteration + 1);
+        const iterationStartedAt = Date.now();
         console.log(`[SSE] Iteration ${iteration + 1} of ${maxIterations} starting...`);
         sendEvent('iteration-start', { iteration: iteration + 1, maxIterations });
 
         try {
-          // Build feedback context from previous iteration
-        let feedbackContext = "";
-        if (iteration > 0 && bestDesign) {
-          const validation = bestDesign.validation;
-          // Calculate wire sizing for all wires to provide detailed feedback
-          const wireCalculations: any[] = [];
-          if (bestDesign.wires) {
-            for (const wire of bestDesign.wires) {
-              try {
-                // Find connected components to determine current and voltage
-                const fromComp = bestDesign.components?.find((c: any) => c.id === wire.fromComponentId);
-                const toComp = bestDesign.components?.find((c: any) => c.id === wire.toComponentId);
-                
-                let current = wire.current || 0;
-                
-                // Determine if this is an AC wire based on polarity or component types
-                const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
-                                 toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
-                                 toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
-                                 toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
-                                 toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
-                                 toComp?.type === "inverter" || fromComp?.type === "inverter";
-                
-                // For AC wires, use AC voltage (110V/120V/220V/230V); for DC wires, use component voltage or system voltage
-                let voltage = isACWire ? getACVoltage(toComp || fromComp) : systemVoltage;
-                if (!isACWire) {
-                  if (fromComp?.properties?.voltage) {
-                    voltage = fromComp.properties.voltage;
-                  } else if (toComp?.properties?.voltage) {
-                    voltage = toComp.properties.voltage;
-                  }
-                }
-                
-                // Check if this is an inverter DC connection (dc-positive or dc-negative terminal)
-                const isInverterDC = (fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter") &&
-                                      (wire.fromTerminal === "dc-positive" || wire.fromTerminal === "dc-negative") ||
-                                      (toComp?.type === "multiplus" || toComp?.type === "phoenix-inverter" || toComp?.type === "inverter") &&
-                                      (wire.toTerminal === "dc-positive" || wire.toTerminal === "dc-negative");
-                
-                // Calculate current from load if not set
-                if (current === 0) {
-                  // For inverter DC connections, calculate from connected AC loads
-                  if (isInverterDC) {
-                    const inverterId = fromComp?.type === "multiplus" || fromComp?.type === "phoenix-inverter" || fromComp?.type === "inverter"
-                      ? fromComp.id
-                      : toComp?.id;
-                    if (inverterId && bestDesign.components && bestDesign.wires) {
-                      const inverterDC = calculateInverterDCInput(inverterId, bestDesign.components, bestDesign.wires, systemVoltage);
-                      current = inverterDC.dcCurrent;
-                    }
-                  } else if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
-                    const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
-                    const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      current = loadWatts / loadVoltage;
-                    }
-                  } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
-                    const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
-                    // AC loads use AC voltage (110V/120V/220V/230V), DC loads use component voltage or system voltage
-                    const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      current = loadWatts / loadVoltage;
-                    }
-                  }
-                }
-                
-                if (current > 0 && wire.length) {
-                  const calc = calculateWireSize({
-                    current,
-                    length: wire.length,
-                    voltage,
-                    conductorMaterial: (wire as any).conductorMaterial || "copper",
-                    currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
-                  });
-                  
-                  wireCalculations.push({
-                    wireId: wire.id,
-                    fromComponent: fromComp?.name || wire.fromComponentId,
-                    toComponent: toComp?.name || wire.toComponentId,
-                    currentGauge: wire.gauge,
-                    recommendedGauge: calc.recommendedGauge,
-                    voltageDrop: calc.voltageDropPercent,
-                    current,
-                    length: wire.length,
-                    status: calc.status,
-                    message: calc.message,
-                  });
-                }
-              } catch (err) {
-                // Skip wires that can't be calculated
-              }
-            }
-          }
-          
-          // Build wire feedback (errors/warnings + calc issues)
-          const wireErrors = validation.issues.filter((i: any) =>
-            i.severity === "error" && (i.category === "wire-sizing" || i.wireId || i.wireIds)
-          );
-          const wireWarnings = validation.issues.filter((i: any) =>
-            i.severity === "warning" && (i.category === "wire-sizing" || i.wireId || i.wireIds)
-          );
+          const feedbackContext = bestDesign ? repairFeedback(bestDesign) : "";
 
-          const wireCalcIssues: string[] = [];
-          wireCalculations.forEach((calc: any) => {
-            if (calc.currentGauge !== calc.recommendedGauge) {
-              wireCalcIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% Vdrop)`
-              );
-            }
-            if (calc.voltageDrop > 3) {
-              wireCalcIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
-              );
-            } else if (calc.voltageDrop > 2.5) {
-              wireCalcIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
-              );
-            }
-          });
-          
-          feedbackContext = `\n\nPREVIOUS ITERATION FEEDBACK (Score: ${validation.score}/100):
-${wireErrors.length ? `WIRE ERRORS (MUST FIX):\n${wireErrors.map((e: any, idx: number) => `${idx + 1}. ${e.message}${e.suggestion ? ` - Suggestion: ${e.suggestion}` : ""}`).join("\n")}\n` : ""}
-${wireWarnings.length ? `WIRE WARNINGS (MUST FIX):\n${wireWarnings.map((w: any, idx: number) => `${idx + 1}. ${w.message}${w.suggestion ? ` - Suggestion: ${w.suggestion}` : ""}`).join("\n")}\n` : ""}
-${wireCalcIssues.length ? `WIRE CALCULATION ISSUES (GAUGE/VOLTAGE DROP):\n${wireCalcIssues.map((i, idx) => `${idx + 1}. ${i}`).join("\n")}\n` : ""}
-OTHER ERRORS: ${validation.issues.filter((i: any) => i.severity === 'error' && !(i.category === 'wire-sizing' || i.wireId || i.wireIds)).map((i: any) => i.message).join(', ') || "None"}
-OTHER WARNINGS: ${validation.issues.filter((i: any) => i.severity === 'warning' && !(i.category === 'wire-sizing' || i.wireId || i.wireIds)).map((i: any) => i.message).join(', ') || "None"}
-SUGGESTIONS: ${validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion).join(', ') || "None"}
-
-Please fix ALL wire errors/warnings and follow wire calculation recommendations (gauge + voltage drop).`;
-        }
-
-        // Prompt comes from the versioned system-design skill. It used to be
-        // pasted here and at the streaming endpoint as two identical 287-line
-        // copies, which is how the Lynx terminal ids ended up documented in one
-        // place and not the other.
         const systemMessage = systemDesignSkill.buildSystemPrompt({ systemVoltage });
 
         const userMessage = bestDesign
@@ -1549,7 +1080,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         });
 
         // From the second round on, show the model what it just built.
-        const userContent = buildIterationUserMessage(userMessage, bestDesign, aiModel);
+        const userContent = buildIterationUserMessage(userMessage + requirementFeedback(requirementContext, bestDesign), bestDesign, aiModel);
         if (Array.isArray(userContent)) {
           sendEvent('ai-layout-image', { iteration: iteration + 1 });
         }
@@ -1567,22 +1098,29 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
         let content = "";
         let rawResponse = ""; // Store raw response for debugging
+        let finishReason: string | null = null;
         let promptTokens = 0;
         let completionTokens = 0;
         let lastTokenTime = Date.now();
+        let lastActivityTime = 0;
         let tokenBuffer = "";
 
         // Stream tokens as they arrive
         for await (const chunk of stream) {
+          if (Date.now() - lastActivityTime >= 1000) {
+            sendEvent('ai-activity', { iteration: iteration + 1, phase: chunk.choices?.some(choice => choice.delta?.content) ? 'drawing' : 'planning' });
+            lastActivityTime = Date.now();
+          }
+          if (chunk.choices[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
           const delta = chunk.choices[0]?.delta;
           if (delta?.content) {
             content += delta.content;
             rawResponse += delta.content; // Accumulate raw response
             tokenBuffer += delta.content;
             
-            // Send token update every 50ms to avoid overwhelming the client
+            // Batch draft redraws to keep the interface responsive.
             const now = Date.now();
-            if (now - lastTokenTime > 50) {
+            if (now - lastTokenTime > 200) {
               sendEvent('ai-token', {
                 iteration: iteration + 1,
                 token: tokenBuffer,
@@ -1639,10 +1177,10 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
         let response: AISystemResponse;
         try {
-          const extracted = extractJSON(content);
-          response = JSON.parse(extracted);
+          response = parseAIDesign(content);
         } catch (err: any) {
           console.error(`[SSE] Iteration ${iteration + 1}: Failed to parse AI response - AI returned: ${content.substring(0, 500)}...`);
+          iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: err.message, model: aiModel });
           sendEvent('iteration-complete', {
             iteration: iteration + 1,
             score: 0,
@@ -1651,6 +1189,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
             isBest: false,
             error: `Invalid JSON: ${err.message}`
           });
+          if (bestDesign) { correctionStopReason = 'invalid-provider-output'; break; }
           continue;
         }
 
@@ -1677,13 +1216,15 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         // Repair the two things the model reliably gets wrong - invented
         // terminal ids and guessed wire gauges - before scoring the design.
         // Both are computable, so spending iterations on them is wasted.
-        const normalized = normalizeAIDesign(response.components, rawWiresWithIds, systemVoltage);
+        preserveRepairEquipment(response, bestDesign, [], requirementContext.allowWireLengthChanges);
+        const normalized = normalizeAIDesign(response.components, (response.wires || []).map((wire: any, index: number) => ({ ...wire, id: wire.id || `wire-${index}-${wire.fromComponentId}-${wire.toComponentId}-${wire.polarity}` })), systemVoltage, { existingWires: requirementContext.inputSnapshot.existingDesign?.wires ?? [], allowWireLengthChanges: requirementContext.allowWireLengthChanges });
         if (normalized.repairs.length > 0) {
           console.log(`[AI] Normalized design: ${normalized.repairs.length} repair(s)`);
           for (const r of normalized.repairs.slice(0, 10)) console.log(`  ${r.kind}: ${r.detail}`);
         }
         response.components = normalized.components;
         response.wires = normalized.wires;
+        annotateCandidate(response, requirementContext);
         const wiresWithIds = normalized.wires;
         let validation;
         try {
@@ -1715,6 +1256,14 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
 
         // Track this iteration
         iterationHistory.push({
+          durationMs: Date.now() - iterationStartedAt,
+          model: aiModel,
+          skillVersion: systemDesignSkill.version,
+          finishReason,
+          usage: { inputTokens: promptTokens, outputTokens: completionTokens },
+          validationIssues: validation.issues,
+          requirementCheck: (response as any).requirementCheck,
+          repairScope: bestDesign?.validation?.issues.flatMap((issue: any) => issue.componentIds || []) || [],
           iteration: iteration + 1,
           score: validation.score,
           errorCount: validation.issues.filter(i => i.severity === 'error').length,
@@ -1731,10 +1280,17 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           console.log(`  No issues found`);
         }
 
+        (response as any).validation = validation;
+        annotateCandidate(response, requirementContext);
+        const progress = correctionTracker.observe(response);
+        const decision = candidateDecision(response, minQualityScore);
+        iterationHistory.at(-1).review = (response as any).review;
+        iterationHistory.at(-1).continuationReasons = decision.continuationReasons;
+        if (progress.stop && !decision.stop) { stoppedForRepeatedCandidate = true; correctionStopReason = progress.reason; }
+        if (decision.stop) correctionStopReason = decision.reason;
+
         // Update best design if this is better, or if we don't have one yet
-        if (!bestDesign || (aiSession.usedFallback
-          ? prefersFallbackCandidate(validation, bestDesign.validation)
-          : validation.score > bestScore)) {
+        if (prefersAICandidate(response, bestDesign)) {
           bestScore = validation.score;
           bestDesign = {
             ...response,
@@ -1743,7 +1299,9 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           };
         }
 
+        annotateCandidate(bestDesign, requirementContext);
         sendEvent('iteration-complete', {
+          requirementCheck: (response as any).requirementCheck,
           iteration: iteration + 1,
           score: validation.score,
           errorCount: validation.issues.filter(i => i.severity === 'error').length,
@@ -1751,112 +1309,13 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           isBest: validation.score === bestScore
         });
 
-        // Check if we've achieved minimum quality
-        if (validation.score >= minQualityScore && (!aiSession.usedFallback || !validation.issues.some(issue => issue.severity === "error"))) {
-          // Calculate wire sizing for observability (reuse same logic as feedback)
-          const wireCalculationsForObs: any[] = [];
-          if (response.wires) {
-            for (const wire of response.wires) {
-              try {
-                const fromComp = response.components?.find((c: any) => c.id === wire.fromComponentId);
-                const toComp = response.components?.find((c: any) => c.id === wire.toComponentId);
-                
-                let current = wire.current || 0;
-                let voltage = systemVoltage;
-                
-                if (fromComp?.properties?.voltage) {
-                  voltage = fromComp.properties.voltage;
-                } else if (toComp?.properties?.voltage) {
-                  voltage = toComp.properties.voltage;
-                }
-                
-                // Determine if this is an AC wire
-                const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
-                                 toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
-                                 toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
-                                 toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
-                                 toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
-                                 toComp?.type === "inverter" || fromComp?.type === "inverter";
-                
-                // AC wires are sized at their own AC voltage, which may be
-                // 120V, 230V or 240V split phase - not always 120V.
-                if (isACWire) {
-                  voltage = getACVoltage(toComp) || getACVoltage(fromComp);
-                }
-                
-                if (current === 0) {
-                  if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
-                    const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-                    // AC loads use 120V, DC loads use component voltage or system voltage
-                    const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      current = loadWatts / loadVoltage;
-                    }
-                  } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
-                    const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
-                    // AC loads use 120V, DC loads use component voltage or system voltage
-                    const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
-                    if (loadWatts > 0 && loadVoltage > 0) {
-                      current = loadWatts / loadVoltage;
-                    }
-                  }
-                }
-                
-                if (current > 0 && wire.length) {
-                  const calc = calculateWireSize({
-                    current,
-                    length: wire.length,
-                    voltage,
-                    conductorMaterial: (wire as any).conductorMaterial || "copper",
-                    currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
-                  });
-                  
-                  wireCalculationsForObs.push({
-                    wireId: wire.id,
-                    fromComponent: fromComp?.name || wire.fromComponentId,
-                    toComponent: toComp?.name || wire.toComponentId,
-                    currentGauge: wire.gauge,
-                    recommendedGauge: calc.recommendedGauge,
-                    voltageDrop: calc.voltageDropPercent,
-                    current,
-                    length: wire.length,
-                  });
-                }
-              } catch (err) {
-                // Skip wires that can't be calculated
-              }
-            }
-          }
+        if (stoppedForRepeatedCandidate) break;
 
-          // Build wire sizing issues for observability
-          const currentWireSizingIssues: string[] = [];
-          wireCalculationsForObs.forEach((calc: any) => {
-            if (calc.currentGauge !== calc.recommendedGauge) {
-              currentWireSizingIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% voltage drop)`
-              );
-            }
-            if (calc.voltageDrop > 3) {
-              currentWireSizingIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
-              );
-            } else if (calc.voltageDrop > 2.5) {
-              currentWireSizingIssues.push(
-                `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
-              );
-            }
-          });
-
-          // Build validation feedback for observability
-          const validationFeedback = {
-            score: validation.score,
-            errors: validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message),
-            warnings: validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message),
-            wireSizingIssues: currentWireSizingIssues,
-            suggestions: validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion),
-          };
-
-          aiSession.assertValidFallback(bestDesign.validation, minQualityScore);
+        if (decision.stop && decision.reason !== "quality-threshold") break;
+        // All supported electrical and declared requirement checks must pass.
+        if (decision.stop && decision.reason === "quality-threshold") {
+          const validationFeedback = reviewFeedback(bestDesign);
+          aiSession.assertValidFallback(bestDesign.review, minQualityScore, bestDesign.requirementCheck);
 
           // Log success to observability with full debugging info
           await observabilityStorage.logAIRequest({
@@ -1880,13 +1339,12 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
             userMessage: fullUserMessage,
             rawResponse: rawResponse,
             validationFeedback,
-            iterationHistory: iterationHistory.map((h: any) => ({
-              iteration: h.iteration,
-              score: h.score,
-              errorCount: h.errorCount,
-              warningCount: h.warningCount,
-            })),
+            iterationHistory,
             response: {
+          attemptContext: { ...requirementContext, skillVersion: systemDesignSkill.version },
+          requirements: requirementContext.requirements,
+          requirementCheck: bestDesign?.requirementCheck,
+          runStatus: bestDesign?.runStatus, review: bestDesign?.review, stopReason: correctionStopReason ?? runBudget.abortCause() ?? "iteration-budget",
               components: bestDesign.components,
               wires: bestDesign.wires,
               description: bestDesign.description,
@@ -1894,11 +1352,13 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
             },
           });
           
-          sendEvent('complete', {
+          annotateCandidate(bestDesign, requirementContext);
+      sendEvent('complete', {
             ...aiSession.responseMetadata,
             ...bestDesign,
             iterationHistory,
             finalIteration: iteration + 1,
+            stopReason: "quality-threshold",
             achievedQualityThreshold: true
           });
           res.end();
@@ -1913,7 +1373,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           if (iterationError.fallbackExhausted || isPermanentAIError(iterationError)) throw iterationError;
           console.error(`[SSE] Iteration ${iteration + 1} failed:`, iterationError);
           iterationHistory.push({
-            iteration: iteration + 1, score: 0, errorCount: 1, warningCount: 0,
+            iteration: iteration + 1, score: 0, errorCount: 1, warningCount: 0, durationMs: Date.now() - iterationStartedAt, abortCause: iterationError.abortCause,
             error: describeAIError(iterationError),
           });
           sendEvent('iteration-complete', {
@@ -1924,7 +1384,8 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
             isBest: false,
             error: iterationError.message || "Iteration failed"
           });
-          // Continue to next iteration - don't break the loop
+          if (iterationError.abortCause) { correctionStopReason = iterationError.abortCause; break; }
+          // Continue after a recoverable parser/provider error.
         }
       }
 
@@ -1945,7 +1406,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
           systemVoltage,
           success: false,
           durationMs: Date.now() - startTime,
-          iterations: maxIterations,
+          iterations: attemptedIterations,
           errorMessage: iterationHistory.at(-1)?.error || "All iterations failed - no valid design generated. Check iteration history for details.",
           ...aiSession?.metadata,
           model: aiModel,
@@ -1957,116 +1418,14 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         sendEvent('error', {
           error: iterationHistory.at(-1)?.error || 'Failed to generate a valid design after all iterations. Check iteration history for details.',
           iterationHistory,
-          finalIteration: maxIterations
+          finalIteration: attemptedIterations
         });
         res.end();
         return;
       }
 
-      // Calculate wire sizing for final observability log
-      const finalWireCalculations: any[] = [];
-      if (bestDesign.wires) {
-        for (const wire of bestDesign.wires) {
-          try {
-            const fromComp = bestDesign.components?.find((c: any) => c.id === wire.fromComponentId);
-            const toComp = bestDesign.components?.find((c: any) => c.id === wire.toComponentId);
-            
-            let current = wire.current || 0;
-            let voltage = systemVoltage;
-            
-            if (fromComp?.properties?.voltage) {
-              voltage = fromComp.properties.voltage;
-            } else if (toComp?.properties?.voltage) {
-              voltage = toComp.properties.voltage;
-            }
-            
-            // Determine if this is an AC wire
-            const isACWire = wire.polarity === "hot" || wire.polarity === "neutral" || wire.polarity === "ground" ||
-                             toComp?.type === "ac-load" || fromComp?.type === "ac-load" ||
-                             toComp?.type === "ac-panel" || fromComp?.type === "ac-panel" ||
-                             toComp?.type === "multiplus" || fromComp?.type === "multiplus" ||
-                             toComp?.type === "phoenix-inverter" || fromComp?.type === "phoenix-inverter" ||
-                             toComp?.type === "inverter" || fromComp?.type === "inverter";
-            
-            // AC wires are sized at their own AC voltage, which may be
-            // 120V, 230V or 240V split phase - not always 120V.
-            if (isACWire) {
-              voltage = getACVoltage(toComp) || getACVoltage(fromComp);
-            }
-            
-            if (current === 0) {
-              if (toComp && (toComp.type === "dc-load" || toComp.type === "ac-load")) {
-                const loadWatts = (toComp.properties?.watts || toComp.properties?.power || 0) as number;
-                // AC loads use 120V, DC loads use component voltage or system voltage
-                const loadVoltage = toComp.type === "ac-load" ? getACVoltage(toComp) : (toComp.properties?.voltage as number || voltage);
-                if (loadWatts > 0 && loadVoltage > 0) {
-                  current = loadWatts / loadVoltage;
-                }
-              } else if (fromComp && (fromComp.type === "dc-load" || fromComp.type === "ac-load")) {
-                const loadWatts = (fromComp.properties?.watts || fromComp.properties?.power || 0) as number;
-                // AC loads use 120V, DC loads use component voltage or system voltage
-                const loadVoltage = fromComp.type === "ac-load" ? getACVoltage(fromComp) : (fromComp.properties?.voltage as number || voltage);
-                if (loadWatts > 0 && loadVoltage > 0) {
-                  current = loadWatts / loadVoltage;
-                }
-              }
-            }
-            
-            if (current > 0 && wire.length) {
-              const calc = calculateWireSize({
-                current,
-                length: wire.length,
-                voltage,
-                conductorMaterial: (wire as any).conductorMaterial || "copper",
-                currentGauge: wire.gauge, // Pass current gauge to prevent recommending smaller
-              });
-              
-              finalWireCalculations.push({
-                wireId: wire.id,
-                fromComponent: fromComp?.name || wire.fromComponentId,
-                toComponent: toComp?.name || wire.toComponentId,
-                currentGauge: wire.gauge,
-                recommendedGauge: calc.recommendedGauge,
-                voltageDrop: calc.voltageDropPercent,
-                current,
-                length: wire.length,
-              });
-            }
-          } catch (err) {
-            // Skip wires that can't be calculated
-          }
-        }
-      }
-
-      // Build final wire sizing issues
-      const finalWireSizingIssues: string[] = [];
-      finalWireCalculations.forEach((calc: any) => {
-        if (calc.currentGauge !== calc.recommendedGauge) {
-          finalWireSizingIssues.push(
-            `Wire ${calc.fromComponent} → ${calc.toComponent}: Current gauge ${calc.currentGauge} should be ${calc.recommendedGauge} (${calc.current.toFixed(1)}A, ${calc.length}ft, ${calc.voltageDrop.toFixed(2)}% voltage drop)`
-          );
-        }
-        if (calc.voltageDrop > 3) {
-          finalWireSizingIssues.push(
-            `Wire ${calc.fromComponent} → ${calc.toComponent}: Excessive voltage drop ${calc.voltageDrop.toFixed(2)}% (max 3%) - use larger gauge or shorten run`
-          );
-        } else if (calc.voltageDrop > 2.5) {
-          finalWireSizingIssues.push(
-            `Wire ${calc.fromComponent} → ${calc.toComponent}: High voltage drop ${calc.voltageDrop.toFixed(2)}% - consider larger gauge`
-          );
-        }
-      });
-
-      // Build final validation feedback
-      const finalValidationFeedback = bestDesign.validation ? {
-        score: bestDesign.validation.score,
-        errors: bestDesign.validation.issues.filter((i: any) => i.severity === 'error').map((i: any) => i.message),
-        warnings: bestDesign.validation.issues.filter((i: any) => i.severity === 'warning').map((i: any) => i.message),
-        wireSizingIssues: finalWireSizingIssues,
-        suggestions: bestDesign.validation.issues.filter((i: any) => i.suggestion).map((i: any) => i.suggestion),
-      } : undefined;
-
-      aiSession.assertValidFallback(bestDesign.validation, minQualityScore);
+      const finalValidationFeedback = reviewFeedback(bestDesign);
+      aiSession.assertValidFallback(bestDesign.review, minQualityScore, bestDesign.requirementCheck);
 
       // Log success to observability with full debugging info
       await observabilityStorage.logAIRequest({
@@ -2080,7 +1439,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         systemVoltage,
         success: true,
         durationMs: Date.now() - startTime,
-        iterations: maxIterations,
+        iterations: attemptedIterations,
         qualityScore: bestScore,
         componentCount: bestDesign.components?.length || 0,
         wireCount: bestDesign.wires?.length || 0,
@@ -2091,6 +1450,10 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         validationFeedback: finalValidationFeedback,
         iterationHistory: iterationHistory,
         response: {
+          attemptContext: { ...requirementContext, skillVersion: systemDesignSkill.version },
+          requirements: requirementContext.requirements,
+          requirementCheck: bestDesign?.requirementCheck,
+          runStatus: bestDesign?.runStatus, review: bestDesign?.review, stopReason: correctionStopReason ?? runBudget.abortCause() ?? "iteration-budget",
           components: bestDesign.components,
           wires: bestDesign.wires,
           description: bestDesign.description,
@@ -2098,12 +1461,14 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         },
       });
 
+      annotateCandidate(bestDesign, requirementContext);
       sendEvent('complete', {
         ...aiSession.responseMetadata,
         ...bestDesign,
         iterationHistory,
-        finalIteration: maxIterations,
-        achievedQualityThreshold: bestScore >= minQualityScore
+        finalIteration: attemptedIterations,
+        stopReason: correctionStopReason ?? runBudget.abortCause() ?? "iteration-budget",
+        achievedQualityThreshold: candidateDecision(bestDesign, minQualityScore).reason === "quality-threshold"
       });
       res.end();
 
@@ -2122,17 +1487,22 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
         prompt: req.body.prompt || "",
         systemVoltage: req.body.systemVoltage || 12,
         success: false,
+        iterations: attemptedIterations, iterationHistory: requestHistory, response: { attemptContext, abortCause: error.abortCause ?? aiSession?.metadata.aiRouting.abortCause, field: error.field, stopReason: error.abortCause ?? "request-failed" },
         durationMs: Date.now() - startTime,
         errorMessage: error.message,
         ...aiSession?.metadata,
         model: aiModel,
       });
       
+      if (!res.headersSent) return res.status([400, 422, 504].includes(error.status) ? error.status : 500).json({ error: error.message, field: error.field, abortCause: error.abortCause });
+      if (res.destroyed || res.writableEnded) return;
       res.write(`event: error\n`);
-      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: error.message, abortCause: error.abortCause, iterations: attemptedIterations })}\n\n`);
       res.end();
     }
   });
+
+  registerInstallationPackageRoute(app);
 
   // Export endpoints - POST versions for current design (no save required)
   app.post("/api/export/shopping-list", async (req, res) => {
@@ -2163,7 +1533,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
       const schematic = { components, wires, systemVoltage, name };
       const report = generateSystemReport(schematic as any, wireGaugeFormat, lengthUnit);
       res.setHeader("Content-Type", "text/plain");
-      res.setHeader("Content-Disposition", `attachment; filename="${name}-report.txt"`);
+      res.attachment(`${name}-report.txt`);
       res.send(report);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2194,7 +1564,7 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
       const csv = generateCSV(items);
 
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-shopping-list.csv"`);
+      res.attachment(`${schematic.name}-shopping-list.csv`);
       res.send(csv);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2223,97 +1593,14 @@ Please fix ALL wire errors/warnings and follow wire calculation recommendations 
       const report = generateSystemReport(schematic);
 
       res.setHeader("Content-Type", "text/plain");
-      res.setHeader("Content-Disposition", `attachment; filename="${schematic.name}-report.txt"`);
+      res.attachment(`${schematic.name}-report.txt`);
       res.send(report);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  // User designs endpoints (requires authentication)
-  app.get("/api/designs", requireAuth, async (req, res) => {
-    try {
-      const user = req.user as AuthUser;
-      const designs = await userDesignsStorage.getAll(user.id);
-      res.json(designs);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/designs/:id", requireAuth, async (req, res) => {
-    try {
-      const user = req.user as AuthUser;
-      const design = await userDesignsStorage.getById(user.id, req.params.id);
-      if (!design) {
-        return res.status(404).json({ error: "Design not found" });
-      }
-      res.json(design);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/designs", requireAuth, async (req, res) => {
-    try {
-      const user = req.user as AuthUser;
-      const { name, description, systemVoltage, components, wires, thumbnail } = req.body;
-
-      if (!name || !name.trim()) {
-        return res.status(400).json({ error: "Design name is required" });
-      }
-
-      const design = await userDesignsStorage.create(user.id, {
-        name: name.trim(),
-        description: description?.trim(),
-        systemVoltage: systemVoltage || 12,
-        components: components || [],
-        wires: wires || [],
-        thumbnail,
-      });
-
-      res.json(design);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.put("/api/designs/:id", requireAuth, async (req, res) => {
-    try {
-      const user = req.user as AuthUser;
-      const { name, description, systemVoltage, components, wires, thumbnail } = req.body;
-
-      const design = await userDesignsStorage.update(user.id, req.params.id, {
-        name: name?.trim(),
-        description: description?.trim(),
-        systemVoltage,
-        components,
-        wires,
-        thumbnail,
-      });
-
-      if (!design) {
-        return res.status(404).json({ error: "Design not found" });
-      }
-
-      res.json(design);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete("/api/designs/:id", requireAuth, async (req, res) => {
-    try {
-      const user = req.user as AuthUser;
-      const deleted = await userDesignsStorage.delete(user.id, req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Design not found" });
-      }
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
+  registerDesignRoutes(app, requireAuth);
 
   // Custom component definitions (Phase 1: personal, private only).
   // Owner-scoped throughout - a user can only read/edit/delete their own.

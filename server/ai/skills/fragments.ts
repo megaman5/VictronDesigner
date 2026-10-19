@@ -148,6 +148,7 @@ export function wiringRulesFragment(): string {
     "- Use bus bars when 3+ connections of the same polarity are needed; never mix polarities on one bar",
     "- Battery positive must connect DIRECTLY to a fuse or dc-breaker",
     "- Every wire needs fromComponentId, toComponentId, fromTerminal, toTerminal, polarity, gauge and length",
+    "- length is the one-way cable run in feet. Use the user's supplied lengths; otherwise estimate a practical installation route with service slack. Size the wire gauge using that length. Estimates are normal editable design values, not missing data. Preserve existing lengths unless the user requests a length or routing change.",
     '- polarity is one of "positive", "negative", "hot", "neutral", "ground"',
     "- polarity MUST match the terminal it lands on:",
     '  * terminal contains "hot" -> polarity "hot"',

@@ -81,7 +81,7 @@ export const benchmarkStorage = {
       judgeDetails: result.judgeDetails ?? null,
       errorMessage: result.errorMessage ?? null,
       issues: result.issues ?? null,
-      output: result.output ?? null,
+      output: result.output ? { ...(result.output as object), _evaluation: { diagnostics: result.diagnostics, provenance: result.provenance, stopReason: result.stopReason, electricalPassed: result.electricalPassed, requirementsComplete: result.requirementsComplete, unresolvedCount: result.unresolvedCount, firstAcceptableDurationMs: result.firstAcceptableDurationMs } } : { _evaluation: { diagnostics: result.diagnostics, provenance: result.provenance, stopReason: result.stopReason } },
     });
 
     await db

@@ -246,6 +246,7 @@ export function registerAIRoutes(app: Express): void {
         apiKey,
         baseUrl,
         maxOutputTokens,
+        reasoningEffort,
         caseIds,
         judge = false,
         judges,
@@ -255,6 +256,7 @@ export function registerAIRoutes(app: Express): void {
         return res.status(400).json({ error: "suiteId and model are required" });
       }
       getSuite(suiteId); // throws on unknown suite
+      if (reasoningEffort !== undefined && !['low', 'medium', 'high'].includes(reasoningEffort)) return res.status(400).json({ error: "reasoningEffort must be low, medium, or high" });
 
       if (repeats < 1 || repeats > 10) {
         return res.status(400).json({ error: "repeats must be between 1 and 10" });
@@ -273,6 +275,7 @@ export function registerAIRoutes(app: Express): void {
         temperature,
         seed,
         maxOutputTokens,
+        reasoningEffort,
         caseIds: Array.isArray(caseIds) ? caseIds : undefined,
         judge: Boolean(judge),
         judges: Array.isArray(judges) ? judges : undefined,

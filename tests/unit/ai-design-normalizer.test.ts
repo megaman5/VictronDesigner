@@ -98,6 +98,24 @@ describe('AI design normalizer - terminal repair', () => {
 });
 
 describe('AI design normalizer - wire sizing', () => {
+  it('sizes against the saved physical length after repairing terminal IDs', () => {
+    const components = [comp('b', 'battery', { voltage: 12 }), comp('l', 'dc-load', { watts: 120, voltage: 12 })];
+    const original = wire('saved', 'b', 'positive', 'l', 'positive', 'positive', '18 AWG', 50);
+    const proposed = { ...original, id: 'new', toTerminal: 'load-positive', length: 1 };
+    const result = normalizeAIDesign(components, [proposed], 12, { existingWires: [original] });
+    const measured = normalizeAIDesign(components, [original], 12);
+    expect(result.wires[0]).toMatchObject({ length: 50, lengthEstimated: false, gauge: measured.wires[0].gauge });
+    expect(result.wires[0].gauge).not.toBe(normalizeAIDesign(components, [{ ...original, length: 1 }], 12).wires[0].gauge);
+    expect(proposed.length).toBe(1);
+  });
+
+  it('sizes requested length changes and marks the new length estimated', () => {
+    const components = [comp('b', 'battery', { voltage: 12 }), comp('l', 'dc-load', { watts: 120, voltage: 12 })];
+    const original = wire('saved', 'b', 'positive', 'l', 'positive', 'positive', '18 AWG', 1);
+    const result = normalizeAIDesign(components, [{ ...original, length: 50 }], 12, { existingWires: [original], allowWireLengthChanges: true });
+    expect(result.wires[0]).toMatchObject({ length: 50, lengthEstimated: true });
+    expect(result.wires[0].gauge).not.toBe('18 AWG');
+  });
   it('upsizes a wire the model undersized', () => {
     const components = [
       comp('b1', 'battery', { voltage: 12, capacity: 400, batteryType: 'LiFePO4' }),
@@ -131,7 +149,7 @@ describe('AI design normalizer - wire sizing', () => {
     // so a normalizer that assumed 120V would over-size the 240V circuit.
     const at = (acVoltage: number) => {
       const components = [
-        comp('i1', 'quattro', { watts: 5000, acOutputVoltage: 'split-120-240' }),
+        comp('i1', 'quattro', { watts: 5000, acOutputVoltage: String(acVoltage) }),
         comp('l1', 'ac-load', { watts: 3600, acVoltage }),
       ];
       const wires = [wire('w1', 'i1', 'ac-out-hot', 'l1', 'hot', 'hot', '14 AWG', 50)];

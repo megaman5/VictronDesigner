@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -149,11 +149,16 @@ interface AILog {
   errorMessage?: string;
   model?: string;
   response?: {
+    runStatus?: { electricalCheck?: string; requirementsCheck?: string; electricalErrorCount?: number; unresolvedCount?: number; checkedRequirementCount?: number };
+    stopReason?: string;
+    abortCause?: string;
+    review?: { issues: Array<{message: string; severity: string; category: string}> };
     components?: any[];
     wires?: any[];
     description?: string;
     recommendations?: string[];
     _debug?: {
+      aiRouting?: unknown;
       systemMessage?: string;
       userMessage?: string;
       rawResponse?: string;
@@ -198,6 +203,10 @@ interface ErrorLog {
 
 interface AIBreakdown {
   [action: string]: {
+    electricalPassed?: number;
+    electricalIncomplete?: number;
+    electricalFailed?: number;
+    requirementsComplete?: number;
     total: number;
     successful: number;
     failed: number;
@@ -326,14 +335,14 @@ export default function ObservabilityAdmin() {
 
   const handleCleanup = async () => {
     if (!confirm("This will delete data older than 90 days. Continue?")) return;
-    
+
     try {
       const response = await fetch("/api/admin/observability/cleanup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ retentionDays: 90 }),
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         toast({
@@ -495,7 +504,7 @@ export default function ObservabilityAdmin() {
                 </CardTitle>
               </CardHeader>
             </Card>
-            
+
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Unique Visitors</CardDescription>
@@ -505,7 +514,7 @@ export default function ObservabilityAdmin() {
                 </CardTitle>
               </CardHeader>
             </Card>
-            
+
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>AI Requests Today</CardDescription>
@@ -515,19 +524,19 @@ export default function ObservabilityAdmin() {
                 </CardTitle>
               </CardHeader>
             </Card>
-            
+
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>AI Success Rate</CardDescription>
+                <CardDescription>AI Completion Rate</CardDescription>
                 <CardTitle className="text-2xl flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-emerald-500" />
-                  {stats.totalAIRequests > 0 
+                  {stats.totalAIRequests > 0
                     ? Math.round((stats.successfulAIRequests / stats.totalAIRequests) * 100)
                     : 0}%
                 </CardTitle>
               </CardHeader>
             </Card>
-            
+
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Avg AI Duration</CardDescription>
@@ -537,7 +546,7 @@ export default function ObservabilityAdmin() {
                 </CardTitle>
               </CardHeader>
             </Card>
-            
+
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Avg Quality Score</CardDescription>
@@ -611,7 +620,7 @@ export default function ObservabilityAdmin() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Cpu className="h-4 w-4" />
-                  AI Requests & Success Rate
+                  AI Requests & Completion Rate
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -626,7 +635,7 @@ export default function ObservabilityAdmin() {
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar yAxisId="left" dataKey="aiRequests" name="AI Requests" fill="#a855f7" radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="aiSuccessRate" name="Success Rate %" stroke="#10b981" strokeWidth={2} dot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="aiSuccessRate" name="Completion Rate %" stroke="#10b981" strokeWidth={2} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -748,12 +757,16 @@ export default function ObservabilityAdmin() {
                       <div className="font-semibold mb-2">{action}</div>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>Total: <span className="font-medium">{data.total}</span></div>
-                        <div>Success: <span className="font-medium text-green-600">{data.successful}</span></div>
+                        <div>Completed: <span className="font-medium text-green-600">{data.successful}</span></div>
+                        <div>Electrical passed: {data.electricalPassed ?? "?"}</div>
+                        <div>Electrical incomplete: {data.electricalIncomplete ?? "?"}</div>
+                        <div>Electrical failed: {data.electricalFailed ?? "?"}</div>
+                        <div>Declared requirements passed: {data.requirementsComplete ?? "?"}</div>
                         <div>Failed: <span className="font-medium text-red-600">{data.failed}</span></div>
                         <div>Avg Duration: <span className="font-medium">{formatDuration(data.avgDuration)}</span></div>
-                        <div>Avg Quality: <span className="font-medium">{data.avgQuality}</span></div>
+                        <div>Avg legacy score: <span className="font-medium">{data.avgQuality}</span></div>
                         <div>
-                          Success Rate: 
+                          Completion Rate:
                           <span className="font-medium ml-1">
                             {data.total > 0 ? Math.round((data.successful / data.total) * 100) : 0}%
                           </span>
@@ -846,16 +859,18 @@ export default function ObservabilityAdmin() {
                         <TableHead>User</TableHead>
                         <TableHead>IP</TableHead>
                         <TableHead>Action</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>Request</TableHead>
+                        <TableHead>Electrical checks</TableHead>
+                        <TableHead>Requirements</TableHead>
                         <TableHead>Duration</TableHead>
-                        <TableHead>Quality</TableHead>
+                        <TableHead>Legacy score</TableHead>
                         <TableHead>Prompt</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {aiLogs.map((log) => (
-                        <TableRow 
-                          key={log.id} 
+                        <TableRow
+                          key={log.id}
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => setSelectedAILog(log)}
                         >
@@ -881,7 +896,7 @@ export default function ObservabilityAdmin() {
                             {log.success ? (
                               <Badge className="bg-green-500">
                                 <CheckCircle className="h-3 w-3 mr-1" />
-                                Success
+                                Completed
                               </Badge>
                             ) : (
                               <Badge variant="destructive">
@@ -890,6 +905,11 @@ export default function ObservabilityAdmin() {
                               </Badge>
                             )}
                           </TableCell>
+                          <TableCell>
+                            <Badge variant={log.response?.runStatus?.electricalCheck === "failed" ? "destructive" : "outline"}>{log.response?.runStatus?.electricalCheck ?? "Not recorded"}</Badge>
+                            <div className="text-xs text-muted-foreground">{log.response?.runStatus?.electricalErrorCount ?? "?"} errors · {log.response?.runStatus?.unresolvedCount ?? "?"} unresolved</div>
+                          </TableCell>
+                          <TableCell>{log.response?.runStatus?.requirementsCheck ?? "Not recorded"}</TableCell>
                           <TableCell>{formatDuration(log.durationMs)}</TableCell>
                           <TableCell>{log.qualityScore ?? "-"}</TableCell>
                           <TableCell className="max-w-[200px] truncate" title={log.prompt}>
@@ -927,7 +947,7 @@ export default function ObservabilityAdmin() {
                     </TableHeader>
                     <TableBody>
                       {sessions.map((session) => (
-                        <TableRow 
+                        <TableRow
                           key={session.id}
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => setSelectedSession(session)}
@@ -976,7 +996,7 @@ export default function ObservabilityAdmin() {
                         <TableHead>Sessions</TableHead>
                         <TableHead>Unique Visitors</TableHead>
                         <TableHead>AI Requests</TableHead>
-                        <TableHead>AI Success Rate</TableHead>
+                        <TableHead>AI Completion Rate</TableHead>
                         <TableHead>Events</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1073,7 +1093,7 @@ export default function ObservabilityAdmin() {
                       </TableHeader>
                       <TableBody>
                         {errors.map((error) => (
-                          <TableRow 
+                          <TableRow
                             key={error.id}
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => setSelectedError(error)}
@@ -1118,6 +1138,14 @@ export default function ObservabilityAdmin() {
 
           {selectedAILog && (
             <div className="space-y-6">
+              <div className="rounded border p-3 text-sm space-y-1">
+                <p>Electrical checks: {selectedAILog.response?.runStatus?.electricalCheck ?? "Not recorded"} · {selectedAILog.response?.runStatus?.electricalErrorCount ?? "?"} errors · {selectedAILog.response?.runStatus?.unresolvedCount ?? "?"} unresolved</p>
+                <p>Requirements: {selectedAILog.response?.runStatus?.requirementsCheck ?? "Not recorded"} ({selectedAILog.response?.runStatus?.checkedRequirementCount ?? "?"} declared checks)</p>
+                <p>Stopped: {selectedAILog.response?.stopReason ?? "Not recorded"}</p>
+                <p>Abort cause: {selectedAILog.response?.abortCause ?? "See routing diagnostics"}</p>
+                {selectedAILog.response?._debug?.aiRouting != null && <details><summary>Provider attempts and settings</summary><pre className="whitespace-pre-wrap text-xs">{JSON.stringify(selectedAILog.response._debug.aiRouting, null, 2)}</pre></details>}
+                {selectedAILog.response?.review?.issues.map((issue, index) => <p key={index}>{issue.severity}: {issue.message}</p>)}
+              </div>
               {/* Status and Metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
@@ -1126,7 +1154,7 @@ export default function ObservabilityAdmin() {
                     {selectedAILog.success ? (
                       <Badge className="bg-green-500">
                         <CheckCircle className="h-3 w-3 mr-1" />
-                        Success
+                        Completed
                       </Badge>
                     ) : (
                       <Badge variant="destructive">
@@ -1160,7 +1188,7 @@ export default function ObservabilityAdmin() {
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Iterations</div>
-                  <div className="mt-1 font-medium">{selectedAILog.iterations || "-"}</div>
+                  <div className="mt-1 font-medium">{selectedAILog.iterations ?? "-"}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Components</div>
@@ -1301,7 +1329,7 @@ export default function ObservabilityAdmin() {
                   {selectedAILog.response?._debug && Object.keys(selectedAILog.response._debug).length > 0 && (
                     <div className="space-y-4">
                       <h3 className="font-semibold mb-2 text-blue-600 dark:text-blue-400">🔍 Debug Information</h3>
-                      
+
                       {/* System Message */}
                       {selectedAILog.response._debug.systemMessage && (
                         <details className="group">

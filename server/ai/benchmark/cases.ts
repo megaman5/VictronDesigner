@@ -16,6 +16,7 @@ export interface BenchmarkExpectation {
 }
 
 export interface BenchmarkCase {
+  requirements?: import('../../../shared/design-requirements').DesignRequirements;
   id: string;
   prompt: string;
   systemVoltage: number;
@@ -294,9 +295,12 @@ export const WIRING_SUITE: BenchmarkSuite = {
   ],
 };
 
+import { AI_REGRESSION_CASES } from './regression-cases';
+export const AI_REGRESSION_SUITE: BenchmarkSuite = { id: 'ai-regressions', label: 'AI reliability regression cases (2026-10-05)', skillId: 'wire-components', cases: AI_REGRESSION_CASES };
 export const SUITES: Record<string, BenchmarkSuite> = {
   [CORE_SUITE.id]: CORE_SUITE,
   [WIRING_SUITE.id]: WIRING_SUITE,
+  [AI_REGRESSION_SUITE.id]: AI_REGRESSION_SUITE,
 };
 
 export function getSuite(id: string): BenchmarkSuite {

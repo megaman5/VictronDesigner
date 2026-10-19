@@ -1,5 +1,7 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
 import { getComponentTerminals, type Terminal } from "../client/src/lib/terminal-config";
+import { analyzeElectricalDesign } from "../shared/electrical-analysis";
+import { restoreWireLengths } from "./ai/wire-lengths";
 import { solveDcWireCurrents } from "../client/src/lib/dc-current-solver";
 import { calculateWireSize, calculateInverterDCInput, getACVoltage } from "./wire-calculator";
 
@@ -117,7 +119,8 @@ function pickReplacement(
 export function normalizeAIDesign(
   componentsIn: SchematicComponent[],
   wiresIn: Wire[],
-  systemVoltage: number
+  systemVoltage: number,
+  lengths?: { existingWires: Wire[]; allowWireLengthChanges?: boolean }
 ): NormalizedDesign {
   const components = componentsIn.map(c => ({ ...c }));
   const repairs: DesignRepair[] = [];
@@ -246,32 +249,14 @@ export function normalizeAIDesign(
   }
 
   // --- 2. Wire sizing -----------------------------------------------------
-  const dcCurrents = solveDcWireCurrents(components, wires, {
-    systemVoltage,
-    inverterDcInput: (inverterId: string) => {
-      const r = calculateInverterDCInput(inverterId, components, wires, systemVoltage);
-      return {
-        dcInputCurrent: r.dcInputCurrent,
-        maxDCInputCurrent: r.dcInputCurrent,
-      };
-    },
-  });
-
+  // Restore measured lengths after terminal matching, before conductor sizing.
+  if (lengths) restoreWireLengths(wires, lengths.existingWires, lengths.allowWireLengthChanges);
+  const analysis = analyzeElectricalDesign({ components, wires, systemVoltage });
   for (const wire of wires) {
-    const current = currentForWire(wire, components, byId, dcCurrents, systemVoltage);
-    if (!(current > 0) || !wire.length) continue;
-
-    // The AC side is sized at its own voltage, the DC side at system voltage.
-    const isAC = wire.polarity === "hot" || wire.polarity === "neutral";
-    const voltage = isAC ? acVoltageForWire(wire, byId) : systemVoltage;
-
-    const calc = calculateWireSize({
-      current,
-      length: wire.length,
-      voltage,
-      conductorMaterial: (wire as any).conductorMaterial || "copper",
-      currentGauge: wire.gauge, // never recommends smaller than what is there
-    });
+    const value = analysis.wires[wire.id];
+    if (value?.status !== 'known' || !value.calculation || value.calculation.status === 'error') continue;
+    const current = value.sizingCurrentA ?? value.currentA!;
+    const calc = value.calculation;
 
     // calculateWireSize already returns the gauge with an " AWG" suffix
     const recommended = stripAwg(calc.recommendedGauge);
