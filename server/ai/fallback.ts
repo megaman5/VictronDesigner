@@ -23,6 +23,12 @@ export const AI_REQUEST_IDLE_TIMEOUT_MS = 180_000;
 // Non-streaming calls must return the whole design within this; an AI Wire
 // call that would have succeeded hit the old 120s limit.
 export const AI_COMPLETION_TIMEOUT_MS = 180_000;
+// The backup needs this much of the run left to be worth starting: its quick
+// retry took 15-78s per pass. A backup started with 10s left (seen 2026-10-20)
+// can only fail, and its failure used to discard the primary's earlier draft.
+export const AI_FALLBACK_MIN_MS = 60_000;
+// The primary is never cut shorter than this to make room for the backup.
+const AI_PRIMARY_MIN_IDLE_MS = 30_000;
 
 export interface ModelUsage {
   model: string;
@@ -63,6 +69,8 @@ export class AISession {
   readonly primaryModel: string;
   usedFallback = false;
   signal?: AbortSignal;
+  /** Epoch ms when the whole run ends; lets the session keep time for the backup. */
+  deadline?: number;
   private primaryFailure?: string;
   private usage: ModelUsage[] = [];
   private attempts: any[] = [];
@@ -85,8 +93,10 @@ export class AISession {
     return { aiModel: this.model, aiProvider: inferProvider(this.model), usedFallback: this.usedFallback };
   }
 
-  assertValidFallback(validation: { score: number; issues: { severity: string; message: string; category?: string }[] } | null | undefined, minScore: number, requirementCheck?: { complete: boolean; issues?: { message: string }[] }) {
-    if (!this.usedFallback) return;
+  assertValidFallback(validation: { score: number; issues: { severity: string; message: string; category?: string }[] } | null | undefined, minScore: number, requirementCheck?: { complete: boolean; issues?: { message: string }[] }, producedByBackup = this.usedFallback) {
+    // Only the backup's own designs face this gate. A primary draft from an
+    // earlier pass is returned with its issues listed, as any primary result.
+    if (!producedByBackup) return;
     const errors = validation?.issues.filter(issue => issue.severity === "error") ?? [];
     const unresolved = validation?.issues.filter(issue => issue.category === 'unresolved') ?? [];
     // Name the reason that actually failed: a 97-point design rejected for an
@@ -111,8 +121,16 @@ export class AISession {
     row.outputTokens += outputTokens;
   }
 
+  /** On late passes, cut the primary early enough that the backup still fits. */
+  private primaryTimeout(limit: number): number {
+    if (this.usedFallback || this.deadline === undefined || !canUseAIFallback()) return limit;
+    const primaryShare = this.deadline - Date.now() - AI_FALLBACK_MIN_MS;
+    return primaryShare >= AI_PRIMARY_MIN_IDLE_MS ? Math.min(limit, primaryShare) : limit;
+  }
+
   private switchToFallback(error: any): boolean {
     if (this.signal?.aborted) return false;
+    if (this.deadline !== undefined && this.deadline - Date.now() < AI_FALLBACK_MIN_MS) return false;
     if (this.usedFallback || !canUseAIFallback() || !shouldFallback(error)) return false;
     this.primaryFailure = redactSecrets(describeAIError(error));
     this.model = AI_FALLBACK_MODEL;
@@ -147,7 +165,7 @@ export class AISession {
   private async request(body: ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming): Promise<any> {
     if (!hasKeyForModel(this.model)) throw Object.assign(new Error(`No API key configured for ${this.model}`), { status: 401 });
     const idle = new AbortController();
-    const timeoutMs = body.stream ? AI_REQUEST_IDLE_TIMEOUT_MS : AI_COMPLETION_TIMEOUT_MS;
+    const timeoutMs = this.primaryTimeout(body.stream ? AI_REQUEST_IDLE_TIMEOUT_MS : AI_COMPLETION_TIMEOUT_MS);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const touch = () => {
       clearTimeout(timer);
@@ -165,7 +183,7 @@ export class AISession {
         this.abortCause = this.signal?.aborted ? this.signal.reason?.abortCause ?? 'client-cancelled' : 'provider-timeout';
         attempt.abortCause = this.abortCause;
         error.abortCause = this.abortCause;
-        error.message = this.abortCause === 'provider-timeout' ? `AI provider sent no response data for ${timeoutMs / 1000} seconds.` : this.signal?.reason?.message ?? 'AI request cancelled.';
+        error.message = this.abortCause === 'provider-timeout' ? `AI provider sent no response data for ${Math.round(timeoutMs / 1000)} seconds.` : this.signal?.reason?.message ?? 'AI request cancelled.';
         if (this.signal?.reason?.status) error.status = this.signal.reason.status;
       }
       return error;

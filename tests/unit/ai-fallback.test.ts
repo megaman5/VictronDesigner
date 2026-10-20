@@ -8,7 +8,7 @@ vi.mock("../../server/ai/model-client", () => ({
   // The backup is the same model asked to think briefly; route on that.
   clientForModel: () => ({ chat: { completions: { create: (body: any, options: any) => (body.reasoning_effort === "low" ? mocks.backup : mocks.primary)(body, options) } } }),
 }));
-import { AISession, AI_FALLBACK_MODEL, AI_FALLBACK_REASONING_EFFORT, AI_REQUEST_IDLE_TIMEOUT_MS, AI_COMPLETION_TIMEOUT_MS, shouldFallback } from "../../server/ai/fallback";
+import { AISession, AI_FALLBACK_MODEL, AI_FALLBACK_REASONING_EFFORT, AI_FALLBACK_MIN_MS, AI_REQUEST_IDLE_TIMEOUT_MS, AI_COMPLETION_TIMEOUT_MS, shouldFallback } from "../../server/ai/fallback";
 import { estimateCostUsd } from "../../server/ai/pricing";
 
 const body = { model: "gemini-3.8-flash", messages: [{ role: "user" as const, content: "Return JSON" }] };
@@ -225,5 +225,52 @@ describe("AI fallback routing", () => {
     const thrown = (() => { try { session.assertValidFallback({ score: 97, issues: [] }, 70, check); } catch (error: any) { return error.message; } })();
     expect(thrown).toContain("Missing: Lynx Distributor");
     expect(thrown).not.toContain("score");
+  });
+  it("returns a primary draft with its issues even after a later pass used the backup", async () => {
+    // 2026-10-20: pass 1 (Gemini) drew a design, pass 2 stalled, the backup
+    // ran out of time, and the strict backup gate threw away Gemini's draft.
+    const session = new AISession(body.model);
+    mocks.primary.mockResolvedValueOnce(completion);
+    await session.create(body);
+    const primaryDraftFromBackupEra = session.usedFallback;
+    await session.create(body);
+    expect(session.usedFallback).toBe(true);
+    const flawed = { score: 40, issues: [{ severity: "error", message: "Fuse undersized" }] };
+    expect(() => session.assertValidFallback(flawed, 70, undefined, primaryDraftFromBackupEra)).not.toThrow();
+    expect(() => session.assertValidFallback(flawed, 70, undefined, true)).toThrow("Fuse undersized");
+  });
+  it("does not start the backup with too little of the run left", async () => {
+    const session = new AISession(body.model);
+    session.deadline = Date.now() + AI_FALLBACK_MIN_MS - 1_000;
+    await expect(session.create(body)).rejects.toMatchObject({ status: 402 });
+    expect(mocks.backup).not.toHaveBeenCalled();
+  });
+  it("cuts a late primary pass early enough for the backup to fit", async () => {
+    vi.useFakeTimers();
+    const session = new AISession(body.model);
+    session.deadline = Date.now() + 190_000; // pass 2 of the 2026-10-20 run
+    mocks.primary.mockImplementation((_body, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new APIUserAbortError()), { once: true });
+    }));
+    mocks.backup.mockImplementation(() => chunks());
+    const result = collect(await session.create({ ...body, stream: true }));
+    await vi.advanceTimersByTimeAsync(190_000 - AI_FALLBACK_MIN_MS);
+    expect((await result)[0]).toEqual(chunk('{"ok":true}'));
+    expect(session.metadata.aiRouting.primaryFailure).toBe("AI provider sent no response data for 130 seconds.");
+  });
+  it("keeps the full idle limit on early passes", async () => {
+    vi.useFakeTimers();
+    const session = new AISession(body.model);
+    session.deadline = Date.now() + 280_000;
+    mocks.primary.mockImplementation((_body, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new APIUserAbortError()), { once: true });
+    }));
+    mocks.backup.mockImplementation(() => chunks());
+    const result = collect(await session.create({ ...body, stream: true }));
+    await vi.advanceTimersByTimeAsync(AI_REQUEST_IDLE_TIMEOUT_MS - 1);
+    expect(mocks.backup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await result;
+    expect(mocks.backup).toHaveBeenCalledOnce();
   });
 });

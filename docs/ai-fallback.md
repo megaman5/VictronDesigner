@@ -35,7 +35,17 @@ backup JSON are never concatenated.
 
 Backup designs must meet the requested quality score (70 by default) and have
 no validation errors. Otherwise the API returns an error, naming the actual
-reason, and leaves the user's existing design in place.
+reason, and leaves the user's existing design in place. The gate applies only
+to designs the backup itself produced: a primary draft from an earlier pass is
+returned with its issues listed, like any primary result. Likewise, once a run
+has a usable draft, a later provider failure (including both models failing)
+ends the run with that draft instead of an error.
+
+The backup is not started with less than 60 seconds of the run left, and on
+late passes the primary's idle limit shrinks (never below 30 seconds) so that
+60 seconds remain for it. On 2026-10-20 a pass-2 stall left the backup 10
+seconds; it timed out, and the strict gate then discarded Gemini's pass-1
+draft, so the user got only an error.
 
 Why not the free OpenRouter model any more: `nemotron-3-super-120b-a12b:free`
 was the backup until Oct 2026 and failed all 21 production fallbacks between

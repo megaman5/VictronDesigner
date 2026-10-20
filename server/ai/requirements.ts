@@ -96,5 +96,5 @@ export function createAIRunBudget(res: Response, requestedIterations: unknown, t
   res.once('finish', cleanup);
   const requested = Number(requestedIterations);
   const maxIterations = Number.isFinite(requested) ? Math.min(6, Math.max(1, Math.floor(requested))) : 6;
-  return { signal: controller.signal, maxIterations, abortCause: () => controller.signal.reason?.abortCause, exhausted: () => controller.signal.aborted };
+  return { signal: controller.signal, deadline: Date.now() + timeoutMs, maxIterations, abortCause: () => controller.signal.reason?.abortCause, exhausted: () => controller.signal.aborted };
 }

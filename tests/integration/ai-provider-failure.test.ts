@@ -148,11 +148,33 @@ describe("Production AI endpoints during a billing outage", () => {
   });
   it("stops streaming retries immediately when both providers fail", async () => {
     vi.stubEnv("AI_FALLBACK_ENABLED", "true");
-    mocks.create.mockImplementation(async body => { throw Object.assign(new Error(body.model === backupModel ? "Backup rate limited" : "Credits depleted"), { status: body.model === backupModel ? 429 : 402 }); });
+    mocks.create.mockImplementation(async body => { const backup = body.reasoning_effort === "low"; throw Object.assign(new Error(backup ? "Backup rate limited" : "Credits depleted"), { status: backup ? 429 : 402 }); });
     const { text } = await post("/api/ai-generate-system-stream", { prompt: "Test system", maxIterations: 6 });
     expect(text).toContain("Primary AI failed:"); expect(text).toContain("Backup rate limited");
     expect(mocks.create).toHaveBeenCalledTimes(2); expect(mocks.log).toHaveBeenCalledOnce();
   });
+
+  it.each(["/api/ai-generate-system-iterative", "/api/ai-generate-system-stream", "/api/ai-wire-components"])(
+    "%s keeps the primary's earlier draft when a later pass and the backup both fail", async endpoint => {
+      // 2026-10-20: Gemini drew a flawed design on pass 1, pass 2 stalled, and the
+      // user got only "backup AI could not produce a design" - the draft was lost.
+      vi.stubEnv("AI_FALLBACK_ENABLED", "true");
+      const wire = { fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: 1 };
+      const content = JSON.stringify({ ...design, wires: [wire] });
+      let primaryCalls = 0;
+      mocks.create.mockImplementation(async body => {
+        if (body.reasoning_effort === "low") throw Object.assign(new Error("Backup rate limited"), { status: 429 });
+        if (++primaryCalls > 1) throw Object.assign(new Error("Provider unavailable"), { status: 503 });
+        if (body.stream) return (async function* () { yield { choices: [{ delta: { content } }] }; })();
+        return { choices: [{ message: { content } }] };
+      });
+      mocks.validate.mockReturnValue({ score: 40, issues: [{ severity: "error", category: "electrical", message: "Fuse undersized" }] });
+      const { response, text } = await post(endpoint, { prompt: "Test system", components: design.components, maxIterations: 3 });
+      expect(response.status).toBe(200);
+      expect(text).not.toContain("backup AI could not produce");
+      expect(text).toContain("battery-1");
+      expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
 
   it("sends the previous wiring and validator feedback on the next correction pass", async () => {
     const wire = { id: "previous-wire", fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: 1 };

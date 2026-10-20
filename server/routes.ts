@@ -321,7 +321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiModel = event.model;
         recordFallbackFailure(req, "generate-system", event);
       });
-      aiSession.signal = runBudget.signal;
+      aiSession.signal = runBudget.signal; aiSession.deadline = runBudget.deadline;
       const { prompt, systemVoltage = 12 }: AISystemRequest = req.body;
 
       if (!hasKeyForModel(aiModel) && !canUseAIFallback()) {
@@ -512,7 +512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(result);
       }
       const maxIterations = runBudget.maxIterations;
-      aiSession.signal = runBudget.signal;
+      aiSession.signal = runBudget.signal; aiSession.deadline = runBudget.deadline;
       const correctionTracker = new AICorrectionTracker();
       let correctionStopReason: string | undefined;
       let bestCandidate: any = null;
@@ -572,7 +572,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
         } catch (error: any) {
           iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: describeAIError(error), abortCause: error.abortCause, model: aiModel });
-          if (!bestCandidate || error.fallbackExhausted || isPermanentAIError(error)) throw error;
+          // With a usable draft in hand, any provider failure ends the run with that draft.
+          if (!bestCandidate) throw error;
           correctionStopReason = error.abortCause ?? "provider-error";
           break;
         }
@@ -636,7 +637,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mergedWiresWithIds = normalizeAIDesign(components, repairCandidate.wires, systemVoltage, { existingWires: wires, allowWireLengthChanges: requirementContext.allowWireLengthChanges }).wires;
         mergedWires = mergedWiresWithIds;
         let validation = validateDesign(components, mergedWiresWithIds, systemVoltage);
-        const candidate = annotateCandidate({ components, wires: mergedWiresWithIds, validation }, requirementContext);
+        const candidate = annotateCandidate({ components, wires: mergedWiresWithIds, validation, producedByBackup: aiSession.usedFallback }, requirementContext);
         const candidateCheck = candidate.requirementCheck;
         const score = validation.score;
         
@@ -679,7 +680,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!bestCandidate) throw new Error("No usable AI wiring candidate was returned.");
       bestCandidate.stopReason = correctionStopReason ?? runBudget.abortCause() ?? "iteration-budget";
-      aiSession.assertValidFallback(bestCandidate.review, minQualityScore, bestCandidate.requirementCheck);
+      aiSession.assertValidFallback(bestCandidate.review, minQualityScore, bestCandidate.requirementCheck, bestCandidate.producedByBackup);
 
       // Log to observability
       await observabilityStorage.logAIRequest({
@@ -782,7 +783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const maxIterations = runBudget.maxIterations;
-      aiSession.signal = runBudget.signal;
+      aiSession.signal = runBudget.signal; aiSession.deadline = runBudget.deadline;
       let bestDesign: any = null;
       let stoppedForRepeatedCandidate = false;
       let correctionStopReason: string | undefined;
@@ -795,7 +796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         finalIteration = attemptedIterations;
         bestDesign.stopReason = correctionStopReason ?? runBudget.abortCause() ?? (achievedQualityThreshold ? "quality-threshold" : "iteration-budget");
         achievedQualityThreshold = achievedQualityThreshold && candidateDecision(bestDesign, minQualityScore).reason === "quality-threshold";
-        aiSession!.assertValidFallback(bestDesign?.review, minQualityScore, bestDesign?.requirementCheck);
+        aiSession!.assertValidFallback(bestDesign?.review, minQualityScore, bestDesign?.requirementCheck, bestDesign?.producedByBackup);
         await observabilityStorage.logAIRequest({
           ...tokenUsage, ...aiSession!.metadata, visitorId: getVisitorId(req),
           userId: (req.user as AuthUser)?.id, userEmail: (req.user as AuthUser)?.email,
@@ -836,7 +837,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         } catch (error: any) {
           iterationHistory.push({ iteration: iteration + 1, durationMs: Date.now() - iterationStartedAt, error: describeAIError(error), abortCause: error.abortCause, model: aiModel });
-          if (!bestDesign || error.fallbackExhausted || isPermanentAIError(error)) throw error;
+          // With a usable draft in hand, any provider failure ends the run with that draft.
+          if (!bestDesign) throw error;
           correctionStopReason = error.abortCause ?? "provider-error";
           break;
         }
@@ -945,7 +947,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           bestDesign = {
             ...response,
             validation,
-            visualFeedback
+            visualFeedback,
+            producedByBackup: aiSession!.usedFallback,
           };
         }
 
@@ -1038,7 +1041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const maxIterations = runBudget.maxIterations;
-      aiSession.signal = runBudget.signal;
+      aiSession.signal = runBudget.signal; aiSession.deadline = runBudget.deadline;
       let bestDesign: any = null;
       let stoppedForRepeatedCandidate = false;
       let correctionStopReason: string | undefined;
@@ -1295,7 +1298,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           bestDesign = {
             ...response,
             validation,
-            visualFeedback
+            visualFeedback,
+            producedByBackup: aiSession!.usedFallback,
           };
         }
 
@@ -1315,7 +1319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // All supported electrical and declared requirement checks must pass.
         if (decision.stop && decision.reason === "quality-threshold") {
           const validationFeedback = reviewFeedback(bestDesign);
-          aiSession.assertValidFallback(bestDesign.review, minQualityScore, bestDesign.requirementCheck);
+          aiSession.assertValidFallback(bestDesign.review, minQualityScore, bestDesign.requirementCheck, bestDesign.producedByBackup);
 
           // Log success to observability with full debugging info
           await observabilityStorage.logAIRequest({
@@ -1370,7 +1374,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             iteration--; // Retry this pass with an empty buffer and the sticky backup model.
             continue;
           }
-          if (iterationError.fallbackExhausted || isPermanentAIError(iterationError)) throw iterationError;
+          const providerGaveUp = iterationError.fallbackExhausted || isPermanentAIError(iterationError);
+          // With a usable draft in hand, return it rather than failing the request.
+          if (providerGaveUp && !bestDesign) throw iterationError;
           console.error(`[SSE] Iteration ${iteration + 1} failed:`, iterationError);
           iterationHistory.push({
             iteration: iteration + 1, score: 0, errorCount: 1, warningCount: 0, durationMs: Date.now() - iterationStartedAt, abortCause: iterationError.abortCause,
@@ -1384,7 +1390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isBest: false,
             error: iterationError.message || "Iteration failed"
           });
-          if (iterationError.abortCause) { correctionStopReason = iterationError.abortCause; break; }
+          if (iterationError.abortCause || providerGaveUp) { correctionStopReason = iterationError.abortCause ?? "provider-error"; break; }
           // Continue after a recoverable parser/provider error.
         }
       }
@@ -1425,7 +1431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const finalValidationFeedback = reviewFeedback(bestDesign);
-      aiSession.assertValidFallback(bestDesign.review, minQualityScore, bestDesign.requirementCheck);
+      aiSession.assertValidFallback(bestDesign.review, minQualityScore, bestDesign.requirementCheck, bestDesign.producedByBackup);
 
       // Log success to observability with full debugging info
       await observabilityStorage.logAIRequest({
