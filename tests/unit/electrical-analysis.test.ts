@@ -90,7 +90,7 @@ describe('Shared electrical analysis', () => {
       w('b', 'b', 'shunt', 'negative', 'battery-minus'), w('load', 'shunt', 'load', 'system-minus', 'negative')]).wires;
     // Joined on one side only, so not a bank: each battery's own wire is
     // between two supplies and stays flagged...
-    expect(values.a.status).toBe('unsupported'); expect(values.b.status).toBe('unsupported');
+    expect(values.a.status).not.toBe('known'); expect(values.b.status).not.toBe('known');
     expect(values.a.calculation).toBeUndefined();
     // ...but the load's own wire carries the load's 3A whatever feeds the shunt.
     expect(values.load).toMatchObject({ status: 'known', currentA: 3 });
@@ -112,7 +112,7 @@ describe('Shared electrical analysis', () => {
   it('rejects guessing parallel sharing, mixed voltage and unknown terminals', () => {
     const components = [c('battery', 'battery'), c('load', 'dc-load', { watts: 12, voltage: 24 })];
     const cycle = analyze(components, [w('a', 'battery', 'load'), w('b', 'battery', 'load')]);
-    expect(cycle.wires.a.status).toBe('unsupported');
+    expect(cycle.wires.a.status).not.toBe('known');
     expect(analyze(components, [w('a', 'battery', 'load')]).wires.a.status).toBe('unknown');
     expect(analyze(components, [w('a', 'battery', 'load', 'missing')]).wires.a.currentA).toBeUndefined();
   });
@@ -120,7 +120,7 @@ describe('Shared electrical analysis', () => {
     expect(analyze([c('custom', 'custom')], []).components.custom.status).toBe('unsupported');
     const components = [c('a', 'battery'), c('b', 'battery'), c('bus', 'busbar-positive'), c('load', 'dc-load', { amps: 3 })];
     const result = analyze(components, [w('a', 'a', 'bus', 'positive', 'pos-1'), w('b', 'b', 'bus', 'positive', 'pos-2'), w('load', 'bus', 'load', 'pos-3')]);
-    expect(result.wires.a.status).toBe('unsupported');
+    expect(result.wires.a.status).not.toBe('known');
     expect(analyze([c('solar', 'solar-panel'), c('mppt', 'mppt')], [w('pv', 'solar', 'mppt', 'positive', 'pv-positive')]).wires.pv.status).toBe('unknown');
   });
   it('explicitly rejects aluminum sizing in both compatibility APIs and structured analysis', () => {
@@ -251,4 +251,81 @@ describe('Common Victron parts and topologies', () => {
     expect(evaluateWireGauge('6 mm2', { current: 10, length: 10, voltage: 12 })?.ampacityA).toBe(evaluateWireGauge('10 AWG', { current: 10, length: 10, voltage: 12 })?.ampacityA);
     expect(evaluateWireGauge('0.5 mm2', { current: 1, length: 1, voltage: 12 })).toBeUndefined();
   });
+
+  describe('current sharing solved from cable resistance', () => {
+    const cable = (id: string, from: string, to: string, ft: number, fromTerminal: string, toTerminal: string, gauge = '4/0 AWG'): AnalysisWire =>
+      ({ id, fromComponentId: from, toComponentId: to, fromTerminal, toTerminal, gauge, length: ft });
+    const bank = (lengths: number[], loadAmps: number, capacity: number | null = 200) => {
+      const ids = lengths.map((_, i) => `b${i}`);
+      const components = [...ids.map(id => c(id, 'battery', { voltage: 12, ...(capacity ? { capacity } : {}), batteryType: 'LiFePO4' })),
+        c('pos', 'busbar-positive'), c('neg', 'busbar-negative'), c('load', 'dc-load', { amps: loadAmps })];
+      const wires = [...ids.flatMap((id, i) => [cable(`${id}+`, id, 'pos', lengths[i], 'positive', `pos-${i + 1}`), cable(`${id}-`, id, 'neg', lengths[i], 'negative', `neg-${i + 1}`)]),
+        cable('load+', 'pos', 'load', 5, 'pos-6', 'positive'), cable('load-', 'neg', 'load', 5, 'neg-6', 'negative')];
+      return analyze(components, wires).wires;
+    };
+    it('gives the shortest leg of a 3-battery bank more than an equal share', () => {
+      // b1 out: b0 (1ft) and b2 (10ft) share 30A by cable resistance, 10:1.
+      const values = bank([1, 10, 10], 30);
+      expect(values['b0+'].currentA!).toBeGreaterThan(26);
+      expect(values['b0+'].currentA!).toBeLessThanOrEqual(30 * 10 / 11 + 1e-6);
+      expect(values['b1+'].currentA!).toBeCloseTo(15, 3); // b0 out: b1 and b2 split evenly
+      expect(values['load+'].currentA).toBe(30);
+    });
+    it('matches the equal split when every leg is the same length', () => {
+      expect(bank([3, 3, 3], 30)['b0+'].currentA).toBeCloseTo(15, 6);
+      expect(bank([3, 3, 3, 3], 30)['b2-'].currentA).toBeCloseTo(10, 6);
+    });
+    it('checks each battery alone when they are not declared identical', () => {
+      expect(bank([3, 3, 3], 30, null)['b0+'].currentA).toBeCloseTo(30, 6);
+    });
+    it('splits parallel cables by resistance and asks for a gauge when one is missing', () => {
+      const components = [c('battery', 'battery', { voltage: 12 }), c('load', 'dc-load', { amps: 30 })];
+      const wires = [cable('short', 'battery', 'load', 5, 'positive', 'positive'), cable('long', 'battery', 'load', 10, 'positive', 'positive'), cable('ret', 'battery', 'load', 5, 'negative', 'negative')];
+      const values = analyze(components, wires).wires;
+      expect(values.short.currentA).toBeCloseTo(20, 6); expect(values.long.currentA).toBeCloseTo(10, 6);
+      expect(values.ret.currentA).toBe(30);
+      const missing = analyze(components, [wires[0], { ...wires[1], gauge: undefined }, wires[2]]).wires;
+      expect(missing.long.status).toBe('unknown');
+      expect(missing.long.reason).toContain('Set gauge and length');
+    });
+    it('carries the string current through a series link at the string voltage', () => {
+      const components = [c('lo', 'battery', { voltage: 12, capacity: 200 }), c('hi', 'battery', { voltage: 12, capacity: 200 }), c('load', 'dc-load', { watts: 480 })];
+      const wires = [cable('link', 'lo', 'hi', 1, 'positive', 'negative'), cable('top', 'hi', 'load', 5, 'positive', 'positive'), cable('bottom', 'lo', 'load', 5, 'negative', 'negative')];
+      const values = analyze(components, wires, 24).wires;
+      expect(values.link).toMatchObject({ status: 'known', currentA: 20 });
+      expect(values.top.currentA).toBe(20);
+    });
+    it('works a 12V circuit in a 24V system out at 12V', () => {
+      const components = [c('house', 'battery', { voltage: 24, capacity: 200 }), c('start', 'battery', { voltage: 12, capacity: 90 }), c('lamp', 'dc-load', { watts: 120 })];
+      const values = analyze(components, [cable('p', 'start', 'lamp', 5, 'positive', 'positive', '10 AWG'), cable('n', 'start', 'lamp', 5, 'negative', 'negative', '10 AWG')], 24).wires;
+      expect(values.p).toMatchObject({ status: 'known', currentA: 10, voltageV: 12 });
+    });
+    it('refuses batteries of different voltages wired in parallel', () => {
+      const components = [c('a', 'battery', { voltage: 12 }), c('b', 'battery', { voltage: 24 }), c('pos', 'busbar-positive'), c('neg', 'busbar-negative'), c('load', 'dc-load', { amps: 5 })];
+      const wires = [cable('a+', 'a', 'pos', 2, 'positive', 'pos-1'), cable('a-', 'a', 'neg', 2, 'negative', 'neg-1'), cable('b+', 'b', 'pos', 2, 'positive', 'pos-2'), cable('b-', 'b', 'neg', 2, 'negative', 'neg-2'),
+        cable('l+', 'pos', 'load', 2, 'pos-3', 'positive'), cable('l-', 'neg', 'load', 2, 'neg-3', 'negative')];
+      expect(analyze(components, wires, 12).wires['a+'].reason).toContain('different voltages');
+    });
+  });
+  it('sizes an inverter with nothing drawn on its AC output for its rated continuous output', () => {
+    const components = [c('battery', 'battery'), c('inverter', 'multiplus', { powerRating: 3000 })];
+    const value = analyze(components, [w('dc', 'battery', 'inverter', 'positive', 'dc-positive')]).wires.dc;
+    expect(value.currentA).toBeCloseTo(2400 / .875 / 12, 6);
+  });
+  it('bounds split-phase conductors by every 120V load on one leg', () => {
+    const components = [c('inv', 'quattro', { acOutputVoltage: 'split-120-240' }), c('panel', 'ac-panel'),
+      c('pump', 'ac-load', { watts: 1200, acVoltage: 240 }), c('outlets', 'ac-load', { watts: 1500, acVoltage: 120 })];
+    const values = analyze(components, [w('main', 'inv', 'panel', 'ac-out-hot', 'main-in-hot'), w('pump', 'panel', 'pump', 'load-1-hot', 'hot'), w('outlets', 'panel', 'outlets', 'load-2-hot', 'hot')], 48).wires;
+    expect(values.main).toMatchObject({ status: 'known', currentA: 17.5, voltageV: 120 });
+    expect(values.pump.currentA).toBe(5); expect(values.outlets.currentA).toBe(12.5);
+  });
+  it('bounds an unrated charger AC circuit by the breaker in series with it', () => {
+    const components = [c('shore', 'shore-power', { maxAmps: 50, voltage: 120 }), c('breaker', 'ac-breaker', { amps: 20 }), c('charger', 'blue-smart-charger', { amps: 30 })];
+    const values = analyze(components, [w('in', 'shore', 'breaker', 'ac-out-hot', 'in-hot'), w('out', 'breaker', 'charger', 'out-hot', 'ac-in-hot')]).wires;
+    expect(values.in).toMatchObject({ status: 'known', currentA: 20 }); expect(values.out).toMatchObject({ status: 'known', currentA: 20 });
+  });
+  it('rates a gauge given in brackets after a metric size', () => {
+    expect(evaluateWireGauge('3x2.5mm² (14 AWG)', { current: 10, voltage: 230, length: 4 })).toEqual(evaluateWireGauge('14 AWG', { current: 10, voltage: 230, length: 4 }));
+  });
 });
+

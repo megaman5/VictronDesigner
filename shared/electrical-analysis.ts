@@ -1,10 +1,11 @@
 import { DEVICE_DEFINITIONS } from './device-definitions';
 import { getACVoltage, getSupportedACVoltages, isSplitPhase } from './ac-voltage';
-import { calculateWireSize, evaluateWireGauge, type InsulationType } from './wire-calculator';
+import { calculateWireSize, conductorResistanceOhms, evaluateWireGauge, type InsulationType } from './wire-calculator';
 import type { WireCalculation } from './schema';
 import { analyzePVCircuits, panelOperatingValue } from './pv-analysis';
+import { solveResistorNetwork, type Resistor } from './dc-network';
 
-export const ELECTRICAL_ENGINE_VERSION = '1.4.0';
+export const ELECTRICAL_ENGINE_VERSION = '1.5.0';
 export interface AnalysisComponent { id: string; type: string; name?: string; properties?: Record<string, any> }
 export interface AnalysisWire {
   id: string; fromComponentId: string; toComponentId: string;
@@ -41,9 +42,32 @@ const negligibleDraw = new Set(['battery-balancer']);
 const chargerTypes = ['mppt', 'blue-smart-charger', 'orion-dc-dc', 'alternator'];
 /** "48/12" in a DC-DC model name: input and output nominal voltages. */
 const converterRatio = (c: AnalysisComponent): { inV: number; outV: number } | undefined => {
-  const m = String(c.properties?.model ?? c.name ?? '').match(/\b(12|24|48)\s*\/\s*(12|24|48)\b/);
+  // "12/24", "12/24V", "24V/12V", "12/12-30"
+  const m = String(c.properties?.model ?? c.name ?? '').match(/\b(12|24|48)\s*V?\s*\/\s*(12|24|48)(?!\d)/i);
   return m ? { inV: Number(m[1]), outV: Number(m[2]) } : undefined;
 };
+/**
+ * Continuous AC output at 25C from Victron datasheets, by VA rating (MultiPlus,
+ * MultiPlus-II, Quattro, Phoenix). The DC cable must carry what the inverter
+ * can deliver, not just what happens to be drawn on the schematic today.
+ */
+const CONTINUOUS_WATTS_BY_VA: Record<number, number> = {
+  250: 200, 375: 300, 500: 400, 800: 700, 1200: 1000, 1600: 1300, 2000: 1600, 3000: 2400,
+  5000: 4000, 8000: 6500, 10000: 8000, 15000: 12000,
+};
+/** VA rating: the powerRating property, else the "12/3000" part of the model name. */
+const ratedContinuousWatts = (c: AnalysisComponent): { watts: number; note: string } | undefined => {
+  const p = c.properties ?? {};
+  const named = String(p.model ?? c.name ?? '').match(/\b(?:12|24|48)\s*\/\s*(\d{3,5})\b/);
+  const va = Number(p.powerRating) > 0 ? Number(p.powerRating) : named ? Number(named[1]) : NaN;
+  if (!(va > 0)) return undefined;
+  const table = CONTINUOUS_WATTS_BY_VA[va];
+  // Unlisted ratings: 85% of VA, above every listed model's ratio (80-87%).
+  return table ? { watts: table, note: `${va}VA model: ${table}W continuous at 25C (Victron datasheet).` }
+    : { watts: va * 0.85, note: `${va}VA rating not in the datasheet table; ${va * 0.85}W continuous assumed (85% of VA, at or above every listed Victron model).` };
+};
+/** Tree-walk reasons the resistance solver may replace with a more specific one. */
+const TOPOLOGY_REASONS = ['Missing, incompatible', 'Parallel paths or a circuit cycle', 'A single supported source path', 'Battery nominal voltage differs'];
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 const positive = (n: unknown): n is number => finite(n) && n > 0;
 const unresolved = (reason: string, unsupported = false): ElectricalValue => ({ status: unsupported ? 'unsupported' : 'unknown', reason, source: 'unresolved', assumptions: [] });
@@ -82,10 +106,12 @@ function terminalDomain(component: AnalysisComponent, terminal: string | undefin
 }
 
 /**
- * Conservative steady-state analysis of tree circuits. Cycles, parallel current
- * sharing, custom behavior and AC transfer/charging need
- * explicit models; they return unresolved, never an invented zero current.
- * Existing sizing tables are retained unchanged. No conductor is rewritten.
+ * Conservative steady-state analysis. Tree circuits are walked branch by
+ * branch; parallel batteries, parallel cables and loops are solved as a
+ * resistor network from each cable's gauge and length. Custom behavior and AC
+ * transfer/charging need explicit models; they return unresolved, never an
+ * invented zero current. Existing sizing tables are retained unchanged. No
+ * conductor is rewritten.
  */
 export function analyzeElectricalDesign(input: { components: AnalysisComponent[]; wires: AnalysisWire[]; systemVoltage: number }, options: AnalysisOptions = {}): AnalysisResult {
   const result: AnalysisResult = {
@@ -174,47 +200,208 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
     if (!positive(p.acInputAmps)) return unresolved(`Set the rated AC input current for "${label}" in Charger Specifications. Its DC charge current cannot be used as AC input current.`);
     return known(p.acInputAmps, getACVoltage(c), 'declared charger maximum AC input current');
   };
-  const bankKey = (c: AnalysisComponent) => {
-    const bank = c.properties?.batteryBankId;
-    return typeof bank === 'string' && bank.trim() && Number(c.properties?.voltage) === input.systemVoltage ? `bank:${bank}` : inferredBank.get(c.id);
+  /**
+   * Current sharing from resistance, for wires the tree walk cannot settle:
+   * parallel batteries, parallel cables, loops, battery-to-battery links. The
+   * DC circuit is solved as a resistor network - every cable's resistance comes
+   * from its gauge and length, loads and chargers inject their own current.
+   *
+   * The one thing a design does not contain is each battery's internal
+   * resistance, so it is not guessed: identical batteries are given the same
+   * value and every value from ~0.01 to 1000 milliohm (per 100Ah) is tried,
+   * keeping the worst result. Each battery (or series string) is also tried
+   * disconnected, as its BMS or fuse can do. Batteries that differ are also
+   * tried alone - with unknown relative resistances that is the only bound.
+   */
+  let sharingCache: Map<string, { value: ElectricalValue; scenario?: WireAnalysis['scenario'] }> | undefined;
+  const sharing = () => sharingCache ??= solveSharing();
+  const solveSharing = () => {
+    const out = new Map<string, { value: ElectricalValue; scenario?: WireAnalysis['scenario'] }>();
+    const nodeOf = (c: AnalysisComponent, terminal?: string) => {
+      const d = terminalDomain(c, terminal);
+      if (d !== 'positive' && d !== 'negative') return undefined;
+      // A balancer's midpoint and bank terminals are separate connections, not one node.
+      const group = c.type === 'orion-dc-dc' ? (terminal ?? '').match(/^(input|output)-/)?.[1] ?? '' : c.type === 'battery-balancer' ? terminal ?? '' : '';
+      return `${c.id}|${d}|${group}`;
+    };
+    // Resistive elements: DC wires (same polarity, or a battery-to-battery series link).
+    const wireEnds = new Map<string, [string, string]>();
+    for (const w of input.wires) {
+      const a = components.get(w.fromComponentId), b = components.get(w.toComponentId);
+      if (!a || !b) continue;
+      const na = nodeOf(a, w.fromTerminal), nb = nodeOf(b, w.toTerminal);
+      if (!na || !nb || na === nb) continue;
+      const series = a.type === 'battery' && b.type === 'battery' && [w.fromTerminal, w.toTerminal].sort().join('/') === 'negative/positive';
+      if (domains.get(w.id) !== 'positive' && domains.get(w.id) !== 'negative' && !series) continue;
+      wireEnds.set(w.id, [na, nb]);
+    }
+    const batteryList = input.components.filter(c => c.type === 'battery');
+    const plus = (c: AnalysisComponent) => `${c.id}|positive|`, minus = (c: AnalysisComponent) => `${c.id}|negative|`;
+    // Connected parts, joined by wires and through batteries.
+    const parent = new Map<string, string>();
+    const find = (x: string): string => { if (!parent.has(x)) parent.set(x, x); while (parent.get(x) !== x) x = parent.get(x)!; return x; };
+    const join = (x: string, y: string) => parent.set(find(x), find(y));
+    for (const [a, b] of Array.from(wireEnds.values())) join(a, b);
+    for (const c of batteryList) join(plus(c), minus(c));
+    // Series units: batteries joined negative-to-positive drop out together.
+    const unitOf = new Map<string, string>();
+    {
+      const up = new Map(batteryList.map(c => [c.id, c.id]));
+      const root = (x: string): string => { while (up.get(x) !== x) x = up.get(x)!; return x; };
+      for (const w of input.wires) {
+        const a = components.get(w.fromComponentId), b = components.get(w.toComponentId);
+        if (a?.type === 'battery' && b?.type === 'battery' && [w.fromTerminal, w.toTerminal].sort().join('/') === 'negative/positive') up.set(root(a.id), root(b.id));
+      }
+      for (const c of batteryList) unitOf.set(c.id, root(c.id));
+    }
+    // Loads and chargers: [component, + node, - node, kind].
+    type Device = { c: AnalysisComponent; p: string; n: string; kind: 'load' | 'charge' | 'both' };
+    const devices: Device[] = [];
+    const poison = new Map<string, string>();
+    for (const c of input.components) {
+      if (c.type === 'battery' || dcPass.has(c.type) || negligibleDraw.has(c.type)) continue;
+      const touched = new Set<string>();
+      for (const w of adjacency.get(c.id) ?? []) if (wireEnds.has(w.id)) touched.add(wireEnds.get(w.id)![w.fromComponentId === c.id ? 0 : 1]);
+      if (!touched.size) continue;
+      const groups = c.type === 'orion-dc-dc' ? ['input', 'output'] : [''];
+      for (const g of groups) {
+        const p = `${c.id}|positive|${g}`, n = `${c.id}|negative|${g}`;
+        if (!touched.has(p) && !touched.has(n)) continue;
+        const kind = c.type === 'orion-dc-dc' ? (g === 'input' ? 'both' : 'charge')
+          : chargerTypes.includes(c.type) ? 'charge'
+          : c.type === 'dc-load' || inverters.has(c.type) || c.type === 'cerbo' || negligibleDraw.has(c.type) ? 'load' : undefined;
+        if (!kind) { poison.set(find(Array.from(touched)[0]), `This circuit includes "${c.name || c.id}" (${c.type}), whose electrical behavior is not supported.`); continue; }
+        devices.push({ c, p, n, kind });
+      }
+    }
+    // Nominal potentials: batteries as voltage sources, no load. Batteries of
+    // different voltage in parallel would circulate current - a wiring fault.
+    const emfInjection = new Map<string, number>();
+    const R0 = 1e-3;
+    for (const c of batteryList) {
+      const v = Number(c.properties?.voltage ?? input.systemVoltage);
+      emfInjection.set(plus(c), (emfInjection.get(plus(c)) ?? 0) + v / R0);
+      emfInjection.set(minus(c), (emfInjection.get(minus(c)) ?? 0) - v / R0);
+    }
+    const wireOhms = (id: string, unknownOhms: number) => {
+      const w = input.wires.find(x => x.id === id)!;
+      return conductorResistanceOhms(w.gauge, w.length) ?? unknownOhms;
+    };
+    const wireResistors = (unknownOhms: number): Resistor[] => Array.from(wireEnds).map(([id, [a, b]]) => ({ id, a, b, ohms: Math.max(wireOhms(id, unknownOhms), 1e-6) }));
+    const emf = solveResistorNetwork([...wireResistors(1e-4), ...batteryList.map(c => ({ id: `rint:${c.id}`, a: plus(c), b: minus(c), ohms: R0 }))], emfInjection);
+    for (const c of batteryList) {
+      const v = Number(c.properties?.voltage ?? input.systemVoltage);
+      const across = (emf.potential.get(plus(c)) ?? 0) - (emf.potential.get(minus(c)) ?? 0);
+      if (Math.abs(v - across) * 1 / R0 > 0.5) poison.set(find(plus(c)), 'Batteries of different voltages are connected in parallel; they would discharge into each other. Check the battery wiring.');
+    }
+    // Each device's demand at its own circuit voltage (a 12V starter circuit in a 24V boat).
+    const injections = { load: new Map<string, number>(), charge: new Map<string, number>() };
+    for (const d of devices) {
+      const v = (emf.potential.get(d.p) ?? 0) - (emf.potential.get(d.n) ?? 0);
+      if (!emf.potential.has(d.p) || !emf.potential.has(d.n) || !(v > 0.5)) {
+        // No battery voltage across it. A battery-less island is left to the
+        // tree walk; half-connected to a battery circuit, it cannot be solved.
+        for (const node of [d.p, d.n]) if (batteryList.some(c => find(plus(c)) === find(node))) poison.set(find(node), `"${d.c.name || d.c.id}" is not connected across a battery circuit on both terminals.`);
+        continue;
+      }
+      const local = Math.round(v);
+      const value = d.kind === 'both' ? dcdcInput(d.c) : d.kind === 'charge' && d.c.type === 'orion-dc-dc' ? result.components[d.c.id] : demand(d.c, local);
+      if (value.status !== 'known') { poison.set(find(d.p), value.reason ?? 'A connected device has no known current.'); continue; }
+      const amps = value.currentA!;
+      const scenarios: Array<'load' | 'charge'> = d.kind === 'both' ? ['load', 'charge'] : [d.kind];
+      for (const s of scenarios) {
+        const m = injections[s], sign = d.kind === 'charge' ? 1 : -1;
+        m.set(d.p, (m.get(d.p) ?? 0) + sign * amps);
+        m.set(d.n, (m.get(d.n) ?? 0) - sign * amps);
+      }
+    }
+    // Availability scenarios: everything; each unit out; and for parts whose
+    // batteries differ, each unit alone.
+    const units = Array.from(new Set(Array.from(unitOf.values())));
+    const membersOf = (u: string) => batteryList.filter(c => unitOf.get(c.id) === u);
+    // Undeclared capacity: identity is unknown, so never assumed to match.
+    const signature = (c: AnalysisComponent) => Number(c.properties?.capacity) > 0 ? `${c.properties?.batteryType ?? ''}|${c.properties!.capacity}|${c.properties?.voltage ?? ''}` : c.id;
+    const unitsByPart = new Map<string, string[]>();
+    for (const u of units) { const r = find(plus(membersOf(u)[0])); unitsByPart.set(r, [...(unitsByPart.get(r) ?? []), u]); }
+    const availability: Array<Set<string>> = [new Set(units)];
+    for (const [, us] of Array.from(unitsByPart)) {
+      if (us.length < 2) continue;
+      for (const u of us) availability.push(new Set(units.filter(x => x !== u)));
+      const matched = new Set(us.flatMap(u => membersOf(u).map(signature))).size === 1;
+      if (!matched) for (const u of us) availability.push(new Set(units.filter(x => x === u || !us.includes(x))));
+    }
+    const scales = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1];
+    const worst = new Map<string, { load: number; charge: number; byUnknown: [number, number] }>();
+    const unknownLevels = [1e-6, 1];
+    unknownLevels.forEach((unknownOhms, level) => {
+      const wires = wireResistors(unknownOhms);
+      for (const scale of scales) for (const avail of availability) {
+        const rint = batteryList.filter(c => avail.has(unitOf.get(c.id)!)).map(c => ({ id: `rint:${c.id}`, a: plus(c), b: minus(c), ohms: scale * 100 / (Number(c.properties?.capacity) > 0 ? Number(c.properties!.capacity) : 100) }));
+        for (const s of ['load', 'charge'] as const) {
+          const solved = solveResistorNetwork([...wires, ...rint], injections[s]);
+          for (const id of Array.from(wireEnds.keys())) {
+            const amps = solved.current.get(id);
+            if (amps === undefined) continue;
+            const entry = worst.get(id) ?? { load: 0, charge: 0, byUnknown: [0, 0] as [number, number] };
+            entry[s] = Math.max(entry[s], Math.abs(amps));
+            entry.byUnknown[level] = Math.max(entry.byUnknown[level], Math.abs(amps));
+            worst.set(id, entry);
+          }
+        }
+      }
+    });
+    for (const [id, [a, b]] of Array.from(wireEnds)) {
+      const part = find(a);
+      if (poison.has(part)) { out.set(id, { value: unresolved(poison.get(part)!) }); continue; }
+      const entry = worst.get(id);
+      if (!entry || !emf.potential.has(a)) continue;
+      const [lo, hi] = entry.byUnknown;
+      if (Math.abs(hi - lo) > 0.01 * Math.max(hi, lo, 1)) { out.set(id, { value: unresolved('Set gauge and length on every cable in this loop or parallel run; how they share current depends on their resistance.') }); continue; }
+      // Reference voltage: the circuit's nominal voltage at this wire (positive
+      // side), or the lowest battery voltage in the part (negative side).
+      const top = Math.max(emf.potential.get(a) ?? 0, emf.potential.get(b) ?? 0);
+      const partVoltages = batteryList.filter(c => find(plus(c)) === part).map(c => Math.round((emf.potential.get(plus(c)) ?? 0)));
+      if (!partVoltages.length) continue; // no battery in this part
+      const voltage = domains.get(id) === 'positive' && top > 0.5 ? Math.round(top) : Math.min(...partVoltages.filter(v => v > 0), input.systemVoltage);
+      const current = Math.round(Math.max(entry.load, entry.charge) * 1e6) / 1e6;
+      out.set(id, {
+        value: known(current, voltage, 'resistance network: worst case over battery resistance and disconnection', [
+          'Current sharing calculated from each cable\'s resistance (gauge x length). Battery internal resistance is not in the design, so the full realistic range was checked and the worst case kept.',
+          'Each battery (or series string) was also checked disconnected by its BMS or fuse; batteries that differ were also checked alone.',
+        ]),
+        scenario: entry.load && entry.charge ? 'governing' : entry.charge ? 'charge' : 'load',
+      });
+    }
+    return out;
   };
   /**
-   * A wire on one battery's own leg of a parallel bank (battery -> its fuse ->
-   * the common switch/shunt). Sharing between batteries is NOT inferred -
-   * cable runs and BMS disconnects make it unreliable. Instead the leg is
-   * sized for the worst case of one other battery dropping out: with two
-   * batteries that is the full bank current (an exact bound), with three or
-   * more identical batteries bank current / (n - 1). Mixed capacities or
-   * voltages stay unresolved.
+   * Lowest rating of an AC breaker that every path between this wire and the
+   * unrated chargers it feeds runs through - a sustained current above it trips.
    */
-  const bankShare = (a: Set<string>, b: Set<string>, summarize: (ids: Set<string>) => { load: number; charge: number; sources: number; error?: ElectricalValue }) => {
-    const batteriesIn = (ids: Set<string>) => Array.from(ids).map(id => components.get(id)!).filter(c => c.type === 'battery');
-    const keysA = new Set(batteriesIn(a).map(bankKey)), keysB = new Set(batteriesIn(b).map(bankKey));
-    const key = Array.from(keysA).find(k => k && keysB.has(k));
-    if (!key) return undefined;
-    // The battery's leg: only that bank's batteries and pass-through parts.
-    const isLeg = (ids: Set<string>) => Array.from(ids).every(id => { const c = components.get(id)!; return (c.type === 'battery' && bankKey(c) === key) || dcPass.has(c.type); });
-    const [near, far] = isLeg(a) && !isLeg(b) ? [a, b] : isLeg(b) && !isLeg(a) ? [b, a] : [undefined, undefined];
-    if (!near || !far) return undefined;
-    const union = new Set([...Array.from(a), ...Array.from(b)]);
-    const bank = batteriesIn(union).filter(c => bankKey(c) === key);
-    const same = (f: (c: AnalysisComponent) => unknown) => new Set(bank.map(f)).size === 1;
-    if (!same(c => Number(c.properties?.voltage ?? input.systemVoltage)) || (bank.length > 2 && !(same(c => Number(c.properties?.capacity)) && positive(Number(bank[0].properties?.capacity)))))
-      return { value: unresolved('Batteries in this bank differ (or do not declare capacity); per-battery current is not inferred. Declare matching batteries or size each battery cable for the full bank current.'), scenario: undefined };
-    const whole = summarize(union);
-    if (whole.error) return { value: whole.error, scenario: undefined };
-    if (whole.sources !== 1) return undefined;
-    const demand = Math.max(whole.load, whole.charge);
-    if (!(demand > 0)) return undefined;
-    const k = batteriesIn(near).filter(c => bankKey(c) === key).length;
-    const remaining = bank.length - 1; // one other battery disconnected
-    const leg = Math.min(demand, demand * k / Math.max(1, remaining));
-    return {
-      value: known(leg, input.systemVoltage, 'parallel bank leg, one other battery disconnected',
-        [bank.length === 2 ? 'Each battery cable in a 2-battery bank is sized for the full bank current: either battery may be disconnected by its BMS or fuse.'
-          : `Sized for the bank current shared by the ${remaining} remaining identical batteries when one is disconnected; no normal-operation sharing is assumed.`]),
-      scenario: (whole.charge && whole.load ? 'governing' : whole.charge ? 'charge' : 'load') as WireAnalysis['scenario'],
+  const seriesBreakerA = (w: AnalysisWire, domain: Domain, downstreamIds: Set<string>): number => {
+    const near = downstreamIds.has(w.fromComponentId) ? w.fromComponentId : w.toComponentId;
+    const far = near === w.fromComponentId ? w.toComponentId : w.fromComponentId;
+    const reach = (start: string, avoid: string) => {
+      const seen = new Set<string>([avoid]), queue = [start];
+      for (let i = 0; i < queue.length; i++) {
+        const id = queue[i]; if (seen.has(id)) continue; seen.add(id);
+        if (id !== start && !acPass.has(components.get(id)?.type ?? '')) continue;
+        for (const e of adjacency.get(id) ?? []) if (e.id !== w.id && domains.get(e.id) === domain) queue.push(e.fromComponentId === id ? e.toComponentId : e.fromComponentId);
+      }
+      seen.delete(avoid); return seen;
     };
+    const chargers = Array.from(downstreamIds).filter(id => components.get(id)?.type === 'blue-smart-charger');
+    const sources = input.components.filter(c => c.type === 'shore-power').map(c => c.id);
+    let best = Infinity;
+    for (const c of input.components) {
+      const amps = Number(c.properties?.amps);
+      if (c.type !== 'ac-breaker' || !(amps > 0)) continue;
+      // Downstream breaker: the wire's load side no longer reaches any charger without it.
+      if (downstreamIds.has(c.id) && (c.id === near || !chargers.some(id => reach(near, c.id).has(id)))) best = Math.min(best, amps);
+      // Upstream breaker (or the wire's own end): the wire no longer reaches the shore without it.
+      else if (!downstreamIds.has(c.id) && (c.id === far || !sources.some(id => reach(far, c.id).has(id)))) best = Math.min(best, amps);
+    }
+    return best;
   };
   const islandDemand = (a: Set<string>, sa: { charge: number; load: number; error?: ElectricalValue }, b: Set<string>, sb: { charge: number; load: number; error?: ElectricalValue }): ElectricalValue | undefined => {
     const supplied = sa.charge > 0 && !(sb.charge > 0) ? { supply: a, use: b } : sb.charge > 0 && !(sa.charge > 0) ? { supply: b, use: a } : undefined;
@@ -244,23 +431,25 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
     if (ratio && positive(out)) return known(out * ratio.outV / ratio.inV / 0.9, ratio.inV, 'DC-DC output current x voltage ratio / efficiency', [`DC-DC input current estimated from the ${ratio.inV}/${ratio.outV} model rating at 90% efficiency.`]);
     return unresolved('Set DC-DC inputAmps and inputVoltage; output current cannot be used as input current.');
   };
-  const demand = (c: AnalysisComponent): ElectricalValue => {
+  const demand = (c: AnalysisComponent, dcV = input.systemVoltage): ElectricalValue => {
     const p = c.properties ?? {};
     if (c.type === 'solar-panel') return panelOperatingValue(c);
     if (c.type === 'dc-load' || c.type === 'ac-load') {
-      const voltage = c.type === 'ac-load' ? getACVoltage(c) : p.voltage ?? input.systemVoltage;
+      const voltage = c.type === 'ac-load' ? getACVoltage(c) : p.voltage ?? dcV;
       if (!positive(voltage)) return unresolved('Set a positive nominal voltage.');
       if (finite(p.watts ?? p.power)) return known((p.watts ?? p.power) / voltage, voltage, 'declared load watts / nominal voltage');
       if (finite(p.amps)) return known(p.amps, voltage, 'declared load current');
       return unresolved('Set load watts or amps.');
     }
     if (inverters.has(c.type)) {
-      if (!positive(input.systemVoltage) || !positive(efficiency) || efficiency > 1) return unresolved('Set a valid DC voltage and inverter efficiency.');
+      if (!positive(dcV) || !positive(efficiency) || efficiency > 1) return unresolved('Set a valid DC voltage and inverter efficiency.');
       const outputEdges = (adjacency.get(c.id) ?? []).filter(w => domains.get(w.id) === 'hot' && (w.fromComponentId === c.id ? w.fromTerminal : w.toTerminal)?.startsWith('ac-out'));
       if (!outputEdges.length) {
-        if (positive(p.dcInputAmps)) return known(p.dcInputAmps, input.systemVoltage, 'declared inverter DC input sizing current', ['Declared maximum DC input current; AC utilization is not inferred.']);
-        if (positive(p.dcInputWatts)) return known(p.dcInputWatts / input.systemVoltage, input.systemVoltage, 'declared inverter DC input watts / DC voltage');
-        return unresolved('Connect inverter AC output to declared loads, or set dcInputAmps/dcInputWatts from a reviewed specification; no utilization guess is made.');
+        if (positive(p.dcInputAmps)) return known(p.dcInputAmps, dcV, 'declared inverter DC input sizing current', ['Declared maximum DC input current; AC utilization is not inferred.']);
+        if (positive(p.dcInputWatts)) return known(p.dcInputWatts / dcV, dcV, 'declared inverter DC input watts / DC voltage');
+        const rated = ratedContinuousWatts(c);
+        if (rated) return known(rated.watts / efficiency / dcV, dcV, 'inverter rated continuous output / efficiency / DC voltage', [rated.note, `Inverter efficiency ${(efficiency * 100).toFixed(1)}%.`]);
+        return unresolved('Connect inverter AC output to declared loads, set its VA rating, or set dcInputAmps/dcInputWatts from a reviewed specification; no utilization guess is made.');
       }
       const ids = new Set<string>();
       for (const w of outputEdges) for (const id of Array.from(reachable(w.fromComponentId === c.id ? w.toComponentId : w.fromComponentId, 'hot', w.id))) ids.add(id);
@@ -278,17 +467,17 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
         } else if (!acPass.has(load.type) && id !== c.id) return unresolved('Unsupported device or multiple sources on inverter AC output.', true);
       }
       if (!count) return unresolved('No connected AC load demand found.');
-      return known(watts / efficiency / input.systemVoltage, input.systemVoltage, 'unique connected AC loads / efficiency / DC voltage', [`Inverter efficiency ${(efficiency * 100).toFixed(1)}%; connected steady-state loads only.`]);
+      return known(watts / efficiency / dcV, dcV, 'unique connected AC loads / efficiency / DC voltage', [`Inverter efficiency ${(efficiency * 100).toFixed(1)}%; connected steady-state loads only.`]);
     }
-    if (c.type === 'blue-smart-charger') return positive(p.amps ?? p.maxCurrent) ? known(p.amps ?? p.maxCurrent, p.voltage ?? input.systemVoltage, 'manufacturer maximum DC charge current') : unresolved(`Set the DC charge current for "${c.name || c.id}".`);
-    if (c.type === 'mppt') return positive(p.maxCurrent) && positive(input.systemVoltage) ? known(p.maxCurrent, input.systemVoltage, 'manufacturer maximum DC output current') : unresolved('Set MPPT maximum DC output current.');
-    if (c.type === 'alternator') return positive(p.amps ?? p.maxCurrent) ? known(p.amps ?? p.maxCurrent, p.voltage ?? input.systemVoltage, 'declared alternator output current') : unresolved(`Set the output current for "${c.name || c.id}".`);
+    if (c.type === 'blue-smart-charger') return positive(p.amps ?? p.maxCurrent) ? known(p.amps ?? p.maxCurrent, p.voltage ?? dcV, 'manufacturer maximum DC charge current') : unresolved(`Set the DC charge current for "${c.name || c.id}".`);
+    if (c.type === 'mppt') return positive(p.maxCurrent) && positive(dcV) ? known(p.maxCurrent, dcV, 'manufacturer maximum DC output current') : unresolved('Set MPPT maximum DC output current.');
+    if (c.type === 'alternator') return positive(p.amps ?? p.maxCurrent) ? known(p.amps ?? p.maxCurrent, p.voltage ?? dcV, 'declared alternator output current') : unresolved(`Set the output current for "${c.name || c.id}".`);
     if (c.type === 'cerbo') {
       const watts = positive(p.watts) ? p.watts : CERBO_TYPICAL_WATTS;
-      return known(watts / input.systemVoltage, input.systemVoltage, positive(p.watts) ? 'declared GX device watts / DC voltage' : 'Cerbo GX typical consumption', positive(p.watts) ? [] : [`Cerbo GX assumed ${CERBO_TYPICAL_WATTS}W (datasheet typical, no touch display or accessories).`]);
+      return known(watts / dcV, dcV, positive(p.watts) ? 'declared GX device watts / DC voltage' : 'Cerbo GX typical consumption', positive(p.watts) ? [] : [`Cerbo GX assumed ${CERBO_TYPICAL_WATTS}W (datasheet typical, no touch display or accessories).`]);
     }
-    if (negligibleDraw.has(c.type)) return known(0, input.systemVoltage, 'negligible monitoring/balancing draw');
-    if (c.type === 'orion-dc-dc') return positive(p.amps ?? p.maxCurrent) && positive(p.outputVoltage ?? p.voltage ?? input.systemVoltage) ? known(p.amps ?? p.maxCurrent, p.outputVoltage ?? p.voltage ?? input.systemVoltage, 'declared DC-DC maximum output current') : unresolved('Set DC-DC output amps and voltage.');
+    if (negligibleDraw.has(c.type)) return known(0, dcV, 'negligible monitoring/balancing draw');
+    if (c.type === 'orion-dc-dc') return positive(p.amps ?? p.maxCurrent) && positive(p.outputVoltage ?? p.voltage ?? dcV) ? known(p.amps ?? p.maxCurrent, p.outputVoltage ?? p.voltage ?? dcV, 'declared DC-DC maximum output current') : unresolved('Set DC-DC output amps and voltage.');
     if (c.type === 'battery' || dcPass.has(c.type) || acPass.has(c.type) || c.type === 'shore-power') return unresolved('Current depends on the connected circuit, not a component rating.');
     return unresolved(`Electrical analysis is not available for "${c.name || c.id}" (${c.type}).`, true);
   };
@@ -307,7 +496,7 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
       else {
         const ac = domain === 'hot' || domain === 'neutral';
         const summarize = (ids: Set<string>) => {
-          let load = 0, charge = 0, sources = 0, acInputOnly = 0, sourceRatingA = Infinity; const voltages = new Set<number>(); const sourceKeys = new Set<string>(); let error: ElectricalValue | undefined;
+          let load = 0, charge = 0, sources = 0, acInputOnly = 0, sourceRatingA = Infinity, split = false; const voltages = new Set<number>(); const sourceKeys = new Set<string>(); let error: ElectricalValue | undefined, voltageError: ElectricalValue | undefined, unratedCharger: ElectricalValue | undefined;
           const transfer = ac ? Array.from(ids).find(id => components.get(id)?.type === 'transfer-switch') : undefined;
           for (const id of Array.from(ids)) {
             const c = components.get(id)!;
@@ -320,17 +509,23 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
                 : !ac && inferredBank.has(c.id) ? inferredBank.get(c.id)!
                 : transfer && c.type === 'shore-power' ? `transfer:${transfer}` : c.id);
               sources = sourceKeys.size;
-              if (!ac && c.type === 'battery' && !seriesString.has(c.id) && c.properties?.voltage != null && Number(c.properties.voltage) !== input.systemVoltage) error = unresolved('Battery nominal voltage differs from system voltage; declare a supported bank configuration.');
-              if (ac && isSplitPhase(c)) error = unresolved('Split-phase leg and neutral balancing are not modeled.', true); continue;
+              if (!ac && c.type === 'battery' && !seriesString.has(c.id) && c.properties?.voltage != null && Number(c.properties.voltage) !== input.systemVoltage) voltageError = unresolved('Battery nominal voltage differs from system voltage; declare a supported bank configuration.');
+              // 120/240V split phase: the drawing has one hot conductor, so which
+              // leg each 120V load sits on is unknown. Every conductor is sized for
+              // the worst case, all 120V loads on one leg: 240V loads at W/240 plus
+              // 120V loads at W/120. No conductor can carry more than that.
+              if (ac && isSplitPhase(c)) split = true; continue;
             }
             const converterInput = !ac && c.type === 'orion-dc-dc' && (adjacency.get(id) ?? []).some(edge => domains.get(edge.id) === domain && (edge.fromComponentId === id ? edge.fromTerminal : edge.toTerminal)?.startsWith('input-') && (edge.id === w.id || ids.has(edge.fromComponentId === id ? edge.toComponentId : edge.fromComponentId)));
             const isLoad = c.type === (ac ? 'ac-load' : 'dc-load') || (!ac && inverters.has(c.type)) || converterInput || (ac && c.type === 'blue-smart-charger') || (!ac && (c.type === 'cerbo' || negligibleDraw.has(c.type)));
             if (isLoad || (!ac && chargerTypes.includes(c.type))) {
-              const v = converterInput ? dcdcInput(c) : ac && c.type === 'blue-smart-charger' ? chargerInput(c) : result.components[id]; if (v.status !== 'known') { error = v; continue; }
+              const v = converterInput ? dcdcInput(c) : ac && c.type === 'blue-smart-charger' ? chargerInput(c) : result.components[id];
+              if (v.status !== 'known' && ac && c.type === 'blue-smart-charger') { unratedCharger = v; continue; }
+              if (v.status !== 'known') { error = v; continue; }
               voltages.add(v.voltageV!); if (isLoad) load += v.currentA!; else charge += v.currentA!;
             } else if (!(ac ? acPass : dcPass).has(c.type)) error = unresolved(`This wire connects to "${c.name || c.id}" (${c.type}), whose electrical behavior is not supported. Review that component's power connections.`, true);
           }
-          return { load, charge, sources, voltages, error, acInputOnly, sourceRatingA };
+          return { load, charge, sources, voltages, error: error ?? voltageError, voltageError, unratedCharger, acInputOnly, sourceRatingA, split };
         };
         const sa = summarize(a), sb = summarize(b);
         // The supply-free side is what this wire feeds, however many supplies
@@ -343,15 +538,26 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
         // Orion's input. The supply is the side with the charger; the wire
         // carries what the other side draws, at the island's own voltage.
         const island = !ac && !sa.sources && !sb.sources ? islandDemand(a, sa, b, sb) : undefined;
-        const shared = !ac && !island && !downstream && !sa.error && !sb.error ? bankShare(a, b, summarize) : undefined;
         // One input leg of a transfer switch carries at most its own source's rating.
         const transferLeg = ac && !downstream ? [[a, sa], [b, sb]].find(([ids, sum]: any) => (sum as any).sources === 1 && !Array.from(ids as Set<string>).some(id => components.get(id)?.type === 'transfer-switch')
           && Array.from((ids === a ? b : a) as Set<string>).some(id => components.get(id)?.type === 'transfer-switch')) : undefined;
         const legSource = transferLeg ? Array.from(transferLeg[0] as Set<string>).map(id => components.get(id)!).find(c => c.type === 'shore-power') : undefined;
         if (island) value = island;
-        else if (shared) { value = shared.value; scenario = shared.scenario; }
         else if (legSource && positive(legSource.properties?.maxAmps)) { value = known(legSource.properties!.maxAmps, getACVoltage(legSource), 'transfer-switch input sized to its source rating'); scenario = 'load'; }
-        else if (sa.error || sb.error) value = sa.error ?? sb.error!;
+        // Problems behind the supply side do not change what a branch draws;
+        // only a voltage-domain problem there does.
+        else if (downstream ? downstream.error || upstream!.voltageError : sa.error || sb.error) value = (downstream ? downstream.error ?? upstream!.voltageError : sa.error ?? sb.error)!;
+        // A charger with no declared AC input current: its circuit is bounded by
+        // the shore inlet feeding it, as a MultiPlus AC input is.
+        else if (ac && downstream && upstream && downstream.unratedCharger && Number.isFinite(upstream.sourceRatingA) && !upstream.split) {
+          const breaker = seriesBreakerA(w, domain, downstream === sa ? a : b);
+          value = breaker < upstream.sourceRatingA
+            ? known(breaker, input.systemVoltage, 'charger AC input sized to the breaker protecting it', ['Charger AC input current not declared; bounded by the AC breaker in series with this circuit.'])
+            : known(upstream.sourceRatingA, input.systemVoltage, 'charger AC input sized to the shore-power rating', ['Charger AC input current not declared; bounded by the shore-power inlet rating feeding it.']);
+          value.voltageV = Array.from(a).concat(Array.from(b)).map(id => components.get(id)!).filter(x => x.type === 'shore-power').map(x => getACVoltage(x))[0] ?? value.voltageV;
+          scenario = 'load';
+        }
+        else if (downstream?.unratedCharger) value = downstream.unratedCharger;
         else if (ac && downstream && upstream && downstream.acInputOnly && !Number.isFinite(upstream.sourceRatingA))
           value = unresolved('Set the shore-power inlet rating (maxAmps) to size the inverter/charger AC input conductors.');
         else if (ac && downstream && upstream && downstream.acInputOnly) {
@@ -361,16 +567,23 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
         }
         else if (!downstream) value = unresolved('A single supported source path is required; disconnected or multiple-source circuits need review.', sa.sources + sb.sources > 1);
         else if (ac && Array.from(a).concat(Array.from(b)).some(id => { const source = components.get(id)!; return (source.type === 'shore-power' || inverters.has(source.type)) && Array.from(downstream.voltages).some(v => !getSupportedACVoltages(source).includes(v)); })) value = unresolved('Connected AC load voltage is incompatible with the source output voltage.');
-        else if (downstream.voltages.size > 1 || (!ac && Array.from(downstream.voltages).some(v => v !== input.systemVoltage))) value = unresolved('Connected loads have different nominal voltages; resolve the voltage domain.');
+        else if ((downstream.voltages.size > 1 && !upstream!.split) || (!ac && Array.from(downstream.voltages).some(v => v !== input.systemVoltage))) value = unresolved('Connected loads have different nominal voltages; resolve the voltage domain.');
         else if (downstream.load === 0 && downstream.charge === 0 && Array.from(downstream === sa ? a : b).some(id => negligibleDraw.has(components.get(id)!.type)))
           value = known(0, input.systemVoltage, 'negligible monitoring/balancing draw');
         else if (downstream.load === 0 && downstream.charge === 0) value = unresolved('No declared load or charger current on this branch.');
         else {
-          const voltage = ac ? Array.from(downstream.voltages)[0] : input.systemVoltage;
-          value = known(Math.max(downstream.load, downstream.charge), voltage, 'terminal-aware branch demand', ['Charge and discharge demands are evaluated separately; source current never cancels load demand.', 'Batteries sharing an explicit batteryBankId and nominal system voltage form one source for common downstream branches only; individual battery current sharing is not inferred.']);
+          const voltage = ac ? Math.min(...Array.from(downstream.voltages)) : input.systemVoltage;
+          value = known(Math.max(downstream.load, downstream.charge), voltage, 'terminal-aware branch demand', [
+            ...(upstream!.split && downstream.voltages.size > 1 ? ['120/240V split phase: worst case with every 120V load on one leg (240V loads at W/240 plus 120V loads at W/120); voltage drop judged against 120V.'] : []),'Charge and discharge demands are evaluated separately; source current never cancels load demand.', 'Parallel batteries form one source for common downstream branches; each battery\'s own cables are solved separately from cable resistance.']);
           scenario = downstream.charge && downstream.load ? 'governing' : downstream.charge ? 'charge' : 'load';
         }
       }
+    }
+    // The tree walk could not settle this DC wire (parallel batteries, a loop,
+    // a battery-to-battery link): solve the circuit from cable resistance.
+    if (value.status !== 'known' && !pvWires.has(w.id) && domain !== 'ground' && domain !== 'data') {
+      const solved = sharing().get(w.id);
+      if (solved?.value.status === 'known' || (solved && TOPOLOGY_REASONS.some(r => value.reason?.startsWith(r)))) { value = solved.value; scenario = solved.scenario; }
     }
     if (value.status === 'known' && (w.conductorMaterial ?? options.conductorMaterial) === 'aluminum' && scenario !== 'normal-ground') value = unresolved('Only copper conductor sizing tables are available; aluminum sizing is unsupported.', true);
     const analysis: WireAnalysis = { ...value, wireId: w.id, selectedGauge: w.gauge, scenario, issues: [...(pvWires.get(w.id)?.issues ?? [])] };

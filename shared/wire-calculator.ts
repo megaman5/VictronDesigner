@@ -59,7 +59,10 @@ export function metricToAwgGauge(gauge: string): string | undefined {
 }
 
 function normalizeGauge(gauge: string): string {
-  const metric = metricToAwgGauge(gauge);
+  // "3x2.5mm2 (14 AWG)": the AWG size in brackets is the one to rate.
+  const bracketed = gauge.match(/\(\s*(\d\/0|\d+)\s*AWG\s*\)/i);
+  if (bracketed) return bracketed[1];
+  const metric = metricToAwgGauge(gauge.replace(/^\s*\d+\s*[x×]\s*/i, ""));
   if (metric) return metric;
   return gauge.replace(" AWG", "").trim().replace(/\\0/g, "/0");
 }
@@ -157,6 +160,13 @@ export function evaluateWireGauge(gauge: string, params: {
   if (!data || !Number.isFinite(params.current) || params.current < 0 || !Number.isFinite(params.length) || params.length < 0 || !Number.isFinite(params.voltage) || params.voltage <= 0) return undefined;
   const voltageDropV = 2 * params.current * data.resistance / 1000 * params.length;
   return { ampacityA: getWireAmpacity(gauge, params.insulationType, params.temperatureC, params.bundlingFactor), voltageDropV, voltageDropPercent: voltageDropV / params.voltage * 100 };
+}
+
+/** Resistance of ONE copper conductor of this gauge and one-way length (ohms). */
+export function conductorResistanceOhms(gauge: string | undefined, lengthFt: number | undefined): number | undefined {
+  const data = gauge ? WIRE_DATA[normalizeGauge(gauge.toUpperCase()) as keyof typeof WIRE_DATA] : undefined;
+  if (!data || typeof lengthFt !== "number" || !Number.isFinite(lengthFt) || lengthFt <= 0) return undefined;
+  return data.resistance / 1000 * lengthFt;
 }
 
 /**

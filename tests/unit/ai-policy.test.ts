@@ -113,17 +113,18 @@ describe('Expanded conservative electrical coverage', () => {
   it('resolves common downstream demand for a declared parallel bank but never guesses individual sharing', () => {
     const bank = (n: number, capacity?: number) => {
       const ids = Array.from({ length: n }, (_, i) => `b${i}`);
-      return analyzeElectricalDesign({ systemVoltage: 12, components: [...ids.map(id => ({ id, type: 'battery', properties: { batteryBankId: 'house', voltage: 12, ...(capacity ? { capacity } : {}) } })), { id: 'bus', type: 'busbar-positive', properties: {} }, { id: 'load', type: 'dc-load', properties: { amps: 12 } }],
-        wires: [...ids.map((id, i) => wire(id, id, 'bus', 'positive', `pos-${i + 1}`)), wire('load', 'bus', 'load', 'pos-6', 'positive')] });
+      return analyzeElectricalDesign({ systemVoltage: 12, components: [...ids.map(id => ({ id, type: 'battery', properties: { batteryBankId: 'house', voltage: 12, ...(capacity ? { capacity } : {}) } })), { id: 'bus', type: 'busbar-positive', properties: {} }, { id: 'neg', type: 'busbar-negative', properties: {} }, { id: 'load', type: 'dc-load', properties: { amps: 12 } }],
+        wires: [...ids.flatMap((id, i) => [wire(id, id, 'bus', 'positive', `pos-${i + 1}`), wire(`${id}-neg`, id, 'neg', 'negative', `neg-${i + 1}`)]),
+          wire('load', 'bus', 'load', 'pos-6', 'positive'), wire('load-neg', 'neg', 'load', 'neg-6', 'negative')] });
     };
     expect(bank(2).wires.load).toMatchObject({ status: 'known', currentA: 12 });
     // No sharing guess: a 2-battery leg carries everything if the other battery
     // drops out (BMS or fuse), so it is sized for the full 12A - never 6A.
     expect(bank(2).wires.b0).toMatchObject({ status: 'known', currentA: 12 });
-    // Three identical batteries: one out leaves two, so 6A per leg, not 4A.
-    expect(bank(3, 200).wires.b0).toMatchObject({ status: 'known', currentA: 6 });
-    // Three batteries without declared matching capacity: still unresolved.
-    expect(bank(3).wires.b0.status).not.toBe('known');
+    // Three identical batteries on identical cables: one out leaves two, 6A each.
+    expect(bank(3, 200).wires.b0.currentA).toBeCloseTo(6, 6);
+    // Undeclared capacity: not assumed identical, so each is checked alone - 12A.
+    expect(bank(3).wires.b0.currentA).toBeCloseTo(12, 6);
   });
 });
 

@@ -674,6 +674,35 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Current sharing solved from cable resistance, not assumed** (engine 1.5.0) -
+`shared/dc-network.ts` is a nodal-analysis resistor-network solver. Wires the
+tree walk cannot settle - parallel batteries, parallel cables, loops, series
+links between batteries - are solved from each cable's resistance (gauge x
+length, `conductorResistanceOhms`). Replaces the "bank / (n - 1)" equal-share
+rule. On 101 designs: review errors 126 -> 100, "unresolved" 218 -> 35, every
+added/removed error checked by hand.
+
+- The only missing input is battery internal resistance. It is **not guessed**:
+  identical batteries get the same value and a 0.01-100 milliohm (per 100Ah)
+  sweep keeps the worst case; each battery/series string is also solved
+  disconnected (BMS/fuse); batteries not declared identical (incl. no
+  capacity) are also solved alone, which bounds them at full bank current.
+- A cable in a parallel run with no gauge/length -> unresolved "set gauge and
+  length", because its share depends on it.
+- Circuit voltage comes from the batteries (a 12V starter circuit in a 24V boat
+  is worked out at 12V); batteries of different voltage in parallel are refused.
+- Inverters with nothing drawn on AC out are sized for their rated continuous
+  output (Victron datasheet table by VA, `ratedContinuousWatts`). Inverters
+  WITH drawn loads still use the drawn loads - a possible follow-up.
+- Split phase (120/240V): the drawing has one hot conductor, so legs are
+  unknown; conductors are sized for every 120V load on one leg (240V loads at
+  W/240 + 120V loads at W/120), a hard upper bound.
+- A charger with no declared AC input is bounded by the breaker in series with
+  it, else the shore inlet rating (as MultiPlus AC-in already was).
+- Problems on the supply side (an unrated inverter elsewhere) no longer block a
+  branch whose own current is known.
+- Gauges like "3x2.5mm² (14 AWG)" use the bracketed AWG.
+
 **Shared electrical analysis covers common Victron parts** (engine 1.4.0) -
 `shared/electrical-analysis.ts` (what the design review shows, and what the AI
 backup gate's "unresolved" check reads) resolved only 42% of wires across 101
@@ -698,9 +727,8 @@ same corpus, every new error checked by hand (real voltage drop on long runs).
   supplies sit behind it; only wires *between* supplies stay unresolved.
 - Batteries joined on both + and - through pass-through parts are an inferred
   parallel bank; batteries wired - to + summing to system voltage are one
-  series string. **Individual sharing is still not guessed**: a bank leg is
-  sized for one other battery dropping out (BMS/fuse) - full bank current for
-  two batteries, bank / (n - 1) for 3+ matching batteries, else unresolved.
+  series string. *(1.5.0: per-battery sharing is now solved from cable
+  resistance - see the entry above.)*
 - Stored metric gauges ("6 mm2") are rated as the largest AWG not exceeding
   them (`metricToAwgGauge`) in both checkers; they were "unrecognized".
 
