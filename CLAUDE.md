@@ -674,6 +674,36 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Shared electrical analysis covers common Victron parts** (engine 1.4.0) -
+`shared/electrical-analysis.ts` (what the design review shows, and what the AI
+backup gate's "unresolved" check reads) resolved only 42% of wires across 101
+real designs: one unmodeled part anywhere on a side blocked every wire on it.
+Now 93%; review errors 142 -> 126 and "unresolved" warnings 2613 -> 218 on the
+same corpus, every new error checked by hand (real voltage drop on long runs).
+
+- Modeled: Cerbo GX (~3W datasheet typical, or declared watts), alternator (a
+  charger at its declared amps), Lynx Shunt / Smart BMS / BatteryProtect
+  (pass-through), transfer switch (AC pass-through, one source at a time),
+  battery balancer (negligible draw).
+- Orion input current is derived from the model name's voltage ratio when
+  `inputAmps` is not declared ("48/12": a quarter of output, 90% efficient).
+- Starting a walk AT a MultiPlus/Quattro or Orion stays on the side the wire
+  is on (AC-in vs AC-out, Quattro in-1 vs in-2, DC input vs output) - it used
+  to leak through and count the shore supply or the alternator twice.
+- A MultiPlus seen from its AC input is a consumer sized to the shore inlet
+  rating; a transfer-switch input leg is sized to its own source's rating.
+- Battery-less islands (an Orion's 12V panel in a 48V boat, an alternator
+  feeding an Orion) carry the far side's draw at the island's voltage.
+- A wire whose far side has no supply carries that side's demand however many
+  supplies sit behind it; only wires *between* supplies stay unresolved.
+- Batteries joined on both + and - through pass-through parts are an inferred
+  parallel bank; batteries wired - to + summing to system voltage are one
+  series string. **Individual sharing is still not guessed**: a bank leg is
+  sized for one other battery dropping out (BMS/fuse) - full bank current for
+  two batteries, bank / (n - 1) for 3+ matching batteries, else unresolved.
+- Stored metric gauges ("6 mm2") are rated as the largest AWG not exceeding
+  them (`metricToAwgGauge`) in both checkers; they were "unrecognized".
+
 **Charger branches and worst-case current in the validator** (Oct 2026) - real
 designs reported a 60A solar fuse "carrying" the inverter's 257A and its 10 AWG
 link to the bus bar needing 152A, which also blocked AI backup designs. Fixed in

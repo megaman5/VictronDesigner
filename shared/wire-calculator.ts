@@ -44,7 +44,23 @@ const AWG_TO_MM2: Record<string, number> = {
   "18": 0.823,
 };
 
+/**
+ * A metric size ("6 mm2", "6mm²") as the largest AWG size whose area does not
+ * exceed it, so a metric cable is never credited with more capacity than it
+ * has (6 mm² is rated as 10 AWG, 5.26 mm²). AI designs sometimes store metric
+ * sizes even though gauges are stored in AWG; they were "unrecognized".
+ */
+export function metricToAwgGauge(gauge: string): string | undefined {
+  const m = gauge.trim().match(/^(\d+(?:[.,]\d+)?)\s*(?:mm2|mm²|mm\^2|sq\s*mm)$/i);
+  if (!m) return undefined;
+  const area = Number(m[1].replace(",", "."));
+  const fit = Object.entries(AWG_TO_MM2).filter(([, mm2]) => mm2 <= area * 1.001).sort((x, y) => y[1] - x[1])[0];
+  return fit?.[0];
+}
+
 function normalizeGauge(gauge: string): string {
+  const metric = metricToAwgGauge(gauge);
+  if (metric) return metric;
   return gauge.replace(" AWG", "").trim().replace(/\\0/g, "/0");
 }
 

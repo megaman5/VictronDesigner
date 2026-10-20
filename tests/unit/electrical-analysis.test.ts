@@ -88,8 +88,12 @@ describe('Shared electrical analysis', () => {
     const components = [c('a', 'battery'), c('b', 'battery'), c('shunt', 'smartshunt'), c('load', 'dc-load', { amps: 3 })];
     const values = analyze(components, [w('a', 'a', 'shunt', 'negative', 'negative'),
       w('b', 'b', 'shunt', 'negative', 'battery-minus'), w('load', 'shunt', 'load', 'system-minus', 'negative')]).wires;
-    expect(values.load.status).toBe('unsupported');
-    expect(values.load.calculation).toBeUndefined();
+    // Joined on one side only, so not a bank: each battery's own wire is
+    // between two supplies and stays flagged...
+    expect(values.a.status).toBe('unsupported'); expect(values.b.status).toBe('unsupported');
+    expect(values.a.calculation).toBeUndefined();
+    // ...but the load's own wire carries the load's 3A whatever feeds the shunt.
+    expect(values.load).toMatchObject({ status: 'known', currentA: 3 });
   });
   it('keeps AC output demand and inverter DC input in separate voltage domains', () => {
     const components = [c('battery', 'battery'), c('inverter', 'inverter'), c('panel', 'ac-panel'), c('load', 'ac-load', { watts: 1200, acVoltage: 120 })];
@@ -175,5 +179,76 @@ describe('Blue Smart Charger circuits', () => {
     expect(result.wires.hot.voltageV).toBe(120);
     expect(result.wires.charge.currentA).toBe(30);
     expect(result.wires.main.currentA).toBe(30);
+  });
+});
+
+/**
+ * Oct 2026: only 42% of wires in 101 real designs got a current. One
+ * unmodeled part (a Cerbo, an alternator, a Lynx Shunt) anywhere on a side
+ * blocked every wire on it, and a MultiPlus or Orion analysed from one side
+ * leaked into the other. These cover each fix; the corpus now resolves 93%.
+ */
+describe('Common Victron parts and topologies', () => {
+  const nameOf = (comp: AnalysisComponent, name: string) => ({ ...comp, name });
+  const bus = [c('bat', 'battery', { voltage: 12 }), c('bus', 'busbar-positive'), w('bat', 'bat', 'bus', 'positive', 'pos-1')] as const;
+  const base = () => ({ components: [bus[0], bus[1]] as AnalysisComponent[], wires: [bus[2]] as AnalysisWire[] });
+
+  it('treats a Cerbo GX as a ~3W load instead of blocking the circuit', () => {
+    const { components, wires } = base();
+    components.push(c('cerbo', 'cerbo'), c('load', 'dc-load', { amps: 5 }));
+    wires.push(w('gx', 'bus', 'cerbo', 'pos-2', 'power-positive'), w('load', 'bus', 'load', 'pos-3'));
+    const result = analyze(components, wires);
+    expect(result.wires.gx).toMatchObject({ status: 'known', currentA: 0.25 });
+    expect(result.wires.bat).toMatchObject({ status: 'known', currentA: 5.25 });
+  });
+
+  it('passes current through a Lynx Shunt, Smart BMS and BatteryProtect', () => {
+    for (const type of ['lynx-shunt', 'lynx-smart-bms', 'battery-protect']) {
+      const [inT, outT] = type === 'lynx-shunt' ? ['batt-positive', 'bus-out-positive'] : type === 'lynx-smart-bms' ? ['batt-positive', 'system-positive'] : ['input-positive', 'output-positive'];
+      const result = analyze([c('bat', 'battery', { voltage: 12 }), c('dev', type), c('load', 'dc-load', { amps: 7 })],
+        [w('in', 'bat', 'dev', 'positive', inT), w('out', 'dev', 'load', outT, 'positive')]);
+      expect(result.wires.in).toMatchObject({ status: 'known', currentA: 7 });
+    }
+  });
+
+  it('sizes an alternator charging a battery directly by its rated output', () => {
+    const result = analyze([c('alt', 'alternator', { amps: 60 }), c('bat', 'battery', { voltage: 12 })], [w('a', 'alt', 'bat', 'output-positive', 'positive')]);
+    expect(result.wires.a).toMatchObject({ status: 'known', currentA: 60, scenario: 'charge' });
+  });
+
+  it("sizes an alternator feeding only an Orion by the Orion's input draw", () => {
+    const orion = nameOf(c('orion', 'orion-dc-dc', { amps: 30 }), 'Orion-Tr Smart 12/12-30');
+    const result = analyze([c('alt', 'alternator', { amps: 120 }), orion, ...base().components],
+      [w('feed', 'alt', 'orion', 'output-positive', 'input-positive'), w('out', 'orion', 'bus', 'output-positive', 'pos-2'), bus[2]]);
+    expect(result.wires.feed.currentA).toBeCloseTo(30 / 0.9);
+    // The output side is the Orion's 30A - never the alternator's 120A.
+    expect(result.wires.out).toMatchObject({ status: 'known', currentA: 30 });
+  });
+
+  it("works out a step-down Orion's 12V island from its model rating", () => {
+    const orion = nameOf(c('orion', 'orion-dc-dc', { amps: 30 }), 'Orion-Tr Smart 48/12-30');
+    const result = analyze([c('bat', 'battery', { voltage: 48 }), orion, c('panel', 'dc-panel'), c('load', 'dc-load', { watts: 120 })],
+      [w('in', 'bat', 'orion', 'positive', 'input-positive'), w('out', 'orion', 'panel', 'output-positive', 'main-in-pos'), w('load', 'panel', 'load', 'load-1-pos', 'positive')], 48);
+    expect(result.wires.in.currentA).toBeCloseTo(30 * 12 / 48 / 0.9); // ~8.3A from the 48V side
+    expect(result.wires.load).toMatchObject({ status: 'known', currentA: 10, voltageV: 12 }); // 120W at 12V, not 48V
+  });
+
+  it("keeps a MultiPlus's AC input and output apart and sizes the input to the shore rating", () => {
+    const components = [c('shore', 'shore-power', { maxAmps: 30, voltage: 120 }), c('brk', 'ac-breaker'), c('mp', 'multiplus'), c('panel', 'ac-panel'), c('ac', 'ac-load', { watts: 1200, acVoltage: 120 })];
+    const wires = [w('s', 'shore', 'brk', 'ac-out-hot', 'in-hot'), w('in', 'brk', 'mp', 'out-hot', 'ac-in-hot'), w('out', 'mp', 'panel', 'ac-out-hot', 'main-in-hot'), w('ld', 'panel', 'ac', 'load-1-hot', 'hot')];
+    const result = analyze(components, wires);
+    expect(result.wires.in).toMatchObject({ status: 'known', currentA: 30 });
+    expect(result.wires.out).toMatchObject({ status: 'known', currentA: 10 });
+  });
+
+  it('treats two 12V batteries in series as one 24V supply', () => {
+    const result = analyze([c('lo', 'battery', { voltage: 12 }), c('hi', 'battery', { voltage: 12 }), c('bus', 'busbar-positive'), c('load', 'dc-load', { amps: 20 })],
+      [w('link', 'lo', 'hi', 'positive', 'negative'), w('main', 'hi', 'bus', 'positive', 'pos-1'), w('load', 'bus', 'load', 'pos-2')], 24);
+    expect(result.wires.main).toMatchObject({ status: 'known', currentA: 20 });
+  });
+
+  it('rates a stored metric gauge as the largest AWG not exceeding it', () => {
+    expect(evaluateWireGauge('6 mm2', { current: 10, length: 10, voltage: 12 })?.ampacityA).toBe(evaluateWireGauge('10 AWG', { current: 10, length: 10, voltage: 12 })?.ampacityA);
+    expect(evaluateWireGauge('0.5 mm2', { current: 1, length: 1, voltage: 12 })).toBeUndefined();
   });
 });

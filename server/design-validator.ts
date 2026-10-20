@@ -1,6 +1,7 @@
 import type { SchematicComponent, Wire } from "@shared/schema";
 import { TERMINAL_CONFIGS, getComponentTerminals, getComponentDimensions } from "../client/src/lib/terminal-config";
 import { getWireAmpacity, getACVoltage, calculateInverterDCInput } from "./wire-calculator";
+import { metricToAwgGauge } from "@shared/wire-calculator";
 import { getInverterACVoltage, getSupportedACVoltages, isSplitPhase } from "@shared/ac-voltage";
 import {
   DC_PROTECTION_TYPES,
@@ -1364,7 +1365,9 @@ export class DesignValidator {
       }
 
       // Normalize gauge format - remove duplicate " AWG" suffixes and normalize
-      let normalizedGaugeForLookup = wire.gauge.trim();
+      // Metric sizes map to the largest AWG not exceeding them (see metricToAwgGauge).
+      const metricAwg = metricToAwgGauge(wire.gauge);
+      let normalizedGaugeForLookup = metricAwg ? `${metricAwg} AWG` : wire.gauge.trim();
       // Remove trailing " AWG" if present (handle cases like "1/0 AWG AWG")
       normalizedGaugeForLookup = normalizedGaugeForLookup.replace(/\s+AWG\s*AWG\s*$/i, " AWG");
       // Ensure it ends with " AWG" for lookup
