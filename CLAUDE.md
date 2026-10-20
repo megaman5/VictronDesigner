@@ -674,6 +674,34 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Charger branches and worst-case current in the validator** (Oct 2026) - real
+designs reported a 60A solar fuse "carrying" the inverter's 257A and its 10 AWG
+link to the bus bar needing 152A, which also blocked AI backup designs. Fixed in
+`design-validator.ts`:
+
+- `calculateWireCurrentByCut` gave up on branches with no loads, so a charger
+  branch (MPPT/Orion -> fuse -> bus) fell to the whole-system trunk estimate.
+  It now returns the chargers' own output, counting only chargers reached
+  without walking *through* one (an Orion's branch is 30A, not 30A + the
+  alternator feeding it). Load/source sums use the same restricted walk.
+- A wire into a DC-DC charger's **input** carries its input draw:
+  `amps x outV/inV / 0.9`, ratio parsed from the model name ("48/12").
+- `calculateFuseCurrent` assumed the "out" terminal faces the loads; it now
+  uses the cuts of the fuse's own wires and keeps the old logic as fallback.
+- **Worst case, not net**: a clean cut is sized for `max(loads, chargers)`, not
+  `loads - chargers` (that sized a 24V main cable for 78A against 138A of load).
+  The ambiguous multi-battery fallback deliberately keeps the old net formula
+  until bank splitting is solved - see the open issue below.
+- A cut now reports whether it is genuinely trunk (batteries on both sides).
+  Only then does the whole-system fallback apply; a branch headed by a fuse is
+  sized to that fuse, and a branch of near-zero-draw devices (Cerbo,
+  BatteryProtect ground) is skipped instead of guessed at 30-400A.
+
+Measured on 101 real and reference designs, old vs new validator: errors
+235 -> 166, mean score 71.9 -> 76.8. Every *new* error was checked by hand and
+is real (e.g. 80A fuse on a 100A MPPT, 250A main fuse under 272A of load).
+Exemplars stay at 100.
+
 **Audited every component type against what the validator actually reads** -
 triggered by a real design where an Orion-Tr DC-DC charger with no `amps` set
 left its own wire un-sized ("Cannot determine current... gauge validation
@@ -722,7 +750,10 @@ above. Looks like the same-polarity graph-cut current calculation
 (`calculateWireCurrentByCut`) treats "battery reachable on both sides" as
 ambiguous more often than it should once a design has two banks, and its
 fallback doesn't reliably resolve two-bank topologies either. Flagged for a
-follow-up session rather than expanded into here.
+follow-up session rather than expanded into here. *(Oct 2026: charger branches, Orions and empty branches are now resolved -
+see the entry above - but genuinely ambiguous cuts in parallel/series banks
+still use the old net whole-system estimate, which can under- or over-state
+each battery's own cable.)*
 
 **Production model is now gemini-3.8-flash** - benchmarked on the same suite
 and prompt hash, 12 designs each:

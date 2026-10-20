@@ -951,7 +951,22 @@ export class DesignValidator {
    * Calculate current through a fuse by tracing downstream loads
    */
   private calculateFuseCurrent(fuseId: string): number {
-    // Find the wire connected to fuse "out" terminal (downstream side)
+    // A fuse is in series with the wires on both sides, so it carries what
+    // they carry. Use the same graph cut as wire sizing: it knows which side
+    // faces the battery. The "out" terminal does not - a charger branch fused
+    // with "out" toward the bus bar summed every load on that bus bar, and a
+    // 60A solar fuse was reported as carrying the inverter's 257A.
+    const cuts = this.wires
+      .filter(w => w.fromComponentId === fuseId || w.toComponentId === fuseId)
+      .map(w => this.calculateWireCurrentByCut(w))
+      // A wire sized to this fuse's own rating says nothing about its load.
+      .filter(cut => !cut.fuseBound)
+      .map(cut => cut.amps)
+      .filter((current): current is number => current !== null);
+    if (cuts.length > 0) return Math.max(...cuts);
+
+    // Fallback when no cut is clean (e.g. parallel banks): find the wire
+    // connected to the fuse "out" terminal (downstream side)
     const fuseOutWire = this.wires.find(w => 
       (w.fromComponentId === fuseId && w.fromTerminal === 'out') ||
       (w.toComponentId === fuseId && w.toTerminal === 'out')
@@ -1097,8 +1112,15 @@ export class DesignValidator {
    * battery on both (series links, parallel banks) - so the caller can fall back
    * to the older whole-system estimate rather than trust a bad number.
    */
-  private calculateWireCurrentByCut(wire: Wire): number | null {
-    if (wire.polarity !== "positive" && wire.polarity !== "negative") return null;
+  /**
+   * `trunk` is true only when the cut is ambiguous because batteries sit on
+   * both sides (or the wire is part of a loop) - the one case the caller's
+   * whole-system estimate is for. A branch with nothing modeled on it (a Cerbo
+   * feed, a PV-side disconnect) is not trunk and must not get that estimate.
+   */
+  private calculateWireCurrentByCut(wire: Wire): { amps: number | null; trunk: boolean; fuseBound?: boolean; negligible?: boolean } {
+    const unknown = (trunk = false) => ({ amps: null, trunk });
+    if (wire.polarity !== "positive" && wire.polarity !== "negative") return unknown();
 
     const samePolarity = this.wires.filter(
       w => w.polarity === wire.polarity && isDifferentWire(w, wire)
@@ -1127,7 +1149,7 @@ export class DesignValidator {
 
     // A wire whose ends are still connected around some other path is not a
     // clean cut - refuse rather than guess.
-    if (fromSide.has(wire.toComponentId) || toSide.has(wire.fromComponentId)) return null;
+    if (fromSide.has(wire.toComponentId) || toSide.has(wire.fromComponentId)) return unknown(true);
 
     // For "does this side already have its own supply", a battery bank
     // combiner or a charger reaching back to a second bank must NOT count as
@@ -1137,9 +1159,10 @@ export class DesignValidator {
     // combiner, or simply a DC-DC charger whose input taps the other bank)
     // made nearly every wire on the main bank's own trunk look "ambiguous",
     // even though the two banks are electrically distinct for sizing purposes.
-    // The unrestricted fromSide/toSide sets above are still used for the
-    // actual load/source sum below - this narrower walk is only to decide
-    // whether the cut is trustworthy.
+    // The load/source sum below uses this narrower walk too: summing the
+    // unrestricted side walked through an Orion into the other bank, and
+    // charged a starter battery's 60A feed fuse with the house inverter's
+    // load (116A on a ~33A circuit, Oct 2026).
     const SOURCE_ISOLATING = new Set([
       "cyrix-ct", "argofet", "mppt", "blue-smart-charger", "orion-dc-dc", "alternator",
     ]);
@@ -1177,14 +1200,42 @@ export class DesignValidator {
     if (process.env.DEBUG_CUT === wire.id) {
       console.error("DEBUG_CUT", wire.id, wire.fromComponentId, "->", wire.toComponentId, wire.polarity, { fromHasBattery, toHasBattery });
     }
-    if (fromHasBattery === toHasBattery) return null; // both or neither - ambiguous
+    if (fromHasBattery === toHasBattery) return unknown(fromHasBattery); // both or neither - ambiguous
 
-    const loadSide = fromHasBattery ? toSide : fromSide;
+    const loadEnd = fromHasBattery ? wire.toComponentId : wire.fromComponentId;
+    const loadSide = reachableWithoutCrossingSources(loadEnd);
+    // A DC-DC charger met on its input side is a load on this branch, drawing
+    // its output current scaled by its voltage ratio, plus ~10% losses. The
+    // ratio comes from the model name ("48/12" draws a quarter of its output
+    // from the 48V side); without one, assume same voltage (12/12, 24/24).
+    const converterInputDraw = (c: SchematicComponent) => {
+      const amps = Number(c.properties?.amps || c.properties?.current || 0);
+      const ratio = String(c.properties?.model ?? c.name ?? "").match(/\b(12|24|48)\s*\/\s*(12|24|48)\b/);
+      return amps * (ratio ? Number(ratio[2]) / Number(ratio[1]) : 1) / 0.9;
+    };
+    const feedsConverterInput = (c: SchematicComponent) =>
+      c.type === "orion-dc-dc" && c.id !== loadEnd && samePolarity.some(w =>
+        (w.toComponentId === c.id && String(w.toTerminal).startsWith("input") && loadSide.has(w.fromComponentId)) ||
+        (w.fromComponentId === c.id && String(w.fromTerminal).startsWith("input") && loadSide.has(w.toComponentId)));
+
+    // The wire lands on a DC-DC charger's input: it carries that input draw,
+    // not the charger's output (a 48/12-30 Orion's input fuse is not 30A).
+    const loadEndComp = this.components.find(c => c.id === loadEnd);
+    const loadEndTerminal = String(wire.fromComponentId === loadEnd ? wire.fromTerminal : wire.toTerminal);
+    if (loadEndComp?.type === "orion-dc-dc" && loadEndTerminal.startsWith("input")) {
+      const draw = converterInputDraw(loadEndComp);
+      return draw > 0 ? { amps: draw, trunk: false } : unknown();
+    }
 
     let loadA = 0;
     let sourceA = 0;
     for (const c of this.components) {
       if (!loadSide.has(c.id)) continue;
+
+      if (feedsConverterInput(c)) {
+        loadA += converterInputDraw(c);
+        continue;
+      }
 
       if (
         c.type === "inverter" ||
@@ -1220,11 +1271,64 @@ export class DesignValidator {
     if (process.env.DEBUG_CUT === wire.id) {
       console.error("DEBUG_CUT loadA/sourceA", wire.id, { loadA, sourceA, loadSideMembers: Array.from(loadSide) });
     }
-    // A branch that only feeds a charger carries that charger's output; the
-    // caller's existing source handling covers it, so report nothing here.
-    if (loadA === 0) return null;
+    // A branch with no loads carries its chargers' output - e.g. an MPPT
+    // feeding a bus bar through its own fuse. Returning nothing here sent the
+    // fuse-to-bus-bar link to the whole-system trunk estimate instead, which
+    // charged a 10 AWG solar branch with 152A (Oct 2026 production designs).
+    if (loadA === 0) {
+      // The battery is reached only through a converter (e.g. alternator ->
+      // Orion input): that wire carries the converter's input draw, which this
+      // cut cannot see. Leave it to the caller, as before.
+      const batteryEnd = this.components.find(c => c.id === (fromHasBattery ? wire.fromComponentId : wire.toComponentId));
+      if (batteryEnd && SOURCE_ISOLATING.has(batteryEnd.type)) return unknown();
+      // Count only chargers reached without passing through one, the start
+      // included: an Orion's output branch carries the Orion's 30A, not the
+      // alternator feeding its input.
+      const branchSources = new Set<string>();
+      const seen = new Set<string>();
+      const queue = [fromHasBattery ? wire.toComponentId : wire.fromComponentId];
+      while (queue.length) {
+        const id = queue.shift()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const comp = this.components.find(c => c.id === id);
+        if (comp && SOURCE_ISOLATING.has(comp.type)) {
+          if (comp.type !== "cyrix-ct" && comp.type !== "argofet") branchSources.add(id);
+          continue;
+        }
+        for (const w of samePolarity) {
+          if (w.fromComponentId === id) queue.push(w.toComponentId);
+          else if (w.toComponentId === id) queue.push(w.fromComponentId);
+        }
+      }
+      const branchA = this.components
+        .filter(c => branchSources.has(c.id))
+        .reduce((sum, c) => sum + Number(c.type === "mppt"
+          ? c.properties?.maxCurrent || c.properties?.amps || c.properties?.current || 0
+          : c.properties?.amps || c.properties?.current || 0), 0);
+      if (branchA > 0) return { amps: branchA, trunk: false };
+      // Nothing countable on this branch. A fuse or breaker at its head caps
+      // what the wire can ever carry, so size the wire to that rating (a 5A
+      // Cerbo feed was being given 30A by the catch-all guesses). A branch of
+      // only near-zero-draw devices carries nothing worth checking.
+      const head = this.components.find(c => c.id === loadEnd);
+      const headRating = Number(head?.type === "fuse" ? head.properties?.fuseRating || head.properties?.amps
+        : head?.type === "dc-breaker" ? head.properties?.amps || head.properties?.rating : 0) || 0;
+      if (headRating > 0) return { amps: headRating, trunk: false, fuseBound: true };
+      const NEGLIGIBLE_DRAW = new Set(["cerbo", "bmv", "smartshunt", "battery-protect", "battery-balancer", "switch", "fuse", "dc-breaker", "lynx-distributor", "lynx-shunt"]);
+      const isNegligible = (id: string) => {
+        const comp = this.components.find(c => c.id === id);
+        return !comp || NEGLIGIBLE_DRAW.has(comp.type) || comp.type.includes("busbar");
+      };
+      if (Array.from(loadSide).every(isNegligible)) return { amps: null, trunk: false, negligible: true };
+      return unknown();
+    }
 
-    return Math.max(0, loadA - sourceA);
+    // Size for the worst case, not the net: at night with the engine off the
+    // chargers contribute nothing and the loads draw their full current, while
+    // with the loads off the chargers' full output flows the other way.
+    // Subtracting them sized a 24V main cable for 78A against a 138A load.
+    return { amps: Math.max(loadA, sourceA), trunk: false };
   }
 
   private validateWireSizing(): void {
@@ -1357,16 +1461,19 @@ export class DesignValidator {
       // graph. Precise for the radial branches a real design is made of, and
       // the reason a fused branch circuit is no longer charged with the whole
       // system's current.
+      let cutIsTrunk = true;
       if (current === 0) {
         const cut = this.calculateWireCurrentByCut(wire);
-        if (cut !== null) current = cut;
+        if (cut.amps !== null) current = cut.amps;
+        cutIsTrunk = cut.trunk;
+        if (cut.negligible) return; // feeds only near-zero-draw devices
       }
 
       // Fallback for cuts that came back ambiguous - series battery links and
       // parallel banks put a battery on both sides. The DC "trunk" (battery
       // bank, fuses, switches, shunt and the main +/- bus bars) is one series
       // loop, so every wire on it carries the same whole-system current.
-      if (current === 0 && (wire.polarity === "positive" || wire.polarity === "negative")) {
+      if (current === 0 && cutIsTrunk && (wire.polarity === "positive" || wire.polarity === "negative")) {
         const fromCompT = this.components.find(c => c.id === wire.fromComponentId);
         const toCompT = this.components.find(c => c.id === wire.toComponentId);
         // cyrix-ct/argofet are deliberately NOT here: unlike a fuse or switch,
@@ -1393,6 +1500,10 @@ export class DesignValidator {
                 : (c.properties?.amps || c.properties?.current || 0)) as number;
             }
           }
+          // Net, not worst case, unlike calculateWireCurrentByCut: this only
+          // runs for multi-battery cuts (parallel/series banks), where every
+          // battery's own cable would otherwise be charged with the whole
+          // system's peak. Splitting current across banks is still unsolved.
           current = Math.max(0, loadA - sourceA);
         }
       }
