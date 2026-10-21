@@ -674,6 +674,31 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Fixes from a pass over a week of AI logs** (Oct 21) - every AI design from
+the last 7 days was re-reviewed with the current checker (wire-components logs
+keep the canvas in `response.attemptContext.inputSnapshot.existingDesign`).
+Voltage-drop errors in them are already fixed by the normalizer now that the
+engine resolves those wires. What was changed:
+
+- **Bypassed parts** (new rule, `validateBypassedDevices`): a fuse, breaker,
+  switch, BatteryProtect, SmartShunt, Lynx Shunt/BMS or Lynx fuse whose two
+  sides are joined by wires/bus bars outside it. AI output had a shunt's system
+  side wired back to the battery bus (monitor reads ~0), a fuse with in and out
+  on one bus bar, and a switch with a wire around it. None was reported before.
+- **Voltage mismatch false errors**: Cerbo, SmartShunt, BMV, Lynx, bus bars,
+  fuses, breakers, switches and DC panels keep the 12V stamped when placed;
+  they now accept 12/24/48. MPPTs accept 12/24 (75/100V models) or 12/24/48
+  (150V+), Orions their in/out voltages. Only a *declared* voltage is
+  widened - a part with none is still not checked, so no new errors.
+- **MPPT "missing solar panel"** no longer fires when panels reach it through
+  PV combiner bus bars, fuses, breakers or switches.
+- **Orion input current** also uses declared `inputVoltage`/`outputVoltage`
+  when the name has no "12/24" (engine 1.6.1).
+- **AI Wire preflight** no longer refuses an inverter with no AC loads when
+  its VA rating is known (the engine sizes it from the rating).
+
+On the 101-design corpus: errors 100 -> 94, none added.
+
 **Inverter rating overloads are warnings, not errors** (engine 1.6.0) - every
 inverter cable is checked twice: against the loads drawn on its AC output
 (an overload is an **error** - the design as drawn is wrong) and against the

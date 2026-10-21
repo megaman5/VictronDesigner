@@ -337,6 +337,11 @@ describe('Common Victron parts and topologies', () => {
       expect(value.issues).toEqual([]); expect(value.ratedOutputWarnings).toBeUndefined();
     });
   });
+  it('works out DC-DC input current from declared input and output voltages', () => {
+    const components = [c('battery', 'battery', { voltage: 12 }), c('orion', 'orion-dc-dc', { amps: 30, inputVoltage: 12, outputVoltage: 24 })];
+    const value = analyze(components, [w('in', 'battery', 'orion', 'positive', 'input-positive')]).wires.in;
+    expect(value).toMatchObject({ status: 'known', voltageV: 12 }); expect(value.currentA).toBeCloseTo(30 * 24 / 12 / .9, 6);
+  });
   it('bounds split-phase conductors by every 120V load on one leg', () => {
     const components = [c('inv', 'quattro', { acOutputVoltage: 'split-120-240' }), c('panel', 'ac-panel'),
       c('pump', 'ac-load', { watts: 1200, acVoltage: 240 }), c('outlets', 'ac-load', { watts: 1500, acVoltage: 120 })];

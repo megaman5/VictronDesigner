@@ -959,4 +959,43 @@ describe('Design Validator', () => {
       }
     });
   });
+
+  describe('Fixes from recent AI runs', () => {
+    const t = (id: string, from: string, fromTerminal: string, to: string, toTerminal: string, polarity = 'positive'): Wire =>
+      ({ id, fromComponentId: from, toComponentId: to, fromTerminal, toTerminal, polarity, gauge: '4 AWG', length: 3 });
+    const issuesOf = (components: SchematicComponent[], wires: Wire[], voltage = 12) => new DesignValidator(components, wires, voltage).validate().issues;
+
+    it('does not hold a Cerbo or SmartShunt to the 12V stamped on it when placed', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 24 }), createComponent('neg', 'busbar-negative', 0, 300, { voltage: 24 }),
+        createComponent('gx', 'cerbo', 400, 0, { voltage: 12 }), createComponent('shunt', 'smartshunt', 400, 300, { voltage: 12 })];
+      const wires = [t('a', 'bat', 'negative', 'shunt', 'negative', 'negative'), t('b', 'shunt', 'system-minus', 'neg', 'neg-1', 'negative'), t('c', 'gx', 'power-negative', 'neg', 'neg-2', 'negative')];
+      expect(issuesOf(components, wires, 24).filter(i => /voltage mismatch/i.test(i.message))).toEqual([]);
+    });
+    it('still flags a fixed-voltage charger on the wrong system voltage', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 24 }), createComponent('chg', 'blue-smart-charger', 400, 0, { voltage: 12, amps: 15 })];
+      expect(issuesOf(components, [t('a', 'chg', 'dc-positive', 'bat', 'positive')], 24).some(i => /voltage mismatch/i.test(i.message))).toBe(true);
+    });
+    it('accepts solar panels reaching the MPPT through combiner bus bars', () => {
+      const components = [createComponent('p1', 'solar-panel', 0, 0, { watts: 300, voltage: 36 }), createComponent('pv+', 'busbar-positive', 300, 0), createComponent('pv-', 'busbar-negative', 300, 300),
+        createComponent('mppt', 'mppt', 600, 0, { maxCurrent: 30, maxPVVoltage: 100 })];
+      const wires = [t('a', 'p1', 'positive', 'pv+', 'pos-1'), t('b', 'p1', 'negative', 'pv-', 'neg-1', 'negative'), t('c', 'pv+', 'pos-2', 'mppt', 'pv-positive'), t('d', 'pv-', 'neg-2', 'mppt', 'pv-negative', 'negative')];
+      expect(issuesOf(components, wires).some(i => /missing solar panel/.test(i.message))).toBe(false);
+    });
+    it('flags a fuse whose in and out are wired to the same bus bar', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 12 }), createComponent('f', 'fuse', 300, 0, { fuseRating: 100 }), createComponent('bus', 'busbar-positive', 600, 0)];
+      const wires = [t('a', 'bat', 'positive', 'f', 'in'), t('b', 'f', 'out', 'bus', 'pos-1'), t('c', 'bat', 'positive', 'bus', 'pos-2')];
+      expect(issuesOf(components, wires).find(i => /bypassed/.test(i.message))?.message).toContain('cannot protect the wire');
+    });
+    it('flags a SmartShunt whose system side is wired back to the battery negative', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 12 }), createComponent('s', 'smartshunt', 300, 0), createComponent('neg', 'busbar-negative', 600, 0)];
+      const wires = [t('a', 'bat', 'negative', 's', 'negative', 'negative'), t('b', 's', 'system-minus', 'neg', 'neg-1', 'negative'), t('c', 'bat', 'negative', 'neg', 'neg-2', 'negative')];
+      expect(issuesOf(components, wires).find(i => /bypassed/.test(i.message))?.message).toContain('cannot measure');
+    });
+    it('does not flag a correctly wired fuse and shunt', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 12 }), createComponent('f', 'fuse', 300, 0, { fuseRating: 100 }), createComponent('bus', 'busbar-positive', 600, 0),
+        createComponent('s', 'smartshunt', 300, 300), createComponent('neg', 'busbar-negative', 600, 300)];
+      const wires = [t('a', 'bat', 'positive', 'f', 'in'), t('b', 'f', 'out', 'bus', 'pos-1'), t('c', 'bat', 'negative', 's', 'negative', 'negative'), t('d', 's', 'system-minus', 'neg', 'neg-1', 'negative')];
+      expect(issuesOf(components, wires).some(i => /bypassed/.test(i.message))).toBe(false);
+    });
+  });
 });

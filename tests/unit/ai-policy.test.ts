@@ -11,6 +11,10 @@ describe('AI issue-aware corrections', () => {
     const fixture = AI_REGRESSION_CASES.find(c => c.id === 'missing-equipment-eight')!;
     expect(wirePreflight(fixture.existingComponents!, fixture.requirements).map(b => b.suggestedType).filter(Boolean)).toEqual(['fuse', 'solar-panel']);
     expect(wirePreflight([{ type: 'battery', id: 'b' }, { type: 'fuse', id: 'f' }])).toEqual([]);
+    // An inverter with no AC loads is sized from its VA rating; only an unrated one blocks AI Wire.
+    expect(wirePreflight([{ type: 'battery', id: 'b' }, { type: 'fuse', id: 'f' }, { type: 'multiplus', id: 'm', properties: { powerRating: 3000 } }])).toEqual([]);
+    expect(wirePreflight([{ type: 'battery', id: 'b' }, { type: 'fuse', id: 'f' }, { type: 'multiplus', id: 'm', name: 'MultiPlus 12/3000/120' }])).toEqual([]);
+    expect(wirePreflight([{ type: 'battery', id: 'b' }, { type: 'fuse', id: 'f' }, { type: 'multiplus', id: 'm', properties: {} }]).map(b => b.field)).toEqual(['dcInputAmps']);
   });
   it('prefers zero electrical errors to a higher numerical score', () => {
     expect(prefersAICandidate(candidate(90), candidate(100, [{ severity: 'error', category: 'electrical', message: 'Unfused battery' }]))).toBe(true);

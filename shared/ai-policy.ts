@@ -1,8 +1,8 @@
 import type { DesignRequirements } from './design-requirements';
 import { buildDesignReview } from './design-review';
-import { electricalFingerprint } from './electrical-analysis';
+import { electricalFingerprint, ratedContinuousWatts } from './electrical-analysis';
 
-export const AI_POLICY_VERSION = '2026-10-07.1';
+export const AI_POLICY_VERSION = '2026-10-21.1';
 export type AIBlockerKind = 'missing-equipment' | 'missing-specification' | 'unsupported-analysis' | 'repairable-wiring' | 'layout' | 'manual-requirement';
 export interface AIBlocker { kind: AIBlockerKind; message: string; componentIds: string[]; wireId?: string; field?: string; suggestedType?: string }
 
@@ -24,8 +24,8 @@ export function wirePreflight(components: any[], requirements?: DesignRequiremen
     let field: string | undefined;
     if (['dc-load', 'ac-load'].includes(component.type) && !positive(p.watts ?? p.power) && !positive(p.amps)) field = 'watts';
     if (component.type === 'mppt' && !positive(p.maxCurrent)) field = 'maxCurrent';
-    if (['inverter', 'multiplus', 'quattro', 'phoenix-inverter'].includes(component.type) && !components.some(c => c.type === 'ac-load') && !positive(p.dcInputAmps) && !positive(p.dcInputWatts)) field = 'dcInputAmps';
-    if (field) blockers.push({ kind: 'missing-specification', message: field === 'dcInputAmps' ? `Add the intended AC loads or set the reviewed DC input sizing current for ${component.name ?? component.id} in Properties. AI cannot infer utilization from an inverter rating.` : `Set ${field} for ${component.name ?? component.id} in Properties before AI Wire.`, componentIds: [component.id], field });
+    if (['inverter', 'multiplus', 'quattro', 'phoenix-inverter'].includes(component.type) && !components.some(c => c.type === 'ac-load') && !positive(p.dcInputAmps) && !positive(p.dcInputWatts) && !ratedContinuousWatts(component)) field = 'dcInputAmps';
+    if (field) blockers.push({ kind: 'missing-specification', message: field === 'dcInputAmps' ? `Add the intended AC loads or set the reviewed DC input sizing current for ${component.name ?? component.id} in Properties. or set its VA rating, so its cables can be sized.` : `Set ${field} for ${component.name ?? component.id} in Properties before AI Wire.`, componentIds: [component.id], field });
   }
   return blockers;
 }

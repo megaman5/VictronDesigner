@@ -60,6 +60,9 @@ export interface DesignMetrics {
 /**
  * Comprehensive design validation engine
  */
+const ANY_SYSTEM_VOLTAGE = new Set(["cerbo", "smartshunt", "bmv", "busbar-positive", "busbar-negative", "fuse", "dc-breaker", "switch",
+  "dc-panel", "lynx-distributor", "lynx-shunt", "lynx-power-in"]);
+
 export class DesignValidator {
   private components: SchematicComponent[];
   private wires: Wire[];
@@ -130,6 +133,9 @@ export class DesignValidator {
 
     // Rule 9: Fuse ratings must exceed current through them
     this.validateFuseRatings();
+
+    // Rule 10: A fuse, switch or shunt whose two sides are wired together does nothing
+    this.validateBypassedDevices();
 
     // Rule 10: Battery safety (Main Switch + Immediate Fusing)
     this.validateBatterySafety();
@@ -607,6 +613,51 @@ export class DesignValidator {
     });
   }
 
+  /**
+   * A series part (fuse, breaker, switch, shunt) whose two sides are joined by
+   * wires and bus bars outside it is bypassed: current flows around it, so a
+   * fuse never blows and a shunt measures nothing. Found in AI output as extra
+   * "return" wires from a shunt's system side back to the battery bus bar.
+   */
+  private validateBypassedDevices(): void {
+    const parent = new Map<string, string>();
+    const find = (x: string): string => { while (parent.has(x) && parent.get(x) !== x) x = parent.get(x)!; return x; };
+    const join = (a: string, b: string) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    const key = (id: string, terminal?: string) => `${id}:${terminal ?? ""}`;
+    for (const w of this.wires) join(key(w.fromComponentId, w.fromTerminal), key(w.toComponentId, w.toTerminal));
+    // Terminals that are one conductor inside the part.
+    const joined = (id: string, terminals: string[]) => terminals.slice(1).forEach(t => join(key(id, terminals[0]), key(id, t)));
+    const series: Array<{ comp: SchematicComponent; a: string; b: string }> = [];
+    for (const c of this.components) {
+      const used = Array.from(new Set(this.wires.flatMap(w => [w.fromComponentId === c.id ? w.fromTerminal : undefined, w.toComponentId === c.id ? w.toTerminal : undefined]).filter((t): t is string => !!t)));
+      const pos = used.filter(t => /pos/.test(t)), neg = used.filter(t => /neg/.test(t));
+      if (c.type === "busbar-positive" || c.type === "busbar-negative") joined(c.id, used);
+      else if (c.type === "lynx-power-in") { joined(c.id, pos); joined(c.id, neg); }
+      else if (c.type === "lynx-distributor") {
+        joined(c.id, ["main-positive", "bus-out-positive"]); joined(c.id, ["main-negative", "bus-out-negative", ...neg]);
+        for (const t of used.filter(t => t.startsWith("fuse-"))) series.push({ comp: c, a: "main-positive", b: t });
+      }
+      else if (c.type === "fuse" || c.type === "dc-breaker" || c.type === "switch") series.push({ comp: c, a: "in", b: "out" });
+      else if (c.type === "battery-protect") series.push({ comp: c, a: "input-positive", b: "output-positive" });
+      else if (c.type === "smartshunt") series.push({ comp: c, a: "negative", b: "system-minus" });
+      else if (c.type === "lynx-shunt") series.push({ comp: c, a: "batt-negative", b: "bus-out-negative" }, { comp: c, a: "batt-positive", b: "bus-out-positive" });
+      else if (c.type === "lynx-smart-bms") series.push({ comp: c, a: "batt-negative", b: "system-negative" }, { comp: c, a: "batt-positive", b: "system-positive" });
+    }
+    const reported = new Set<string>();
+    for (const { comp, a, b } of series) {
+      if (reported.has(comp.id) || find(key(comp.id, a)) !== find(key(comp.id, b))) continue;
+      reported.add(comp.id);
+      const measures = comp.type === "smartshunt" || (comp.type === "lynx-shunt" && a.includes("neg")) || (comp.type === "lynx-smart-bms" && a.includes("neg"));
+      this.issues.push({
+        severity: "error",
+        category: "electrical",
+        message: `"${this.getComponentName(comp.id)}" is bypassed: its "${a}" and "${b}" sides are wired together outside it, so current flows around it${measures ? " and it cannot measure it" : comp.type === "switch" || comp.type === "battery-protect" ? " and it cannot disconnect anything" : " and it cannot protect the wire"}.`,
+        componentIds: [comp.id],
+        suggestion: `Remove the extra wire that joins the "${a}" side to the "${b}" side; current must pass through the part, not around it.`,
+      });
+    }
+  }
+
   private validateMPPTSolarConnections(): void {
     const mppts = this.components.filter(c => c.type === "mppt");
 
@@ -621,23 +672,23 @@ export class DesignValidator {
              (w.toComponentId === mppt.id && w.toTerminal === "pv-negative")
       );
 
-      // Check if connected to a solar panel (checking both terminal connections and component types)
-      const connectedToSolar = this.wires.some(w => {
-        const fromComp = this.components.find(c => c.id === w.fromComponentId);
-        const toComp = this.components.find(c => c.id === w.toComponentId);
-        
-        // Solar panel to MPPT: solar "positive"/"negative" terminals to MPPT "pv-positive"/"pv-negative"
-        if (fromComp?.type === "solar-panel" && toComp?.id === mppt.id) {
-          return (w.fromTerminal === "positive" && w.toTerminal === "pv-positive") ||
-                 (w.fromTerminal === "negative" && w.toTerminal === "pv-negative");
-        }
-        // MPPT to Solar panel: MPPT "pv-positive"/"pv-negative" to solar "positive"/"negative"
-        if (toComp?.type === "solar-panel" && fromComp?.id === mppt.id) {
-          return (w.fromTerminal === "pv-positive" && w.toTerminal === "positive") ||
-                 (w.fromTerminal === "pv-negative" && w.toTerminal === "negative");
-        }
-        return false;
-      });
+      // Connected to a solar panel directly, or through PV combiner bus bars,
+      // fuses, breakers and disconnect switches on the PV side.
+      const PV_PASS_THROUGH = new Set(["busbar-positive", "busbar-negative", "fuse", "dc-breaker", "switch"]);
+      const seen = new Set<string>([mppt.id]);
+      const queue = this.wires
+        .filter(w => (w.fromComponentId === mppt.id && w.fromTerminal?.startsWith("pv-")) || (w.toComponentId === mppt.id && w.toTerminal?.startsWith("pv-")))
+        .map(w => w.fromComponentId === mppt.id ? w.toComponentId : w.fromComponentId);
+      let connectedToSolar = false;
+      while (queue.length && !connectedToSolar) {
+        const id = queue.shift()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const comp = this.components.find(c => c.id === id);
+        if (comp?.type === "solar-panel") connectedToSolar = true;
+        else if (comp && PV_PASS_THROUGH.has(comp.type))
+          for (const w of this.wires) if (w.fromComponentId === id || w.toComponentId === id) queue.push(w.fromComponentId === id ? w.toComponentId : w.fromComponentId);
+      }
 
       if (!hasPVPositive || !hasPVNegative || !connectedToSolar) {
         this.issues.push({
@@ -832,7 +883,26 @@ export class DesignValidator {
       return supported.length > 0 ? supported : null;
     }
     const v = comp.properties?.voltage as number | undefined;
-    return v ? [v] : null;
+    // Only a declared voltage is checked; the rules below widen it, never add one.
+    if (!v) return null;
+    // Parts that run on any Victron DC system voltage keep whatever voltage the
+    // canvas stamped on them when placed; that value is not a limit. Cerbo GX
+    // 8-70V, SmartShunt/BMV 6.5-70V, Lynx 12-48V; bus bars, fuses, breakers,
+    // switches and distribution panels are passive conductors.
+    if (ANY_SYSTEM_VOLTAGE.has(comp.type)) return [12, 24, 48];
+    // SmartSolar: 75V and 100V models are 12/24V auto, 150V and up 12/24/48V.
+    if (comp.type === "mppt") {
+      const pv = Number(comp.properties?.maxPVVoltage) || Number(String(comp.properties?.model ?? comp.name ?? "").match(/\b(75|100|150|250|450)\s*[|/]/)?.[1]);
+      if (pv) return pv >= 150 ? [12, 24, 48] : [12, 24];
+    }
+    // Orion "12/24": input on one side, output on the other.
+    if (comp.type === "orion-dc-dc") {
+      const m = String(comp.properties?.model ?? comp.name ?? "").match(/\b(12|24|48)\s*V?\s*\/\s*(12|24|48)(?!\d)/i);
+      if (m) return Array.from(new Set([Number(m[1]), Number(m[2])]));
+      const { inputVoltage, outputVoltage } = comp.properties ?? {};
+      if (Number(inputVoltage) > 0 && Number(outputVoltage) > 0) return Array.from(new Set([Number(inputVoltage), Number(outputVoltage)]));
+    }
+    return [v];
   }
 
   private validateVoltageMismatches(): void {

@@ -5,7 +5,7 @@ import type { WireCalculation } from './schema';
 import { analyzePVCircuits, panelOperatingValue } from './pv-analysis';
 import { solveResistorNetwork, type Resistor } from './dc-network';
 
-export const ELECTRICAL_ENGINE_VERSION = '1.6.0';
+export const ELECTRICAL_ENGINE_VERSION = '1.6.1';
 export interface AnalysisComponent { id: string; type: string; name?: string; properties?: Record<string, any> }
 export interface AnalysisWire {
   id: string; fromComponentId: string; toComponentId: string;
@@ -42,11 +42,14 @@ const acPass = new Set(['ac-panel', 'ac-breaker', 'transfer-switch']);
 const CERBO_TYPICAL_WATTS = 3; // Cerbo GX datasheet, without display/accessories
 const negligibleDraw = new Set(['battery-balancer']);
 const chargerTypes = ['mppt', 'blue-smart-charger', 'orion-dc-dc', 'alternator'];
-/** "48/12" in a DC-DC model name: input and output nominal voltages. */
+/** DC-DC input and output nominal voltages: "48/12" in the model name, else declared. */
 const converterRatio = (c: AnalysisComponent): { inV: number; outV: number } | undefined => {
   // "12/24", "12/24V", "24V/12V", "12/12-30"
   const m = String(c.properties?.model ?? c.name ?? '').match(/\b(12|24|48)\s*V?\s*\/\s*(12|24|48)(?!\d)/i);
-  return m ? { inV: Number(m[1]), outV: Number(m[2]) } : undefined;
+  if (m) return { inV: Number(m[1]), outV: Number(m[2]) };
+  // Otherwise the declared input/output voltages from the properties panel.
+  const inV = Number(c.properties?.inputVoltage), outV = Number(c.properties?.outputVoltage);
+  return inV > 0 && outV > 0 ? { inV, outV } : undefined;
 };
 /**
  * Continuous AC output at 25C from Victron datasheets, by VA rating (MultiPlus,
@@ -58,7 +61,7 @@ const CONTINUOUS_WATTS_BY_VA: Record<number, number> = {
   5000: 4000, 8000: 6500, 10000: 8000, 15000: 12000,
 };
 /** VA rating: the powerRating property, else the "12/3000" part of the model name. */
-const ratedContinuousWatts = (c: AnalysisComponent): { watts: number; note: string } | undefined => {
+export const ratedContinuousWatts = (c: AnalysisComponent): { watts: number; note: string } | undefined => {
   const p = c.properties ?? {};
   const named = String(p.model ?? c.name ?? '').match(/\b(?:12|24|48)\s*\/\s*(\d{3,5})\b/);
   const va = Number(p.powerRating) > 0 ? Number(p.powerRating) : named ? Number(named[1]) : NaN;
