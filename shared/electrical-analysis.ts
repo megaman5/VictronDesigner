@@ -5,7 +5,7 @@ import type { WireCalculation } from './schema';
 import { analyzePVCircuits, panelOperatingValue } from './pv-analysis';
 import { solveResistorNetwork, type Resistor } from './dc-network';
 
-export const ELECTRICAL_ENGINE_VERSION = '1.5.0';
+export const ELECTRICAL_ENGINE_VERSION = '1.6.0';
 export interface AnalysisComponent { id: string; type: string; name?: string; properties?: Record<string, any> }
 export interface AnalysisWire {
   id: string; fromComponentId: string; toComponentId: string;
@@ -20,6 +20,8 @@ export interface WireAnalysis extends ElectricalValue {
   calculation?: WireCalculation; selectedGauge?: string;
   sizingCurrentA?: number;
   selectedGaugeAmpacityA?: number; selectedGaugeVoltageDropPercent?: number; issues: string[];
+  /** Problems only at an inverter's full rated output, not with the loads drawn - shown as warnings. */
+  ratedOutputWarnings?: string[];
 }
 export interface AnalysisResult {
   engineVersion: string; fingerprint: string;
@@ -113,7 +115,35 @@ function terminalDomain(component: AnalysisComponent, terminal: string | undefin
  * invented zero current. Existing sizing tables are retained unchanged. No
  * conductor is rewritten.
  */
+/**
+ * Inverter cables are checked twice. Against what is drawn on the AC output
+ * (errors: the design as drawn overloads them), and against the inverter's
+ * rated continuous output (warnings: fine today, but not if someone uses the
+ * inverter's full capacity later). An inverter with nothing drawn on its
+ * output is shown at its rating, with any overload as a warning.
+ */
 export function analyzeElectricalDesign(input: { components: AnalysisComponent[]; wires: AnalysisWire[]; systemVoltage: number }, options: AnalysisOptions = {}): AnalysisResult {
+  const result = analyzeCore(input, options, 'default');
+  if (!input.components.some(c => inverters.has(c.type) && ratedContinuousWatts(c))) return result;
+  const drawn = analyzeCore(input, options, 'drawn'), rated = analyzeCore(input, options, 'rated');
+  // Missing length or an unrecognized gauge is wrong whatever the current.
+  const currentIndependent = (issue: string) => /length|not recognized/i.test(issue);
+  for (const [id, wire] of Object.entries(result.wires)) {
+    if (wire.status !== 'known') continue;
+    const d = drawn.wires[id], r = rated.wires[id];
+    const shape = (issue: string) => issue.replace(/[\d.]+/g, '#');
+    // As drawn: an inverter with nothing on its output draws nothing.
+    const errors = d?.status === 'known' ? d.issues : wire.issues.filter(currentIndependent);
+    const atRating = (r?.status === 'known' ? r.issues : wire.issues).filter(i => !errors.some(e => shape(e) === shape(i)));
+    if (!atRating.length) continue;
+    const amps = Math.max(wire.currentA!, r?.status === 'known' ? r.currentA! : 0);
+    wire.issues = errors;
+    wire.ratedOutputWarnings = atRating.map(i => `At the inverter's full rated output (${amps.toFixed(1)}A here): ${i.charAt(0).toLowerCase()}${i.slice(1)} The loads drawn today are within limits.`);
+  }
+  return result;
+}
+
+function analyzeCore(input: { components: AnalysisComponent[]; wires: AnalysisWire[]; systemVoltage: number }, options: AnalysisOptions, inverterDemand: 'drawn' | 'default' | 'rated'): AnalysisResult {
   const result: AnalysisResult = {
     engineVersion: ELECTRICAL_ENGINE_VERSION, fingerprint: electricalFingerprint({ input, options }),
     components: {}, wires: {}, assumptions: ['Steady-state demand; surge, fault and AC pass-through/charging scenarios are not modeled.', 'Wire lengths are one-way feet; existing copper sizing tables and derating rules are retained.'],
@@ -431,6 +461,25 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
     if (ratio && positive(out)) return known(out * ratio.outV / ratio.inV / 0.9, ratio.inV, 'DC-DC output current x voltage ratio / efficiency', [`DC-DC input current estimated from the ${ratio.inV}/${ratio.outV} model rating at 90% efficiency.`]);
     return unresolved('Set DC-DC inputAmps and inputVoltage; output current cannot be used as input current.');
   };
+  const drawnInverterDemand = (c: AnalysisComponent, outputEdges: AnalysisWire[], dcV: number): ElectricalValue => {
+    const ids = new Set<string>();
+    for (const w of outputEdges) for (const id of Array.from(reachable(w.fromComponentId === c.id ? w.toComponentId : w.fromComponentId, 'hot', w.id))) ids.add(id);
+    let watts = 0; let count = 0;
+    for (const id of Array.from(ids)) {
+      const load = components.get(id)!;
+      if (load.type === 'ac-load') {
+        const value = demand(load); if (value.status !== 'known') return value;
+        if (!getSupportedACVoltages(c).includes(value.voltageV!)) return unresolved('Connected AC load voltage is incompatible with inverter output voltage.');
+        watts += value.currentA! * value.voltageV!; count++;
+      } else if (load.type === 'blue-smart-charger') {
+        const value = chargerInput(load); if (value.status !== 'known') return value;
+        if (!getSupportedACVoltages(c).includes(value.voltageV!)) return unresolved('Connected charger AC voltage is incompatible with inverter output voltage.');
+        return unresolved(`Inverter-fed charger "${load.name || load.id}" needs AC input power or power factor to calculate inverter DC demand.`, true);
+      } else if (!acPass.has(load.type) && id !== c.id) return unresolved('Unsupported device or multiple sources on inverter AC output.', true);
+    }
+    if (!count) return unresolved('No connected AC load demand found.');
+    return known(watts / efficiency / dcV, dcV, 'unique connected AC loads / efficiency / DC voltage', [`Inverter efficiency ${(efficiency * 100).toFixed(1)}%; connected steady-state loads only.`]);
+  };
   const demand = (c: AnalysisComponent, dcV = input.systemVoltage): ElectricalValue => {
     const p = c.properties ?? {};
     if (c.type === 'solar-panel') return panelOperatingValue(c);
@@ -444,30 +493,17 @@ export function analyzeElectricalDesign(input: { components: AnalysisComponent[]
     if (inverters.has(c.type)) {
       if (!positive(dcV) || !positive(efficiency) || efficiency > 1) return unresolved('Set a valid DC voltage and inverter efficiency.');
       const outputEdges = (adjacency.get(c.id) ?? []).filter(w => domains.get(w.id) === 'hot' && (w.fromComponentId === c.id ? w.fromTerminal : w.toTerminal)?.startsWith('ac-out'));
+      if (positive(p.dcInputAmps) && !outputEdges.length) return known(p.dcInputAmps, dcV, 'declared inverter DC input sizing current', ['Declared maximum DC input current; AC utilization is not inferred.']);
+      if (positive(p.dcInputWatts) && !outputEdges.length) return known(p.dcInputWatts / dcV, dcV, 'declared inverter DC input watts / DC voltage');
+      const rated = ratedContinuousWatts(c);
+      const ratedValue = rated && known(rated.watts / efficiency / dcV, dcV, 'inverter rated continuous output / efficiency / DC voltage', [rated.note, `Inverter efficiency ${(efficiency * 100).toFixed(1)}%.`]);
       if (!outputEdges.length) {
-        if (positive(p.dcInputAmps)) return known(p.dcInputAmps, dcV, 'declared inverter DC input sizing current', ['Declared maximum DC input current; AC utilization is not inferred.']);
-        if (positive(p.dcInputWatts)) return known(p.dcInputWatts / dcV, dcV, 'declared inverter DC input watts / DC voltage');
-        const rated = ratedContinuousWatts(c);
-        if (rated) return known(rated.watts / efficiency / dcV, dcV, 'inverter rated continuous output / efficiency / DC voltage', [rated.note, `Inverter efficiency ${(efficiency * 100).toFixed(1)}%.`]);
+        if (ratedValue && inverterDemand !== 'drawn') return ratedValue;
+        if (ratedValue) return known(0, dcV, 'nothing drawn on inverter AC output');
         return unresolved('Connect inverter AC output to declared loads, set its VA rating, or set dcInputAmps/dcInputWatts from a reviewed specification; no utilization guess is made.');
       }
-      const ids = new Set<string>();
-      for (const w of outputEdges) for (const id of Array.from(reachable(w.fromComponentId === c.id ? w.toComponentId : w.fromComponentId, 'hot', w.id))) ids.add(id);
-      let watts = 0; let count = 0;
-      for (const id of Array.from(ids)) {
-        const load = components.get(id)!;
-        if (load.type === 'ac-load') {
-          const value = demand(load); if (value.status !== 'known') return value;
-          if (!getSupportedACVoltages(c).includes(value.voltageV!)) return unresolved('Connected AC load voltage is incompatible with inverter output voltage.');
-          watts += value.currentA! * value.voltageV!; count++;
-        } else if (load.type === 'blue-smart-charger') {
-          const value = chargerInput(load); if (value.status !== 'known') return value;
-          if (!getSupportedACVoltages(c).includes(value.voltageV!)) return unresolved('Connected charger AC voltage is incompatible with inverter output voltage.');
-          return unresolved(`Inverter-fed charger "${load.name || load.id}" needs AC input power or power factor to calculate inverter DC demand.`, true);
-        } else if (!acPass.has(load.type) && id !== c.id) return unresolved('Unsupported device or multiple sources on inverter AC output.', true);
-      }
-      if (!count) return unresolved('No connected AC load demand found.');
-      return known(watts / efficiency / dcV, dcV, 'unique connected AC loads / efficiency / DC voltage', [`Inverter efficiency ${(efficiency * 100).toFixed(1)}%; connected steady-state loads only.`]);
+      const drawnValue = drawnInverterDemand(c, outputEdges, dcV);
+      return inverterDemand === 'rated' && ratedValue && drawnValue.status === 'known' && ratedValue.currentA! > drawnValue.currentA! ? ratedValue : drawnValue;
     }
     if (c.type === 'blue-smart-charger') return positive(p.amps ?? p.maxCurrent) ? known(p.amps ?? p.maxCurrent, p.voltage ?? dcV, 'manufacturer maximum DC charge current') : unresolved(`Set the DC charge current for "${c.name || c.id}".`);
     if (c.type === 'mppt') return positive(p.maxCurrent) && positive(dcV) ? known(p.maxCurrent, dcV, 'manufacturer maximum DC output current') : unresolved('Set MPPT maximum DC output current.');

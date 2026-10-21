@@ -312,6 +312,31 @@ describe('Common Victron parts and topologies', () => {
     const value = analyze(components, [w('dc', 'battery', 'inverter', 'positive', 'dc-positive')]).wires.dc;
     expect(value.currentA).toBeCloseTo(2400 / .875 / 12, 6);
   });
+  describe('inverter rated output is a warning, drawn loads are errors', () => {
+    // 228.6A at the 3000VA rating; 10 AWG holds 60A, 4/0 easily carries both.
+    const dc = (gauge: string) => ({ ...w('dc', 'battery', 'inverter', 'positive', 'dc-positive'), gauge, length: 3 });
+    const inverter = c('inverter', 'multiplus', { powerRating: 3000 });
+    const out = w('out', 'inverter', 'tv', 'ac-out-hot', 'hot');
+    it('warns, not errors, when an inverter with nothing drawn outgrows its cable at rating', () => {
+      const value = analyze([c('battery', 'battery'), inverter], [dc('10 AWG')]).wires.dc;
+      expect(value.issues).toEqual([]);
+      expect(value.ratedOutputWarnings?.[0]).toMatch(/^At the inverter's full rated output \(228\.6A here\)/);
+    });
+    it('warns when the drawn loads fit but the rating does not', () => {
+      const value = analyze([c('battery', 'battery'), inverter, c('tv', 'ac-load', { watts: 100, acVoltage: 120 })], [dc('10 AWG'), out]).wires.dc;
+      expect(value.currentA).toBeCloseTo(100 / .875 / 12, 6);
+      expect(value.issues).toEqual([]);
+      expect(value.ratedOutputWarnings?.length).toBeGreaterThan(0);
+    });
+    it('still errors when the drawn loads alone overload the cable', () => {
+      const value = analyze([c('battery', 'battery'), inverter, c('tv', 'ac-load', { watts: 2000, acVoltage: 120 })], [dc('10 AWG'), out]).wires.dc;
+      expect(value.issues).toContain('Selected conductor exceeds derated ampacity.');
+    });
+    it('says nothing when the cable carries the full rating', () => {
+      const value = analyze([c('battery', 'battery'), inverter], [dc('4/0 AWG')]).wires.dc;
+      expect(value.issues).toEqual([]); expect(value.ratedOutputWarnings).toBeUndefined();
+    });
+  });
   it('bounds split-phase conductors by every 120V load on one leg', () => {
     const components = [c('inv', 'quattro', { acOutputVoltage: 'split-120-240' }), c('panel', 'ac-panel'),
       c('pump', 'ac-load', { watts: 1200, acVoltage: 240 }), c('outlets', 'ac-load', { watts: 1500, acVoltage: 120 })];

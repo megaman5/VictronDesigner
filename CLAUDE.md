@@ -674,6 +674,18 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Inverter rating overloads are warnings, not errors** (engine 1.6.0) - every
+inverter cable is checked twice: against the loads drawn on its AC output
+(an overload is an **error** - the design as drawn is wrong) and against the
+inverter's rated continuous output (an overload is a **warning**,
+`ratedOutputWarnings` / rule `analysis.rated-output` - fine today, too small
+if the inverter is ever run flat out). An inverter with nothing drawn shows
+its rated current, with any overload as a warning. `analyzeElectricalDesign`
+runs the core three times (drawn / default / rated) only when a design has a
+rated inverter. Messages are matched with their numbers ignored, so an as-drawn
+error is never downgraded because its amps differ. On 101 designs the one
+1.5.0 error from this (two Quattro 8000s, one with nothing drawn) is now 2 warnings.
+
 **Current sharing solved from cable resistance, not assumed** (engine 1.5.0) -
 `shared/dc-network.ts` is a nodal-analysis resistor-network solver. Wires the
 tree walk cannot settle - parallel batteries, parallel cables, loops, series
@@ -693,7 +705,7 @@ added/removed error checked by hand.
   is worked out at 12V); batteries of different voltage in parallel are refused.
 - Inverters with nothing drawn on AC out are sized for their rated continuous
   output (Victron datasheet table by VA, `ratedContinuousWatts`). Inverters
-  WITH drawn loads still use the drawn loads - a possible follow-up.
+  WITH drawn loads use the drawn loads; their rating is a warning (1.6.0).
 - Split phase (120/240V): the drawing has one hot conductor, so legs are
   unknown; conductors are sized for every 120V load on one leg (240V loads at
   W/240 + 120V loads at W/120), a hard upper bound.

@@ -38,7 +38,10 @@ export function buildDesignReview(input: {components: AnalysisComponent[]; wires
   for (const value of Object.values(analysis.wires)) {
     if (value.reason === 'Data cables are not sized as power conductors.') continue;
     if (value.status !== 'known') add(`analysis.${value.status}`, { severity: 'warning', category: 'unresolved', wireId: value.wireId, message: value.reason ?? 'Wire analysis is unresolved.', suggestion: 'Review the connected equipment and declared values. This wire has no verified sizing result.' });
-    else for (const message of value.issues) add('analysis.wire-sizing', {severity: 'error', category: 'wire-sizing', wireId: value.wireId, message});
+    else {
+      for (const message of value.issues) add('analysis.wire-sizing', {severity: 'error', category: 'wire-sizing', wireId: value.wireId, message});
+      for (const message of value.ratedOutputWarnings ?? []) add('analysis.rated-output', {severity: 'warning', category: 'wire-sizing', wireId: value.wireId, message, suggestion: 'Upsize this cable if the inverter may run at full power later (Victron sizes the battery cable for the inverter rating).'});
+    }
   }
   for (const [id, value] of Object.entries(analysis.components)) if (value.status === 'unsupported') add('analysis.component-unsupported', {severity:'warning', category:'unresolved', componentIds:[id], message:value.reason ?? 'Component analysis is unsupported.'});
   const enriched = issues.map(issue => {
