@@ -5,7 +5,7 @@ import type {
 import { APIConnectionError, APIUserAbortError } from "openai";
 import { clientForModel, hasKeyForModel } from "./model-client";
 import { inferProvider } from "./providers";
-import { describeAIError } from "./errors";
+import { describeAIError, setErrorMessage } from "./errors";
 import { redactSecrets } from "./key-vault";
 
 // The backup is the production model again, thinking briefly. Every primary
@@ -183,7 +183,7 @@ export class AISession {
         this.abortCause = this.signal?.aborted ? this.signal.reason?.abortCause ?? 'client-cancelled' : 'provider-timeout';
         attempt.abortCause = this.abortCause;
         error.abortCause = this.abortCause;
-        error.message = this.abortCause === 'provider-timeout' ? `AI provider sent no response data for ${Math.round(timeoutMs / 1000)} seconds.` : this.signal?.reason?.message ?? 'AI request cancelled.';
+        setErrorMessage(error, this.abortCause === 'provider-timeout' ? `AI provider sent no response data for ${Math.round(timeoutMs / 1000)} seconds.` : this.signal?.reason?.message ?? 'AI request cancelled.');
         if (this.signal?.reason?.status) error.status = this.signal.reason.status;
       }
       return error;

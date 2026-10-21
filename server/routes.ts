@@ -24,7 +24,7 @@ import { renderSchematicToPNG, getVisualFeedback } from "./schematic-renderer";
 import { hasKeyForModel } from "./ai/model-client";
 import { AISession, canUseAIFallback, type FallbackEvent } from "./ai/fallback";
 import { notifyAIFailure } from "./ai/failure-alerts";
-import { describeAIError, isPermanentAIError } from "./ai/errors";
+import { describeAIError, isPermanentAIError, setErrorMessage } from "./ai/errors";
 import { passport, isAdmin, isAuthenticated, type AuthUser } from "./auth";
 import { handleOAuthCallbackError, oauthReturnPath } from "./oauth-callback";
 import { checkQuota } from "./ai/usage-limits";
@@ -443,7 +443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ ...annotateCandidate(response, requirementContext), ...aiSession.responseMetadata });
     } catch (error: any) {
       console.error("AI generation error:", error);
-      error.message = describeAIError(error);
+      setErrorMessage(error, describeAIError(error));
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
@@ -726,7 +726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("AI wire generation error:", error);
-      error.message = describeAIError(error);
+      setErrorMessage(error, describeAIError(error));
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
@@ -966,7 +966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error: any) {
       console.error("Iterative AI generation error:", error);
-      error.message = describeAIError(error);
+      setErrorMessage(error, describeAIError(error));
       await observabilityStorage.logAIRequest({
         ...tokenUsage, visitorId: getVisitorId(req),
         userId: (req.user as AuthUser)?.id, userEmail: (req.user as AuthUser)?.email,
@@ -1480,7 +1480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error: any) {
       console.error("SSE streaming error:", error);
-      error.message = describeAIError(error);
+      setErrorMessage(error, describeAIError(error));
       
       // Log error to observability
       await observabilityStorage.logAIRequest({
