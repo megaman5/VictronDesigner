@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import type { Server } from "node:http";
+import { APIUserAbortError } from "openai";
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), log: vi.fn(), logError: vi.fn(), alert: vi.fn(), validate: vi.fn() }));
 vi.mock("../../server/design-validator", () => ({ validateDesign: mocks.validate }));
@@ -61,7 +62,7 @@ describe("Production AI endpoints during a billing outage", () => {
     ["/api/ai-generate-system-stream", { prompt: "Design a simple solar system", maxIterations: 6 }],
     ["/api/ai-generate-system", { prompt: "Design a simple solar system" }],
     ["/api/ai-generate-system-iterative", { prompt: "Design a simple solar system", maxIterations: 6 }],
-    ["/api/ai-wire-components", { components: [{ id: "battery-1", type: "battery", x: 0, y: 0, properties: { voltage: 12 } }], maxIterations: 6 }],
+    ["/api/ai-wire-components", { components: [{ id: "battery-1", type: "battery", x: 0, y: 0, properties: { voltage: 12 } }, { id: "fuse-1", type: "fuse", x: 400, y: 0, properties: { fuseRating: 100 } }], maxIterations: 6 }],
   ])("%s preserves the cause, logs the failure, and stops retrying", async (endpoint, body) => {
     const response = await fetch(`${baseUrl}${endpoint}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -75,8 +76,8 @@ describe("Production AI endpoints during a billing outage", () => {
     }));
   });
 
-  const backupModel = "nvidia/nemotron-3-super-120b-a12b:free";
-  const design = { components: [{ id: "battery-1", type: "battery", x: 100, y: 100, properties: { voltage: 12, capacity: 100 } }], wires: [] };
+  const backupModel = "gemini-3.8-flash";
+  const design = { components: [{ id: "battery-1", type: "battery", x: 100, y: 100, properties: { voltage: 12, capacity: 100 } }, { id: "fuse-1", type: "fuse", x: 450, y: 100, properties: { fuseRating: 100 } }], wires: [] };
   const endpoints = [
     ["/api/ai-generate-system", { prompt: "Test system", maxIterations: 1 }],
     ["/api/ai-generate-system-iterative", { prompt: "Test system", maxIterations: 1 }],
@@ -86,7 +87,7 @@ describe("Production AI endpoints during a billing outage", () => {
   function enableFallback() {
     vi.stubEnv("AI_FALLBACK_ENABLED", "true");
     mocks.create.mockImplementation(async body => {
-      if (body.model !== backupModel) throw Object.assign(new Error("Credits depleted"), { status: 402 });
+      if (body.reasoning_effort !== "low") throw Object.assign(new Error("Credits depleted"), { status: 402 });
       const content = JSON.stringify(design);
       if (body.stream) return (async function* () {
         yield { choices: [{ delta: { content } }] };
@@ -96,7 +97,7 @@ describe("Production AI endpoints during a billing outage", () => {
     });
   }
   async function post(endpoint: string, body: unknown) {
-    const response = await fetch(`${baseUrl}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const response = await fetch(`${baseUrl}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requirements: { dcVoltage: 12 }, ...(body as object) }) });
     return { response, text: await response.text() };
   }
   it.each(endpoints)("%s recovers the outage, records the original failure, and identifies the backup", async (endpoint, body) => {
@@ -107,7 +108,7 @@ describe("Production AI endpoints during a billing outage", () => {
     expect(mocks.alert).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.8-flash", errorMessage: expect.stringContaining("HTTP 402") }));
     expect(mocks.logError).toHaveBeenCalledOnce();
     expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({
-      success: true, provider: "openrouter", model: backupModel,
+      success: true, provider: "gemini", model: backupModel,
       aiRouting: expect.objectContaining({ primaryModel: "gemini-3.8-flash", usedFallback: true }),
       modelUsage: [{ model: backupModel, inputTokens: 20, outputTokens: 10 }],
     }));
@@ -130,13 +131,50 @@ describe("Production AI endpoints during a billing outage", () => {
     expect(text).toContain('"finalIteration":1'); expect(text).not.toContain('"broken"');
     expect(mocks.create).toHaveBeenCalledTimes(2);
   });
+  it("recovers the streaming endpoint after an SDK provider timeout", async () => {
+    enableFallback();
+    mocks.create.mockRejectedValueOnce(Object.assign(new APIUserAbortError({
+      message: "AI provider sent no response data for 3 minutes.",
+    }), { abortCause: "provider-timeout" }));
+    const { text } = await post("/api/ai-generate-system-stream", { prompt: "Test system", maxIterations: 1 });
+    expect(text).toContain("event: ai-fallback");
+    expect(text).toContain("event: complete");
+    expect(text).toContain('"usedFallback":true');
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+    expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({
+      success: true, model: backupModel,
+      aiRouting: expect.objectContaining({ primaryFailure: "AI provider sent no response data for 3 minutes." }),
+    }));
+  });
   it("stops streaming retries immediately when both providers fail", async () => {
     vi.stubEnv("AI_FALLBACK_ENABLED", "true");
-    mocks.create.mockImplementation(async body => { throw Object.assign(new Error(body.model === backupModel ? "Backup rate limited" : "Credits depleted"), { status: body.model === backupModel ? 429 : 402 }); });
+    mocks.create.mockImplementation(async body => { const backup = body.reasoning_effort === "low"; throw Object.assign(new Error(backup ? "Backup rate limited" : "Credits depleted"), { status: backup ? 429 : 402 }); });
     const { text } = await post("/api/ai-generate-system-stream", { prompt: "Test system", maxIterations: 6 });
     expect(text).toContain("Primary AI failed:"); expect(text).toContain("Backup rate limited");
     expect(mocks.create).toHaveBeenCalledTimes(2); expect(mocks.log).toHaveBeenCalledOnce();
   });
+
+  it.each(["/api/ai-generate-system-iterative", "/api/ai-generate-system-stream", "/api/ai-wire-components"])(
+    "%s keeps the primary's earlier draft when a later pass and the backup both fail", async endpoint => {
+      // 2026-10-20: Gemini drew a flawed design on pass 1, pass 2 stalled, and the
+      // user got only "backup AI could not produce a design" - the draft was lost.
+      vi.stubEnv("AI_FALLBACK_ENABLED", "true");
+      const wire = { fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: 1 };
+      const content = JSON.stringify({ ...design, wires: [wire] });
+      let primaryCalls = 0;
+      mocks.create.mockImplementation(async body => {
+        if (body.reasoning_effort === "low") throw Object.assign(new Error("Backup rate limited"), { status: 429 });
+        if (++primaryCalls > 1) throw Object.assign(new Error("Provider unavailable"), { status: 503 });
+        if (body.stream) return (async function* () { yield { choices: [{ delta: { content } }] }; })();
+        return { choices: [{ message: { content } }] };
+      });
+      mocks.validate.mockReturnValue({ score: 40, issues: [{ severity: "error", category: "electrical", message: "Fuse undersized" }] });
+      const { response, text } = await post(endpoint, { prompt: "Test system", components: design.components, maxIterations: 3 });
+      expect(response.status).toBe(200);
+      expect(text).not.toContain("backup AI could not produce");
+      expect(text).toContain("battery-1");
+      expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
 
   it("sends the previous wiring and validator feedback on the next correction pass", async () => {
     const wire = { id: "previous-wire", fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: 1 };
@@ -159,12 +197,12 @@ describe("Production AI endpoints during a billing outage", () => {
     expect(JSON.parse(text).qualityScore).toBe(0);
   });
 
-  it("does not stop changing candidates just because scores remain tied", async () => {
+  it("stops after two corrections that change candidates but do not improve electrical outcomes", async () => {
     let attempt = 0;
     mocks.create.mockImplementation(async () => ({ choices: [{ message: { content: JSON.stringify({ wires: [{ fromComponentId: "battery-1", toComponentId: "fuse-1", fromTerminal: "positive", toTerminal: "in", polarity: "positive", gauge: "4/0 AWG", length: ++attempt }] }) } }] }));
     mocks.validate.mockReturnValue({ score: 50, issues: [{ severity: "error", category: "component", message: "Missing protection" }] });
     await post("/api/ai-wire-components", { components: design.components, maxIterations: 4 });
-    expect(mocks.create).toHaveBeenCalledTimes(4);
+    expect(mocks.create).toHaveBeenCalledTimes(3);
   });
 
   it.each(["/api/ai-generate-system-iterative", "/api/ai-generate-system-stream"])(
@@ -187,7 +225,8 @@ describe("Production AI endpoints during a billing outage", () => {
       expect(response.status).toBe(200);
       if (endpoint.endsWith("-stream")) expect(text).toContain("event: complete");
       expect(mocks.create).toHaveBeenCalledTimes(3);
-      expect(mocks.create.mock.calls[0][0].messages[1].content).toBe("Keep my 400Ah battery bank");
+      expect(mocks.create.mock.calls[0][0].messages[1].content).toContain("Keep my 400Ah battery bank");
+      expect(mocks.create.mock.calls[0][0].messages[1].content).toContain("REVIEWED REQUIREMENTS");
       for (const call of mocks.create.mock.calls.slice(1)) {
         const content = call[0].messages[1].content;
         expect(content).toEqual(expect.arrayContaining([

@@ -35,10 +35,29 @@ export const userDesigns = pgTable("user_designs", {
   components: jsonb("components").notNull().default([]),
   wires: jsonb("wires").notNull().default([]),
   thumbnail: text("thumbnail"), // base64 screenshot
+  version: integer("version").notNull().default(1),
+  document: jsonb("document"),
+  createRequestId: text("create_request_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   userIdIdx: index("user_designs_user_id_idx").on(table.userId),
+  createRequestIdx: uniqueIndex("user_designs_create_request_idx").on(table.userId, table.createRequestId),
+}));
+
+export const designRevisions = pgTable("design_revisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  designId: varchar("design_id").notNull().references(() => userDesigns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
+  version: integer("version").notNull(),
+  requestId: text("request_id").notNull(),
+  source: text("source").notNull().default("manual"),
+  snapshot: jsonb("snapshot").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => ({
+  versionIdx: uniqueIndex("design_revisions_version_idx").on(table.designId, table.version),
+  requestIdx: uniqueIndex("design_revisions_request_idx").on(table.designId, table.requestId),
+  ownerIdx: index("design_revisions_owner_idx").on(table.userId, table.designId),
 }));
 
 // Feedback submissions
@@ -443,6 +462,7 @@ export interface Wire {
   toTerminal: string;
   polarity: "positive" | "negative" | "hot" | "neutral" | "ground";
   length: number; // in feet
+  lengthEstimated?: boolean; // Editable AI estimate, used normally for sizing
   gauge?: string;
   current?: number;
   voltageDrop?: number;

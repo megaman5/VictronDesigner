@@ -129,7 +129,9 @@ const SelectItem = React.forwardRef<
       </SelectPrimitive.ItemIndicator>
     </span>
 
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    {/* Radix portals this label into SelectValue. Keep an element boundary so
+        browser translation cannot detach a text node React later removes. */}
+    <SelectPrimitive.ItemText><span>{children}</span></SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ))
 SelectItem.displayName = SelectPrimitive.Item.displayName

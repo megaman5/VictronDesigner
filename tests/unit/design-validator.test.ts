@@ -178,6 +178,109 @@ describe('Design Validator', () => {
     });
   });
   /**
+   * Charger branches, DC-DC chargers and worst-case trunk sizing. Production
+   * designs in Oct 2026 had a 60A solar fuse "carrying" the inverter's 257A,
+   * its 10 AWG fuse-to-bus link sized for 152A, and a starter battery's feed
+   * fuse charged with the house bank's loads through an Orion.
+   */
+  describe('Charger branches and worst-case current', () => {
+    const w = (id: string, from: string, fromTerminal: string, to: string, toTerminal: string, polarity: string, gauge: string, length = 3): Wire =>
+      ({ id, fromComponentId: from, fromTerminal, toComponentId: to, toTerminal, polarity, gauge, length });
+
+    // House bank -> main fuse -> +bus. Off the bus: a 3000VA inverter (2700W
+    // of AC loads, ~257A DC), a fused 30A MPPT, a fused Orion fed from the
+    // alternator, a fused Orion fed from a starter battery, and a 5A Cerbo feed.
+    const build = (opts: { mainFuse?: number; mainGauge?: string; starterFuse?: number; orionName?: string } = {}) => {
+      const components = [
+        createComponent('house', 'battery', 0, 0, { voltage: 12, capacity: 400 }),
+        createComponent('fuseMain', 'fuse', 300, 0, { fuseType: 'class-t', fuseRating: opts.mainFuse ?? 400 }),
+        createComponent('bus', 'busbar-positive', 600, 0, {}),
+        createComponent('busNeg', 'busbar-negative', 600, 600, {}),
+        createComponent('fuseInv', 'fuse', 900, 0, { fuseType: 'class-t', fuseRating: 300 }),
+        createComponent('mp', 'multiplus', 1200, 0, { powerRating: 3000, acOutputVoltage: '120' }),
+        createComponent('panel', 'ac-panel', 1500, 0, {}),
+        createComponent('ac1', 'ac-load', 1800, 0, { watts: 2700, acVoltage: 120 }),
+        createComponent('fuseSolar', 'fuse', 900, 300, { fuseType: 'midi', fuseRating: 40 }),
+        createComponent('mppt', 'mppt', 1200, 300, { maxCurrent: 30 }),
+        createComponent('fuseAltOrion', 'fuse', 900, 900, { fuseType: 'midi', fuseRating: 40 }),
+        createComponent('orionAlt', 'orion-dc-dc', 1200, 900, { amps: 30 }),
+        createComponent('alt', 'alternator', 1500, 900, { amps: 60 }),
+        createComponent('starter', 'battery', 1800, 1200, { voltage: 12, capacity: 100 }),
+        createComponent('fuseStarter', 'fuse', 1500, 1200, { fuseType: 'mrbf', fuseRating: opts.starterFuse ?? 50 }),
+        createComponent('orionStarter', 'orion-dc-dc', 1200, 1200, { amps: 30 }),
+        createComponent('fuseCerbo', 'fuse', 900, 1500, { fuseType: 'blade', fuseRating: 5 }),
+        createComponent('cerbo', 'cerbo', 1200, 1500, {}),
+      ];
+      if (opts.orionName) components.find(c => c.id === 'orionStarter')!.name = opts.orionName;
+      const wires = [
+        w('m1', 'house', 'positive', 'fuseMain', 'in', 'positive', opts.mainGauge ?? '4/0 AWG', 2),
+        w('m2', 'fuseMain', 'out', 'bus', 'pos-1', 'positive', opts.mainGauge ?? '4/0 AWG', 2),
+        w('n1', 'house', 'negative', 'busNeg', 'neg-1', 'negative', opts.mainGauge ?? '4/0 AWG', 2),
+        w('i1', 'bus', 'pos-2', 'fuseInv', 'in', 'positive', '4/0 AWG'),
+        w('i2', 'fuseInv', 'out', 'mp', 'dc-positive', 'positive', '4/0 AWG'),
+        w('i3', 'mp', 'dc-negative', 'busNeg', 'neg-2', 'negative', '4/0 AWG'),
+        w('a1', 'mp', 'ac-out-hot', 'panel', 'main-in-hot', 'hot', '10 AWG'),
+        w('a2', 'panel', 'load-1-hot', 'ac1', 'hot', 'hot', '10 AWG'),
+        // Fuse "out" faces the bus, as the AI often draws it.
+        w('s1', 'mppt', 'batt-positive', 'fuseSolar', 'in', 'positive', '10 AWG'),
+        w('s2', 'fuseSolar', 'out', 'bus', 'pos-3', 'positive', '10 AWG'),
+        w('s3', 'mppt', 'batt-negative', 'busNeg', 'neg-3', 'negative', '10 AWG'),
+        w('o1', 'alt', 'output-positive', 'orionAlt', 'input-positive', 'positive', '6 AWG', 10),
+        w('o2', 'orionAlt', 'output-positive', 'fuseAltOrion', 'in', 'positive', '10 AWG'),
+        w('o3', 'fuseAltOrion', 'out', 'bus', 'pos-4', 'positive', '10 AWG'),
+        w('t1', 'starter', 'positive', 'fuseStarter', 'in', 'positive', '6 AWG', 1),
+        w('t2', 'fuseStarter', 'out', 'orionStarter', 'input-positive', 'positive', '6 AWG'),
+        w('t3', 'orionStarter', 'output-positive', 'bus', 'pos-5', 'positive', '8 AWG'),
+        w('c1', 'bus', 'pos-6', 'fuseCerbo', 'in', 'positive', '16 AWG'),
+        w('c2', 'fuseCerbo', 'out', 'cerbo', 'power-positive', 'positive', '16 AWG'),
+      ];
+      return new DesignValidator(components, wires, 12).validate();
+    };
+    const about = (result: ReturnType<DesignValidator['validate']>, name: string) =>
+      result.issues.filter(i => i.severity !== 'info' && i.message.includes(name));
+    const wireIssues = (result: ReturnType<DesignValidator['validate']>, ...ids: string[]) =>
+      result.issues.filter(i => i.wireId && ids.includes(i.wireId) && i.category === 'wire-sizing');
+
+    it("charges a charger's fuse with the charger's output, not the bus's loads", () => {
+      const result = build();
+      expect(about(result, 'fuse-fuseSolar')).toHaveLength(0); // 30A on 40A
+      expect(wireIssues(result, 's1', 's2')).toHaveLength(0); // 10 AWG at 30A
+    });
+
+    it("does not add the alternator behind an Orion to the Orion's output branch", () => {
+      const result = build();
+      expect(about(result, 'fuse-fuseAltOrion')).toHaveLength(0); // 30A, not 30A + 60A
+      expect(wireIssues(result, 'o2', 'o3')).toHaveLength(0);
+    });
+
+    it("sizes a starter feed by the Orion's input draw, not the house loads", () => {
+      // 30A / 0.9 = 33.3A: fine on 50A, flagged on 30A, never ~272A.
+      expect(about(build(), 'fuse-fuseStarter')).toHaveLength(0);
+      const undersized = about(build({ starterFuse: 30 }), 'fuse-fuseStarter');
+      expect(undersized.some(i => i.message.includes('33.3A'))).toBe(true);
+    });
+
+    it("scales a step-down Orion's input draw by its voltage ratio", () => {
+      // A 48/12-30 draws ~8.3A from its input side, so a 15A input fuse is fine.
+      expect(about(build({ starterFuse: 15, orionName: 'Orion-Tr Smart 48/12-30' }), 'fuse-fuseStarter')).toHaveLength(0);
+    });
+
+    it('sizes the main cable for the full load, not load minus chargers', () => {
+      // ~257A inverter; chargers add up to 30+30+60+30 = 150A when running.
+      // Net would be ~107A and pass a 250A fuse; the full load blows it.
+      const result = build({ mainFuse: 250 });
+      expect(about(result, 'fuse-fuseMain').some(i => i.severity === 'error')).toBe(true);
+    });
+
+    it('sizes a small fused feed by its fuse, not a guess', () => {
+      // 16 AWG behind a 5A fuse feeding a Cerbo: fine. Was given 30-400A.
+      const result = build();
+      expect(wireIssues(result, 'c1', 'c2')).toHaveLength(0);
+      expect(about(result, 'fuse-fuseCerbo')).toHaveLength(0); // no self-referential 100%
+    });
+  });
+
+  /**
    * A wire straight from shore power to the main AC breaker had no branch at
    * all - neither endpoint is an ac-load/ac-panel/inverter - so current
    * stayed 0 and "Cannot determine current for wire" fired on the one wire
@@ -854,6 +957,45 @@ describe('Design Validator', () => {
         const issues = result.issues.filter(i => i.category === 'wire-sizing' && i.wireId === wire.id);
         expect(issues.some(i => i.message.includes('Cannot determine current'))).toBe(false);
       }
+    });
+  });
+
+  describe('Fixes from recent AI runs', () => {
+    const t = (id: string, from: string, fromTerminal: string, to: string, toTerminal: string, polarity = 'positive'): Wire =>
+      ({ id, fromComponentId: from, toComponentId: to, fromTerminal, toTerminal, polarity, gauge: '4 AWG', length: 3 });
+    const issuesOf = (components: SchematicComponent[], wires: Wire[], voltage = 12) => new DesignValidator(components, wires, voltage).validate().issues;
+
+    it('does not hold a Cerbo or SmartShunt to the 12V stamped on it when placed', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 24 }), createComponent('neg', 'busbar-negative', 0, 300, { voltage: 24 }),
+        createComponent('gx', 'cerbo', 400, 0, { voltage: 12 }), createComponent('shunt', 'smartshunt', 400, 300, { voltage: 12 })];
+      const wires = [t('a', 'bat', 'negative', 'shunt', 'negative', 'negative'), t('b', 'shunt', 'system-minus', 'neg', 'neg-1', 'negative'), t('c', 'gx', 'power-negative', 'neg', 'neg-2', 'negative')];
+      expect(issuesOf(components, wires, 24).filter(i => /voltage mismatch/i.test(i.message))).toEqual([]);
+    });
+    it('still flags a fixed-voltage charger on the wrong system voltage', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 24 }), createComponent('chg', 'blue-smart-charger', 400, 0, { voltage: 12, amps: 15 })];
+      expect(issuesOf(components, [t('a', 'chg', 'dc-positive', 'bat', 'positive')], 24).some(i => /voltage mismatch/i.test(i.message))).toBe(true);
+    });
+    it('accepts solar panels reaching the MPPT through combiner bus bars', () => {
+      const components = [createComponent('p1', 'solar-panel', 0, 0, { watts: 300, voltage: 36 }), createComponent('pv+', 'busbar-positive', 300, 0), createComponent('pv-', 'busbar-negative', 300, 300),
+        createComponent('mppt', 'mppt', 600, 0, { maxCurrent: 30, maxPVVoltage: 100 })];
+      const wires = [t('a', 'p1', 'positive', 'pv+', 'pos-1'), t('b', 'p1', 'negative', 'pv-', 'neg-1', 'negative'), t('c', 'pv+', 'pos-2', 'mppt', 'pv-positive'), t('d', 'pv-', 'neg-2', 'mppt', 'pv-negative', 'negative')];
+      expect(issuesOf(components, wires).some(i => /missing solar panel/.test(i.message))).toBe(false);
+    });
+    it('flags a fuse whose in and out are wired to the same bus bar', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 12 }), createComponent('f', 'fuse', 300, 0, { fuseRating: 100 }), createComponent('bus', 'busbar-positive', 600, 0)];
+      const wires = [t('a', 'bat', 'positive', 'f', 'in'), t('b', 'f', 'out', 'bus', 'pos-1'), t('c', 'bat', 'positive', 'bus', 'pos-2')];
+      expect(issuesOf(components, wires).find(i => /bypassed/.test(i.message))?.message).toContain('cannot protect the wire');
+    });
+    it('flags a SmartShunt whose system side is wired back to the battery negative', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 12 }), createComponent('s', 'smartshunt', 300, 0), createComponent('neg', 'busbar-negative', 600, 0)];
+      const wires = [t('a', 'bat', 'negative', 's', 'negative', 'negative'), t('b', 's', 'system-minus', 'neg', 'neg-1', 'negative'), t('c', 'bat', 'negative', 'neg', 'neg-2', 'negative')];
+      expect(issuesOf(components, wires).find(i => /bypassed/.test(i.message))?.message).toContain('cannot measure');
+    });
+    it('does not flag a correctly wired fuse and shunt', () => {
+      const components = [createComponent('bat', 'battery', 0, 0, { voltage: 12 }), createComponent('f', 'fuse', 300, 0, { fuseRating: 100 }), createComponent('bus', 'busbar-positive', 600, 0),
+        createComponent('s', 'smartshunt', 300, 300), createComponent('neg', 'busbar-negative', 600, 300)];
+      const wires = [t('a', 'bat', 'positive', 'f', 'in'), t('b', 'f', 'out', 'bus', 'pos-1'), t('c', 'bat', 'negative', 's', 'negative', 'negative'), t('d', 's', 'system-minus', 'neg', 'neg-1', 'negative')];
+      expect(issuesOf(components, wires).some(i => /bypassed/.test(i.message))).toBe(false);
     });
   });
 });

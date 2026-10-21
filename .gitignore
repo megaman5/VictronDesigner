@@ -10,3 +10,7 @@ user-designs/*
 feedback-data/*
 observability-data/*
 REVIEW_FIXES.md
+.neon
+# Neon migration notes and dumps name production hosts/branches; this repo is public
+docs/neon-*
+.claude/settings.local.json

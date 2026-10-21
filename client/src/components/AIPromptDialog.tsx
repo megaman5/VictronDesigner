@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { AIGenerationProgress, type AIGenerationProgressState } from "@/components/AIGenerationProgress";
 import {
   Dialog,
   DialogContent,
@@ -10,36 +11,42 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-
-interface IterationProgress {
-  iteration: number;
-  maxIterations: number;
-  score?: number;
-  errorCount?: number;
-  warningCount?: number;
-  isBest?: boolean;
-}
+import { Input } from "@/components/ui/input";
+import { extractDesignRequirements, type DesignRequirements } from "@shared/design-requirements";
 
 interface AIPromptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onGenerate?: (prompt: string) => void;
+  /** Cancels a running generation. Closing the dialog only hides it. */
+  onStop?: () => void;
+  onGenerate?: (prompt: string, requirements?: DesignRequirements) => void;
+  systemVoltage?: number;
+  existingComponents?: Array<{ id: string; name: string; type: string }>;
   isGenerating?: boolean;
-  iterationProgress?: IterationProgress | null;
+  iterationProgress?: AIGenerationProgressState | null;
   isIterating?: boolean; // True when modifying existing design
   existingComponentsCount?: number; // Number of components in current design
 }
 
-export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = false, iterationProgress, isIterating = false, existingComponentsCount = 0 }: AIPromptDialogProps) {
+export function AIPromptDialog({ open, onOpenChange, onStop, onGenerate, systemVoltage = 12, existingComponents = [], isGenerating = false, iterationProgress, isIterating = false, existingComponentsCount = 0 }: AIPromptDialogProps) {
   const [prompt, setPrompt] = useState("");
-
+  const [solarWatts, setSolarWatts] = useState('');
+  const [batteryAh, setBatteryAh] = useState('');
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
+  const [conductors, setConductors] = useState('1');
+  const [polarity, setPolarity] = useState('positive');
   const handleGenerate = () => {
     if (!prompt.trim()) return;
-    console.log("Generating system from prompt:", prompt);
+    if (solarWatts || batteryAh || (fromId && toId)) {
+      const requirements = extractDesignRequirements(prompt, systemVoltage);
+      if (Number(solarWatts) > 0) requirements.aggregates = [...(requirements.aggregates ?? []).filter(a => a.type !== 'solar-panel'), { id: 'aggregate.solar-power', type: 'solar-panel', property: 'watts', minimum: Number(solarWatts) }];
+      if (Number(batteryAh) > 0) requirements.aggregates = [...(requirements.aggregates ?? []).filter(a => a.type !== 'battery'), { id: 'aggregate.battery-capacity', type: 'battery', property: 'capacity', minimum: Number(batteryAh) }];
+      if (fromId && toId && fromId !== toId) requirements.connections.push({ id: 'connection.reviewed', fromComponentId: fromId, toComponentId: toId, polarity, minimumWires: Math.min(20, Math.max(1, Number(conductors) || 1)), origin: 'explicit' });
+      onGenerate?.(prompt, requirements);
+      return;
+    }
     onGenerate?.(prompt);
-    setPrompt("");
   };
 
   const examplePrompts = isIterating ? [
@@ -54,7 +61,7 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -69,93 +76,17 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = 
         </DialogHeader>
 
         {isGenerating ? (
-          <div className="space-y-6 py-8" data-testid="ai-generating-state">
-            <div className="flex justify-center">
-              <div className="relative">
-                <Sparkles className="h-16 w-16 text-primary animate-pulse" />
-                <Loader2 className="h-16 w-16 text-primary animate-spin absolute inset-0" />
-              </div>
-            </div>
-
-            <div className="text-center space-y-2">
-              <p className="text-lg font-medium">Designing your electrical system...</p>
-              {iterationProgress ? (
-                <p className="text-sm text-muted-foreground">
-                  Iteration {iterationProgress.iteration} of {iterationProgress.maxIterations}
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  AI is calculating component placement, wire sizing, and safety requirements
-                </p>
-              )}
-            </div>
-
-            {/* Iteration Progress */}
-            {iterationProgress && (
-              <div className="space-y-4 px-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">
-                      {Math.round((iterationProgress.iteration / iterationProgress.maxIterations) * 100)}%
-                    </span>
-                  </div>
-                  <Progress
-                    value={(iterationProgress.iteration / iterationProgress.maxIterations) * 100}
-                    className="h-2"
-                  />
-                </div>
-
-                {/* Quality Score */}
-                {iterationProgress.score !== undefined && (
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      {iterationProgress.isBest ? (
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Sparkles className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <span className="text-sm font-medium">Quality Score</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-bold">{iterationProgress.score}</span>
-                      {iterationProgress.isBest && (
-                        <Badge variant="default" className="text-xs">Best</Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Error/Warning Count */}
-                {(iterationProgress.errorCount !== undefined || iterationProgress.warningCount !== undefined) && (
-                  <div className="flex gap-2 justify-center">
-                    {iterationProgress.errorCount !== undefined && iterationProgress.errorCount > 0 && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        {iterationProgress.errorCount} Errors
-                      </Badge>
-                    )}
-                    {iterationProgress.warningCount !== undefined && iterationProgress.warningCount > 0 && (
-                      <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-700">
-                        <AlertCircle className="h-3 w-3" />
-                        {iterationProgress.warningCount} Warnings
-                      </Badge>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex justify-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-              <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-            </div>
-          </div>
+          <>
+            <AIGenerationProgress
+              progress={iterationProgress ?? { iteration: 1, maxIterations: 6, phase: 'waiting', startedAt: Date.now() }}
+              onStop={onStop ?? (() => onOpenChange(false))}
+            />
+            <p className="text-xs text-muted-foreground">You can close this window. The AI keeps working and the design appears on your canvas when it's done.</p>
+          </>
         ) : (
           <div className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label htmlFor="prompt">System Requirements</Label>
+              <Label htmlFor="prompt">Describe your system</Label>
               <Textarea
                 id="prompt"
                 placeholder="Example: Design a 5kW solar system for an RV with 12V battery bank, MPPT controller, and shore power connection..."
@@ -164,7 +95,26 @@ export function AIPromptDialog({ open, onOpenChange, onGenerate, isGenerating = 
                 className="min-h-32 resize-none"
                 data-testid="input-ai-prompt"
               />
+              <p className="text-sm text-muted-foreground">Include the equipment, quantities, power needs, and connections you want in your design.</p>
             </div>
+
+            <details className="rounded border p-3 text-sm">
+              <summary className="cursor-pointer font-medium">Capacity and connection requirements (optional)</summary>
+              <p className="my-2 text-muted-foreground">These are checked separately from the score. Other instructions in your prompt remain visible for review.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Label>Minimum solar watts<Input type="number" min="0" value={solarWatts} onChange={e => setSolarWatts(e.target.value)} aria-label="Minimum solar watts" /></Label>
+                <Label>Battery bank Ah at system voltage<Input type="number" min="0" value={batteryAh} onChange={e => setBatteryAh(e.target.value)} aria-label="Battery bank Ah at system voltage" /></Label>
+              </div>
+              {existingComponents.length > 1 && <div className="mt-3 space-y-2">
+                <Label>Required direct connection</Label>
+                <div className="flex flex-wrap gap-2">
+                  <select aria-label="Required connection source" className="border rounded bg-background p-2" value={fromId} onChange={e => setFromId(e.target.value)}><option value="">From equipment</option>{existingComponents.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                  <select aria-label="Required connection destination" className="border rounded bg-background p-2" value={toId} onChange={e => setToId(e.target.value)}><option value="">To equipment</option>{existingComponents.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                  <select aria-label="Required connection polarity" className="border rounded bg-background p-2" value={polarity} onChange={e => setPolarity(e.target.value)}>{['positive', 'negative', 'hot', 'neutral', 'ground'].map(p => <option key={p}>{p}</option>)}</select>
+                  <Label>Conductor count<Input aria-label="Required conductor count" type="number" min="1" max="20" value={conductors} onChange={e => setConductors(e.target.value)} /></Label>
+                </div>
+              </div>}
+            </details>
 
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Example Prompts</Label>

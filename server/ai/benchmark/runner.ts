@@ -1,3 +1,6 @@
+import { annotateCandidate, createRequirementContext, preserveRepairEquipment, repairFeedback, requirementFeedback } from "../requirements";
+import { candidateDecision, prefersAICandidate, AICorrectionTracker, wirePreflight, AI_POLICY_VERSION } from "../../../shared/ai-policy";
+import { ELECTRICAL_ENGINE_VERSION } from "../../../shared/electrical-analysis";
 import { getSuite, type BenchmarkCase, type BenchmarkSuite } from "./cases";
 import { getSkill, type Skill } from "../skills";
 import { resolveTarget, type ProviderCredentials, type ProviderId } from "../providers";
@@ -39,6 +42,7 @@ export interface RunOptions {
   seed?: number;
   credentials?: ProviderCredentials | null;
   maxOutputTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   signal?: AbortSignal;
   /** Called after each case execution so callers can stream progress. */
   onResult?: (result: CaseResult) => void | Promise<void>;
@@ -72,6 +76,14 @@ export interface CaseResult {
   errorMessage?: string;
   issues?: unknown;
   output?: unknown;
+  electricalPassed?: boolean;
+  electricalErrorCount?: number;
+  requirementsComplete?: boolean;
+  unresolvedCount?: number;
+  firstAcceptableDurationMs?: number | null;
+  diagnostics?: unknown[];
+  stopReason?: string;
+  provenance?: unknown;
 }
 
 export interface RunSummary {
@@ -103,6 +115,15 @@ export interface RunStats {
   meanIterations: number | null;
   meanJudgeScore: number | null;
   totalJudgeCostUsd: number | null;
+  noElectricalErrorRate?: number | null;
+  electricalPassedRate?: number | null;
+  requirementCompleteRate?: number | null;
+  unresolvedRate?: number | null;
+  acceptableRate?: number | null;
+  latencyP50Ms?: number | null;
+  latencyP95Ms?: number | null;
+  costPerAcceptableUsd?: number | null;
+  requestCompletedCount?: number;
 }
 
 import { extractJson } from "./extract-json";
@@ -111,7 +132,7 @@ export { extractJson };
 export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
   const suite = getSuite(opts.suiteId);
   const skill = getSkill(suite.skillId);
-  const repeats = Math.max(1, opts.repeats ?? 1);
+  const repeats = Math.min(10, Math.max(1, Math.floor(opts.repeats ?? 1)));
 
   const target = resolveTarget({
     model: opts.model,
@@ -119,6 +140,8 @@ export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
     userCredentials: opts.credentials ?? null,
   });
 
+  if (opts.reasoningEffort && !['low', 'medium', 'high'].includes(opts.reasoningEffort)) throw new Error("Unsupported reasoning effort.");
+  if (opts.reasoningEffort && target.provider.id === 'anthropic') throw new Error("This benchmark does not map reasoning effort to Anthropic; use a supported provider/profile.");
   const results: CaseResult[] = [];
   let samplingApplied: boolean | null = null;
 
@@ -141,11 +164,12 @@ export async function runBenchmark(opts: RunOptions): Promise<RunSummary> {
         target,
         model: opts.model,
         repeat,
-        iterations: Math.max(1, opts.iterations ?? 1),
+        iterations: Math.min(6, Math.max(1, Math.floor(opts.iterations ?? 1))),
         targetScore: opts.targetScore ?? 70,
         temperature: opts.temperature,
         seed: opts.seed,
         maxOutputTokens: opts.maxOutputTokens,
+        reasoningEffort: opts.reasoningEffort,
         judges: opts.judges,
         exemplar: opts.exemplars?.[testCase.id] ?? null,
         credentials: opts.credentials ?? null,
@@ -183,6 +207,7 @@ async function runCase(args: {
   temperature?: number;
   seed?: number;
   maxOutputTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   judges?: string[];
   exemplar?: { components: any[]; wires: any[] } | null;
   credentials?: ProviderCredentials | null;
@@ -228,17 +253,26 @@ async function runCase(args: {
       repairs: number;
     } | null = null;
     let used = 0;
+    const tracker = new AICorrectionTracker();
+    const context = createRequirementContext({ prompt: testCase.prompt, systemVoltage: testCase.systemVoltage, requirements: testCase.requirements, components: testCase.existingComponents, wires: testCase.existingWires });
+    const diagnostics: any[] = [];
+    base.provenance = { policyVersion: AI_POLICY_VERSION, analysisVersion: ELECTRICAL_ENGINE_VERSION, inputHash: context.inputHash, settings: { reasoningEffort: args.reasoningEffort ?? "default", maxOutputTokens: args.maxOutputTokens ?? 32000, iterations: args.iterations } };
+    if (testCase.existingComponents) {
+      const blockers = wirePreflight(testCase.existingComponents, context.requirements);
+      if (blockers.length) return { ...base, durationMs: Date.now() - started, stopReason: "preflight-blocked", errorMessage: blockers.map(b => b.message).join(" "), diagnostics: blockers };
+    }
 
     for (let pass = 1; pass <= args.iterations; pass++) {
       if (args.signal?.aborted) throw new Error("Benchmark aborted");
-      used = pass;
+      used = pass; base.iterationsUsed = used;
+      const passStarted = Date.now();
 
       const ctx = {
         systemVoltage: testCase.systemVoltage,
-        feedback,
+        feedback: (feedback ?? "") + requirementFeedback(context, best?.design),
         // Wiring skills score against a fixed starting canvas
         existingDesign: testCase.existingComponents
-          ? { components: testCase.existingComponents, wires: testCase.existingWires ?? [] }
+          ? { components: testCase.existingComponents, wires: best?.design.wires ?? testCase.existingWires ?? [] }
           : undefined,
       };
       const response = await target.provider.chat(
@@ -248,7 +282,8 @@ async function runCase(args: {
           temperature: args.temperature,
           seed: args.seed,
           maxOutputTokens: args.maxOutputTokens ?? 32000,
-          signal: args.signal,
+          reasoningEffort: args.reasoningEffort,
+          signal: args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(90_000)]) : AbortSignal.timeout(90_000),
           messages: [
             { role: "system", content: skill.buildSystemPrompt(ctx) },
             { role: "user", content: skill.buildUserPrompt(testCase.prompt, ctx) },
@@ -260,19 +295,22 @@ async function runCase(args: {
       args.onSampling(response.samplingApplied);
       inputTokens += response.usage.inputTokens;
       outputTokens += response.usage.outputTokens;
+      base.inputTokens = inputTokens; base.outputTokens = outputTokens; base.costUsd = estimateCostUsd(args.model, { inputTokens, outputTokens });
 
       const parsed = extractJson(response.text);
       // A wiring skill returns wires only - the components are the fixed input
-      const rawComponents = Array.isArray(parsed.components) && parsed.components.length
+      const rawComponents = testCase.existingComponents ?? (Array.isArray(parsed.components) && parsed.components.length
         ? parsed.components
-        : (testCase.existingComponents ?? []);
+        : []);
       const rawWires = (Array.isArray(parsed.wires) ? parsed.wires : []).map(
         (w: any, i: number) => ({ ...w, id: w.id ?? `bench-wire-${pass}-${i}` })
       );
 
+      const repairCandidate = { components: rawComponents, wires: rawWires };
+      preserveRepairEquipment(repairCandidate, best?.design, testCase.existingComponents ?? []);
       // Same repair pass production uses, so scores reflect what a user gets.
-      const normalized = normalizeAIDesign(rawComponents, rawWires, testCase.systemVoltage);
-      const design = { components: normalized.components, wires: normalized.wires };
+      const normalized = normalizeAIDesign(repairCandidate.components, repairCandidate.wires, testCase.systemVoltage, { existingWires: testCase.existingWires ?? [] });
+      const design: any = { components: normalized.components, wires: normalized.wires };
 
       const validation = validateDesign(
         design.components as any,
@@ -280,8 +318,16 @@ async function runCase(args: {
         testCase.systemVoltage
       );
 
-      scorePath.push(validation.score);
-      if (!best || validation.score > best.score) {
+      design.validation = validation;
+      annotateCandidate(design, context);
+      const failedExpectations = testCase.expectations.map(e => e.check(design)).filter(Boolean);
+      const decision = candidateDecision(design, args.targetScore);
+      const progress = tracker.observe(design);
+      diagnostics.push({ pass, durationMs: Date.now() - passStarted, servedModel: response.servedModel, finishReason: (response.raw as any)?.choices?.[0]?.finish_reason ?? (response.raw as any)?.candidates?.[0]?.finishReason, usage: response.usage, runStatus: design.runStatus, continuationReasons: decision.continuationReasons, failedExpectations });
+      base.diagnostics = diagnostics;
+      if (design.runStatus.electricalCheck === 'passed' && design.requirementCheck.complete && !failedExpectations.length && base.firstAcceptableDurationMs == null) base.firstAcceptableDurationMs = Date.now() - started;
+      scorePath.push(validation.score); base.scorePath = [...scorePath];
+      if (!best || prefersAICandidate(design, best.design)) {
         best = {
           score: validation.score,
           design: design as any,
@@ -290,16 +336,10 @@ async function runCase(args: {
         };
       }
 
-      if (validation.score >= args.targetScore) break;
+      if (decision.stop || progress.stop) { base.stopReason = progress.stop ? progress.reason : decision.reason; break; }
+      base.stopReason = "iteration-budget";
 
-      // Feed the errors back the way the production loop does.
-      const errors = validation.issues
-        .filter((i: any) => i.severity === "error")
-        .slice(0, 15)
-        .map((i: any) => `- ${i.message}${i.suggestion ? ` (${i.suggestion})` : ""}`);
-      feedback = errors.length
-        ? `Validation score ${validation.score}/100. Fix these errors:\n${errors.join("\n")}`
-        : `Validation score ${validation.score}/100. Improve the design.`;
+      feedback = `Previous best design: ${JSON.stringify(best.design)}${repairFeedback(best.design)}\nUnmet fixture expectations: ${failedExpectations.join("; ")}`;
     }
 
     if (!best) throw new Error("No design produced");
@@ -339,6 +379,10 @@ async function runCase(args: {
     return {
       ...base,
       success: true,
+      electricalPassed: (best.design as any).runStatus.electricalCheck === 'passed',
+      electricalErrorCount: (best.design as any).runStatus.electricalErrorCount,
+      requirementsComplete: (best.design as any).requirementCheck.complete,
+      unresolvedCount: (best.design as any).runStatus.unresolvedCount,
       score: best.score,
       errorCount: best.validation.issues.filter((i: any) => i.severity === "error").length,
       warningCount: best.validation.issues.filter((i: any) => i.severity === "warning").length,
@@ -363,6 +407,7 @@ async function runCase(args: {
     return {
       ...base,
       success: false,
+      costUsd: null, // A failed request may have unreported billable usage.
       durationMs: Date.now() - started,
       errorMessage: err?.message ?? String(err),
     };
@@ -380,11 +425,11 @@ function summarize(results: CaseResult[], cases: BenchmarkCase[]): RunStats {
       r.success &&
       typeof r.score === "number" &&
       r.score >= (minScoreByCase.get(r.caseId) ?? 70) &&
-      r.expectationsMet !== false
+      r.expectationsMet !== false && r.electricalPassed === true && r.requirementsComplete === true
   );
 
   const costs = results.map(r => r.costUsd).filter((c): c is number => typeof c === "number");
-  const durations = results.filter(r => r.success).map(r => r.durationMs);
+  const durations = results.map(r => r.durationMs);
 
   const judgeScores = results
     .map(r => r.judgeScore)
@@ -396,6 +441,15 @@ function summarize(results: CaseResult[], cases: BenchmarkCase[]): RunStats {
   return {
     caseCount: results.length,
     completedCount: results.length,
+    requestCompletedCount: results.filter(r => r.success).length,
+    acceptableRate: results.length ? passes.length / results.length * 100 : null,
+    noElectricalErrorRate: results.length ? results.filter(r => r.success && r.electricalErrorCount === 0).length / results.length * 100 : null,
+    electricalPassedRate: results.length ? results.filter(r => r.electricalPassed).length / results.length * 100 : null,
+    requirementCompleteRate: results.length ? results.filter(r => r.requirementsComplete).length / results.length * 100 : null,
+    unresolvedRate: results.length ? results.filter(r => (r.unresolvedCount ?? 0) > 0).length / results.length * 100 : null,
+    latencyP50Ms: percentile(durations, 0.5),
+    latencyP95Ms: percentile(durations, 0.95),
+    costPerAcceptableUsd: passes.length && costs.length === results.length ? costs.reduce((a, c) => a + c, 0) / passes.length : null,
     meanScore: mean(scores),
     medianScore: median(scores),
     minScore: scores.length ? Math.min(...scores) : null,
@@ -405,7 +459,7 @@ function summarize(results: CaseResult[], cases: BenchmarkCase[]): RunStats {
     totalInputTokens: results.reduce((a, r) => a + r.inputTokens, 0),
     totalOutputTokens: results.reduce((a, r) => a + r.outputTokens, 0),
     // Null when no model in the run was priced, rather than a misleading 0
-    totalCostUsd: costs.length ? costs.reduce((a, c) => a + c, 0) : null,
+    totalCostUsd: costs.length === results.length && costs.length ? costs.reduce((a, c) => a + c, 0) : null,
     meanDurationMs: durations.length ? Math.round(mean(durations)!) : null,
     totalRepairs: results.reduce((a, r) => a + (r.repairCount ?? 0), 0),
     meanIterations: mean(results.filter(r => r.success).map(r => r.iterationsUsed)),
@@ -429,4 +483,10 @@ function stdDev(xs: number[]): number | null {
   const m = mean(xs);
   if (m === null || xs.length < 2) return null;
   return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1));
+}
+
+function percentile(values: number[], p: number) {
+  if (!values.length) return null;
+  const ordered = [...values].sort((a, b) => a - b);
+  return ordered[Math.max(0, Math.ceil(p * ordered.length) - 1)];
 }

@@ -674,6 +674,129 @@ Required for full functionality:
 
 ## Recent Changes
 
+**Fixes from a pass over a week of AI logs** (Oct 21) - every AI design from
+the last 7 days was re-reviewed with the current checker (wire-components logs
+keep the canvas in `response.attemptContext.inputSnapshot.existingDesign`).
+Voltage-drop errors in them are already fixed by the normalizer now that the
+engine resolves those wires. What was changed:
+
+- **Bypassed parts** (new rule, `validateBypassedDevices`): a fuse, breaker,
+  switch, BatteryProtect, SmartShunt, Lynx Shunt/BMS or Lynx fuse whose two
+  sides are joined by wires/bus bars outside it. AI output had a shunt's system
+  side wired back to the battery bus (monitor reads ~0), a fuse with in and out
+  on one bus bar, and a switch with a wire around it. None was reported before.
+- **Voltage mismatch false errors**: Cerbo, SmartShunt, BMV, Lynx, bus bars,
+  fuses, breakers, switches and DC panels keep the 12V stamped when placed;
+  they now accept 12/24/48. MPPTs accept 12/24 (75/100V models) or 12/24/48
+  (150V+), Orions their in/out voltages. Only a *declared* voltage is
+  widened - a part with none is still not checked, so no new errors.
+- **MPPT "missing solar panel"** no longer fires when panels reach it through
+  PV combiner bus bars, fuses, breakers or switches.
+- **Orion input current** also uses declared `inputVoltage`/`outputVoltage`
+  when the name has no "12/24" (engine 1.6.1).
+- **AI Wire preflight** no longer refuses an inverter with no AC loads when
+  its VA rating is known (the engine sizes it from the rating).
+
+On the 101-design corpus: errors 100 -> 94, none added.
+
+**Inverter rating overloads are warnings, not errors** (engine 1.6.0) - every
+inverter cable is checked twice: against the loads drawn on its AC output
+(an overload is an **error** - the design as drawn is wrong) and against the
+inverter's rated continuous output (an overload is a **warning**,
+`ratedOutputWarnings` / rule `analysis.rated-output` - fine today, too small
+if the inverter is ever run flat out). An inverter with nothing drawn shows
+its rated current, with any overload as a warning. `analyzeElectricalDesign`
+runs the core three times (drawn / default / rated) only when a design has a
+rated inverter. Messages are matched with their numbers ignored, so an as-drawn
+error is never downgraded because its amps differ. On 101 designs the one
+1.5.0 error from this (two Quattro 8000s, one with nothing drawn) is now 2 warnings.
+
+**Current sharing solved from cable resistance, not assumed** (engine 1.5.0) -
+`shared/dc-network.ts` is a nodal-analysis resistor-network solver. Wires the
+tree walk cannot settle - parallel batteries, parallel cables, loops, series
+links between batteries - are solved from each cable's resistance (gauge x
+length, `conductorResistanceOhms`). Replaces the "bank / (n - 1)" equal-share
+rule. On 101 designs: review errors 126 -> 100, "unresolved" 218 -> 35, every
+added/removed error checked by hand.
+
+- The only missing input is battery internal resistance. It is **not guessed**:
+  identical batteries get the same value and a 0.01-100 milliohm (per 100Ah)
+  sweep keeps the worst case; each battery/series string is also solved
+  disconnected (BMS/fuse); batteries not declared identical (incl. no
+  capacity) are also solved alone, which bounds them at full bank current.
+- A cable in a parallel run with no gauge/length -> unresolved "set gauge and
+  length", because its share depends on it.
+- Circuit voltage comes from the batteries (a 12V starter circuit in a 24V boat
+  is worked out at 12V); batteries of different voltage in parallel are refused.
+- Inverters with nothing drawn on AC out are sized for their rated continuous
+  output (Victron datasheet table by VA, `ratedContinuousWatts`). Inverters
+  WITH drawn loads use the drawn loads; their rating is a warning (1.6.0).
+- Split phase (120/240V): the drawing has one hot conductor, so legs are
+  unknown; conductors are sized for every 120V load on one leg (240V loads at
+  W/240 + 120V loads at W/120), a hard upper bound.
+- A charger with no declared AC input is bounded by the breaker in series with
+  it, else the shore inlet rating (as MultiPlus AC-in already was).
+- Problems on the supply side (an unrated inverter elsewhere) no longer block a
+  branch whose own current is known.
+- Gauges like "3x2.5mm² (14 AWG)" use the bracketed AWG.
+
+**Shared electrical analysis covers common Victron parts** (engine 1.4.0) -
+`shared/electrical-analysis.ts` (what the design review shows, and what the AI
+backup gate's "unresolved" check reads) resolved only 42% of wires across 101
+real designs: one unmodeled part anywhere on a side blocked every wire on it.
+Now 93%; review errors 142 -> 126 and "unresolved" warnings 2613 -> 218 on the
+same corpus, every new error checked by hand (real voltage drop on long runs).
+
+- Modeled: Cerbo GX (~3W datasheet typical, or declared watts), alternator (a
+  charger at its declared amps), Lynx Shunt / Smart BMS / BatteryProtect
+  (pass-through), transfer switch (AC pass-through, one source at a time),
+  battery balancer (negligible draw).
+- Orion input current is derived from the model name's voltage ratio when
+  `inputAmps` is not declared ("48/12": a quarter of output, 90% efficient).
+- Starting a walk AT a MultiPlus/Quattro or Orion stays on the side the wire
+  is on (AC-in vs AC-out, Quattro in-1 vs in-2, DC input vs output) - it used
+  to leak through and count the shore supply or the alternator twice.
+- A MultiPlus seen from its AC input is a consumer sized to the shore inlet
+  rating; a transfer-switch input leg is sized to its own source's rating.
+- Battery-less islands (an Orion's 12V panel in a 48V boat, an alternator
+  feeding an Orion) carry the far side's draw at the island's voltage.
+- A wire whose far side has no supply carries that side's demand however many
+  supplies sit behind it; only wires *between* supplies stay unresolved.
+- Batteries joined on both + and - through pass-through parts are an inferred
+  parallel bank; batteries wired - to + summing to system voltage are one
+  series string. *(1.5.0: per-battery sharing is now solved from cable
+  resistance - see the entry above.)*
+- Stored metric gauges ("6 mm2") are rated as the largest AWG not exceeding
+  them (`metricToAwgGauge`) in both checkers; they were "unrecognized".
+
+**Charger branches and worst-case current in the validator** (Oct 2026) - real
+designs reported a 60A solar fuse "carrying" the inverter's 257A and its 10 AWG
+link to the bus bar needing 152A, which also blocked AI backup designs. Fixed in
+`design-validator.ts`:
+
+- `calculateWireCurrentByCut` gave up on branches with no loads, so a charger
+  branch (MPPT/Orion -> fuse -> bus) fell to the whole-system trunk estimate.
+  It now returns the chargers' own output, counting only chargers reached
+  without walking *through* one (an Orion's branch is 30A, not 30A + the
+  alternator feeding it). Load/source sums use the same restricted walk.
+- A wire into a DC-DC charger's **input** carries its input draw:
+  `amps x outV/inV / 0.9`, ratio parsed from the model name ("48/12").
+- `calculateFuseCurrent` assumed the "out" terminal faces the loads; it now
+  uses the cuts of the fuse's own wires and keeps the old logic as fallback.
+- **Worst case, not net**: a clean cut is sized for `max(loads, chargers)`, not
+  `loads - chargers` (that sized a 24V main cable for 78A against 138A of load).
+  The ambiguous multi-battery fallback deliberately keeps the old net formula
+  until bank splitting is solved - see the open issue below.
+- A cut now reports whether it is genuinely trunk (batteries on both sides).
+  Only then does the whole-system fallback apply; a branch headed by a fuse is
+  sized to that fuse, and a branch of near-zero-draw devices (Cerbo,
+  BatteryProtect ground) is skipped instead of guessed at 30-400A.
+
+Measured on 101 real and reference designs, old vs new validator: errors
+235 -> 166, mean score 71.9 -> 76.8. Every *new* error was checked by hand and
+is real (e.g. 80A fuse on a 100A MPPT, 250A main fuse under 272A of load).
+Exemplars stay at 100.
+
 **Audited every component type against what the validator actually reads** -
 triggered by a real design where an Orion-Tr DC-DC charger with no `amps` set
 left its own wire un-sized ("Cannot determine current... gauge validation
@@ -722,7 +845,10 @@ above. Looks like the same-polarity graph-cut current calculation
 (`calculateWireCurrentByCut`) treats "battery reachable on both sides" as
 ambiguous more often than it should once a design has two banks, and its
 fallback doesn't reliably resolve two-bank topologies either. Flagged for a
-follow-up session rather than expanded into here.
+follow-up session rather than expanded into here. *(Oct 2026: charger branches, Orions and empty branches are now resolved -
+see the entry above - but genuinely ambiguous cuts in parallel/series banks
+still use the old net whole-system estimate, which can under- or over-state
+each battery's own cable.)*
 
 **Production model is now gemini-3.8-flash** - benchmarked on the same suite
 and prompt hash, 12 designs each:

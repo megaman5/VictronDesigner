@@ -54,6 +54,7 @@ export class OpenAICompatibleProvider implements Provider {
     };
     if (req.json) body.response_format = { type: "json_object" };
     if (req.maxOutputTokens) body.max_completion_tokens = req.maxOutputTokens;
+    if (req.reasoningEffort) body.reasoning_effort = req.reasoningEffort;
 
     // Reasoning models reject sampling parameters. Try once with them, and on
     // an "unsupported parameter" 400 retry without so the caller still gets a
@@ -63,7 +64,7 @@ export class OpenAICompatibleProvider implements Provider {
     if (req.seed !== undefined) body.seed = req.seed;
 
     const send = async (payload: Record<string, unknown>) =>
-      client.chat.completions.create(payload as any, { signal: req.signal });
+      client.chat.completions.create(payload as any, { signal: req.signal, maxRetries: 0 });
 
     let completion: any;
     let samplingApplied = wantsSampling;

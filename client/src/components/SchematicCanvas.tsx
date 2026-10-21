@@ -1,3 +1,4 @@
+import { buildSchematicRoutes, schematicRoutingParts, type RoutePreview } from '@/lib/schematic-routing';
 import { useState, useRef, useMemo, useEffect } from "react";
 import { Grid3X3, ZoomIn, ZoomOut, Spline, Sliders, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ interface SchematicCanvasProps {
   onComponentSelect?: (component: SchematicComponentType) => void;
   onWireSelect?: (wire: Wire) => void;
   onDrop?: (x: number, y: number) => void;
+  onEditStart?: (label: string) => void;
+  onEditEnd?: () => void;
   onComponentMove?: (componentId: string, deltaX: number, deltaY: number) => void;
   onComponentDelete?: (componentId: string) => void;
   onWireConnectionComplete?: (wireData: WireConnectionData) => void;
@@ -65,6 +68,8 @@ export function SchematicCanvas({
   onComponentSelect,
   onWireSelect,
   onDrop,
+  onEditStart,
+  onEditEnd,
   onComponentMove,
   onComponentDelete,
   onWireConnectionComplete,
@@ -157,6 +162,13 @@ export function SchematicCanvas({
     }
   }, [wireConnectionMode]);
 
+  useEffect(() => {
+    const componentIds = new Set(components.map(component => component.id));
+    setSelectedIds(previous => previous.every(id => componentIds.has(id)) ? previous : previous.filter(id => componentIds.has(id)));
+    setSelectedId(previous => previous && !componentIds.has(previous) ? null : previous);
+    setSelectedWireId(previous => previous && !wires.some(wire => wire.id === previous) ? null : previous);
+  }, [components, wires]);
+
   // Calculate minimum canvas size based on component positions
   // This creates a canvas that's always at least as big as the content
   const canvasBounds = useMemo(() => {
@@ -190,26 +202,6 @@ export function SchematicCanvas({
       to: o?.to ?? wire.toTerminal,
     };
   };
-
-  const terminalUsage = useMemo(() => {
-    const usage = new Map<string, string[]>(); // Key: "compId-termId", Value: [wireId, wireId...]
-
-    wires.forEach(wire => {
-      const o = busbarOverrides.get(wire.id);
-      const fromTerminal = o?.from ?? wire.fromTerminal;
-      const toTerminal = o?.to ?? wire.toTerminal;
-      const fromKey = `${wire.fromComponentId}-${fromTerminal}`;
-      const toKey = `${wire.toComponentId}-${toTerminal}`;
-
-      if (!usage.has(fromKey)) usage.set(fromKey, []);
-      if (!usage.has(toKey)) usage.set(toKey, []);
-
-      usage.get(fromKey)!.push(wire.id);
-      usage.get(toKey)!.push(wire.id);
-    });
-
-    return usage;
-  }, [wires, busbarOverrides]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -253,6 +245,7 @@ export function SchematicCanvas({
       const { x: deltaX, y: deltaY } = constrainDragDelta(
         Array.from(draggedComponentPositions.values()), newX - dragStartPos.x, newY - dragStartPos.y);
 
+      onEditStart?.("move components");
       // If the dragged component is part of a selection, move all selected components
       if (selectedIds.includes(draggedComponentId)) {
         selectedIds.forEach(id => {
@@ -263,6 +256,7 @@ export function SchematicCanvas({
         onComponentMove?.(draggedComponentId, deltaX, deltaY);
       }
 
+      onEditEnd?.();
       setDraggedComponentId(null);
       setDragPreviewPos(null);
       setDraggedComponentPositions(new Map());
@@ -852,6 +846,7 @@ export function SchematicCanvas({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
     // Copy (Ctrl+C or Cmd+C)
     if ((e.ctrlKey || e.metaKey) && e.key === "c") {
       if (selectedIds.length > 0) {
@@ -880,6 +875,7 @@ export function SchematicCanvas({
 
     // Delete
     if (e.key === "Delete" || e.key === "Backspace") {
+      if (selectedWireId || selectedIds.length) e.preventDefault();
       // Delete selected wire
       if (selectedWireId) {
         onWireDelete?.(selectedWireId);
@@ -887,7 +883,9 @@ export function SchematicCanvas({
       }
       // Delete all selected components
       else if (selectedIds.length > 0) {
+        onEditStart?.(`delete ${selectedIds.length} components`);
         selectedIds.forEach(id => onComponentDelete?.(id));
+        onEditEnd?.();
         setSelectedIds([]);
         setSelectedId(null);
       }
@@ -1212,97 +1210,6 @@ export function SchematicCanvas({
           {showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
           {(() => {
-            // Build obstacles from all components
-            const componentDimensions: Record<string, { width: number; height: number }> = {
-              multiplus: { width: 180, height: 140 },
-              battery: { width: 160, height: 110 },
-              mppt: { width: 160, height: 130 },
-              'solar-panel': { width: 140, height: 120 },
-              cerbo: { width: 180, height: 120 },
-              bmv: { width: 140, height: 140 },
-              smartshunt: { width: 140, height: 140 },
-              'ac-load': { width: 120, height: 100 },
-              'dc-load': { width: 120, height: 100 },
-              'busbar-positive': { width: 140, height: 60 },
-              'busbar-negative': { width: 140, height: 60 },
-              fuse: { width: 80, height: 60 },
-              switch: { width: 80, height: 80 },
-              'ac-panel': { width: 180, height: 220 },
-              'dc-panel': { width: 160, height: 240 },
-              'shore-power': { width: 140, height: 100 },
-              'transfer-switch': { width: 180, height: 140 },
-            };
-
-            const obstacles: Obstacle[] = components.map(comp => {
-              // Bus bars are drawn as a thin bar (~y24-36 of a 60px box). Use a
-              // matching thin obstacle so wires can pass close above/below it.
-              if (comp.type === 'busbar-positive' || comp.type === 'busbar-negative') {
-                return { x: comp.x + 10, y: comp.y + 24, width: 180, height: 12 };
-              }
-              const dims = comp.type === "custom"
-                ? getComponentDimensions(comp.type, comp.properties)
-                : (componentDimensions[comp.type] || { width: 120, height: 100 });
-              return {
-                x: comp.x,
-                y: comp.y,
-                width: dims.width,
-                height: dims.height
-              };
-            });
-
-            // Track occupied nodes for wire separation
-            const occupiedNodes = new Set<string>();
-
-            // Route a wire through an ordered list of absolute points (start,
-            // manual waypoints..., end), running the A* router per segment so
-            // each leg respects obstacles and the chosen style.
-            const routeThroughPoints = (
-              pts: Array<{ x: number; y: number }>,
-              fromOri: ReturnType<typeof getTerminalOrientation> | undefined,
-              toOri: ReturnType<typeof getTerminalOrientation> | undefined,
-              laneOffsets: { start: number; end: number }
-            ) => {
-              let combinedPath = "";
-              const allPoints: Array<{ x: number; y: number }> = [];
-              for (let s = 0; s < pts.length - 1; s++) {
-                const a = pts[s];
-                const b = pts[s + 1];
-                const seg = calculateRoute(
-                  a.x, a.y, b.x, b.y,
-                  obstacles, 2400, 1600, occupiedNodes,
-                  s === 0 ? (fromOri || undefined) : undefined,
-                  s === pts.length - 2 ? (toOri || undefined) : undefined,
-                  wireRoutingOptions,
-                  { start: s === 0 ? laneOffsets.start : 0, end: s === pts.length - 2 ? laneOffsets.end : 0 }
-                );
-                seg.pathNodes.forEach(n => occupiedNodes.add(n));
-                if (s === 0) {
-                  combinedPath = seg.path;
-                  allPoints.push(...seg.pathPoints);
-                } else {
-                  combinedPath += " " + seg.path.replace(/^M/, "L");
-                  allPoints.push(...seg.pathPoints.slice(1));
-                }
-              }
-              // Label on the longest segment of the combined route.
-              let labelX = allPoints[0]?.x || 0;
-              let labelY = allPoints[0]?.y || 0;
-              let labelRotation = 0;
-              let maxLen = -1;
-              for (let i = 1; i < allPoints.length; i++) {
-                const p1 = allPoints[i - 1];
-                const p2 = allPoints[i];
-                const l = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                if (l > maxLen) {
-                  maxLen = l;
-                  labelX = (p1.x + p2.x) / 2;
-                  labelY = (p1.y + p2.y) / 2;
-                  labelRotation = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y) ? 0 : 90;
-                }
-              }
-              return { path: combinedPath, labelX, labelY, labelRotation, pathPoints: allPoints };
-            };
-
             // First pass: calculate all wire routes and store label positions
             interface WireRouteData {
               wire: Wire;
@@ -1342,141 +1249,22 @@ export function SchematicCanvas({
               return Math.ceil(Math.max(34, primaryWidth + secondaryWidth + gap + LABEL_X_PADDING * 2));
             };
 
-            wires.forEach((wire) => {
-              const fromComp = components.find(c => c.id === wire.fromComponentId);
-              const toComp = components.find(c => c.id === wire.toComponentId);
-
-              if (!fromComp || !toComp) return;
-
-              const fromCompX = (draggedComponentId === fromComp.id && dragPreviewPos) ? dragPreviewPos.x : fromComp.x;
-              const fromCompY = (draggedComponentId === fromComp.id && dragPreviewPos) ? dragPreviewPos.y : fromComp.y;
-              const toCompX = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.x : toComp.x;
-              const toCompY = (draggedComponentId === toComp.id && dragPreviewPos) ? dragPreviewPos.y : toComp.y;
-
-              const resolved = resolveTerminals(wire);
-              const fromTerminalId = resolved.from;
-              const toTerminalId = resolved.to;
-
-              let fromPos = getTerminalPosition(fromCompX, fromCompY, fromComp.type, fromTerminalId, fromComp.properties);
-              let toPos = getTerminalPosition(toCompX, toCompY, toComp.type, toTerminalId, toComp.properties);
-
-              if (!fromPos) {
-                if (draggedComponentId === fromComp.id && dragPreviewPos) {
-                  const fromDims = getComponentDimensions(fromComp.type, fromComp.properties);
-                  const centerX = dragPreviewPos.x + fromDims.width / 2;
-                  const centerY = dragPreviewPos.y + fromDims.height / 2;
-                  fromPos = { x: centerX, y: centerY };
-                } else {
-                  const from = getComponentPosition(wire.fromComponentId);
-                  fromPos = { x: from.x, y: from.y };
-                }
-              }
-              if (!toPos) {
-                if (draggedComponentId === toComp.id && dragPreviewPos) {
-                  const toDims = getComponentDimensions(toComp.type, toComp.properties);
-                  const centerX = dragPreviewPos.x + toDims.width / 2;
-                  const centerY = dragPreviewPos.y + toDims.height / 2;
-                  toPos = { x: centerX, y: centerY };
-                } else {
-                  const to = getComponentPosition(wire.toComponentId);
-                  toPos = { x: to.x, y: to.y };
-                }
-              }
-
-              if (draggedWireEndpoint?.wireId === wire.id && draggedEndpointPos) {
-                if (draggedWireEndpoint.endpoint === 'from') {
-                  fromPos = { ...draggedEndpointPos };
-                } else {
-                  toPos = { ...draggedEndpointPos };
-                }
-              }
-
-              let fromOrientation = getTerminalOrientation(fromComp.type, fromTerminalId, fromComp.properties);
-              let toOrientation = getTerminalOrientation(toComp.type, toTerminalId, toComp.properties);
-
-              // Bus bars are horizontal nodes whose slots can exit either up or
-              // down. Point the exit toward the connected component so wires to
-              // components ABOVE the bar don't shoot down and loop all the way
-              // back up (the cause of long overshooting runs).
-              const isBusbar = (t: string) => t === "busbar-positive" || t === "busbar-negative";
-              const fromCenterY = fromCompY + getComponentDimensions(fromComp.type, fromComp.properties).height / 2;
-              const toCenterY = toCompY + getComponentDimensions(toComp.type, toComp.properties).height / 2;
-              if (isBusbar(fromComp.type)) {
-                fromOrientation = toCenterY < fromCenterY ? "top" : "bottom";
-              }
-              if (isBusbar(toComp.type)) {
-                toOrientation = fromCenterY < toCenterY ? "top" : "bottom";
-              }
-
-              const fromKey = `${wire.fromComponentId}-${fromTerminalId}`;
-              const toKey = `${wire.toComponentId}-${toTerminalId}`;
-              const fromWires = terminalUsage.get(fromKey) || [];
-              const toWires = terminalUsage.get(toKey) || [];
-              const fromIndex = fromWires.indexOf(wire.id);
-              const toIndex = toWires.indexOf(wire.id);
-
-              const getOffset = (index: number, count: number) => {
-                if (count <= 1 || wireRoutingOptions.laneOffset <= 0) return 0;
-                const raw = (index - (count - 1) / 2) * wireRoutingOptions.laneOffset;
-                // Interior lanes use whole grid steps; the router connects them
-                // back to the exact, shared terminal anchor.
-                return Math.round(raw / GRID_SIZE) * GRID_SIZE;
-              };
-
-              const laneOffsets = {
-                start: getOffset(fromIndex, fromWires.length),
-                end: getOffset(toIndex, toWires.length),
-              };
-
-              // Manual bends: absolute positions (relative to from-component),
-              // with a live override for the waypoint currently being dragged.
-              const manualWaypoints = (wire.waypoints || []).map((wp, idx) => {
-                if (draggedWaypoint?.wireId === wire.id && draggedWaypoint.index === idx && draggedWaypointPos) {
-                  return { x: draggedWaypointPos.x, y: draggedWaypointPos.y };
-                }
-                return { x: fromCompX + wp.x, y: fromCompY + wp.y };
-              });
-              // A bend being freshly dragged out of this wire (not yet committed).
-              if (pendingWaypoint?.wireId === wire.id) {
-                manualWaypoints.splice(pendingWaypoint.insertIndex, 0, { ...pendingWaypoint.pos });
-              }
-
-              let result: { path: string; labelX: number; labelY: number; labelRotation: number; pathPoints: Array<{ x: number; y: number }> };
-              if (manualWaypoints.length > 0) {
-                result = routeThroughPoints(
-                  [{ x: fromPos.x, y: fromPos.y }, ...manualWaypoints, { x: toPos.x, y: toPos.y }],
-                  fromOrientation,
-                  toOrientation,
-                  laneOffsets
-                );
-              } else {
-                const r = calculateRoute(
-                  fromPos.x, fromPos.y,
-                  toPos.x, toPos.y,
-                  obstacles,
-                  2400,
-                  1600,
-                  occupiedNodes,
-                  fromOrientation || undefined,
-                  toOrientation || undefined,
-                  wireRoutingOptions,
-                  laneOffsets
-                );
-                r.pathNodes.forEach(node => occupiedNodes.add(node));
-                result = r;
-              }
-
-              wireRoutes.push({
-                wire,
-                path: result.path,
-                labelX: result.labelX,
-                labelY: result.labelY,
-                labelRotation: result.labelRotation,
-                labelWidth: getWireLabelWidth(wire),
-                labelHeight: LABEL_HEIGHT,
-                pathPoints: result.pathPoints || [],
-              });
-            });
+            const liveComponents = components.map(c => draggedComponentId === c.id && dragPreviewPos ? {...c, ...dragPreviewPos} : c);
+            const previews = new Map<string, RoutePreview>();
+            for (const wire of wires) {
+              const from = liveComponents.find(c => c.id === wire.fromComponentId);
+              if (!from) continue;
+              const waypoints = (wire.waypoints ?? []).map((wp,index) =>
+                draggedWaypoint?.wireId === wire.id && draggedWaypoint.index === index && draggedWaypointPos
+                  ? {...draggedWaypointPos} : {x:from.x+wp.x,y:from.y+wp.y});
+              if (pendingWaypoint?.wireId === wire.id) waypoints.splice(pendingWaypoint.insertIndex,0,{...pendingWaypoint.pos});
+              const preview: RoutePreview = {waypoints};
+              if (draggedWireEndpoint?.wireId === wire.id && draggedEndpointPos) preview[draggedWireEndpoint.endpoint] = {...draggedEndpointPos};
+              previews.set(wire.id,preview);
+            }
+            for (const route of buildSchematicRoutes(schematicRoutingParts(liveComponents), wires, wireRoutingOptions, previews)) {
+              wireRoutes.push({...route,labelWidth:getWireLabelWidth(route.wire),labelHeight:LABEL_HEIGHT});
+            }
 
             // Detect and resolve label overlaps
             const SEGMENT_PADDING = 4;
@@ -1935,33 +1723,13 @@ export function SchematicCanvas({
 
           {/* Wire preview when dragging */}
           {wireStart && wirePreviewEnd && (() => {
-            const componentDimensions: Record<string, { width: number; height: number }> = {
-              multiplus: { width: 180, height: 140 },
-              battery: { width: 160, height: 110 },
-              mppt: { width: 160, height: 130 },
-              'solar-panel': { width: 140, height: 120 },
-              cerbo: { width: 180, height: 120 },
-              bmv: { width: 140, height: 140 },
-              smartshunt: { width: 140, height: 140 },
-              'ac-load': { width: 120, height: 100 },
-              'dc-load': { width: 120, height: 100 },
-              'busbar-positive': { width: 140, height: 60 },
-              'busbar-negative': { width: 140, height: 60 },
-              fuse: { width: 80, height: 60 },
-              switch: { width: 80, height: 80 },
-              'ac-panel': { width: 180, height: 220 },
-              'dc-panel': { width: 160, height: 240 },
-            };
-
             const obstacles: Obstacle[] = components.map(comp => {
               // Bus bars are drawn as a thin bar (~y24-36 of a 60px box). Use a
               // matching thin obstacle so wires can pass close above/below it.
               if (comp.type === 'busbar-positive' || comp.type === 'busbar-negative') {
                 return { x: comp.x + 10, y: comp.y + 24, width: 180, height: 12 };
               }
-              const dims = comp.type === "custom"
-                ? getComponentDimensions(comp.type, comp.properties)
-                : (componentDimensions[comp.type] || { width: 120, height: 100 });
+              const dims = getComponentDimensions(comp.type, comp.properties);
               return {
                 x: comp.x,
                 y: comp.y,

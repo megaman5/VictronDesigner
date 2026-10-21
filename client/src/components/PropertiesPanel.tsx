@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calculator, Settings, ShoppingCart, Tag, AlertCircle, Info, ChevronLeft, Trash2, RotateCw, RotateCcw, FlipHorizontal, FlipVertical } from "lucide-react";
 import type { ValidationResult, Wire, SchematicComponent } from "@shared/schema";
+import { analyzeElectricalDesign } from "@shared/electrical-analysis";
 import { findBatteryBanks, getBankForBattery } from "@shared/battery-bank";
 import { formatWireGauge, formatWireLength, feetToDisplayLength, displayLengthToFeet, lengthUnitLabel, type LengthUnit } from "@/lib/wire-calculator";
 import { mpptHasLoadOutput } from "@/lib/terminal-config";
@@ -42,6 +43,7 @@ interface PropertiesPanelProps {
     polarity: string;
     gauge?: string;
     length: number;
+    lengthEstimated?: boolean;
   };
   wireCalculation?: WireCalculation; // For backward compatibility when wire is selected
   wireCalculations?: Record<string, WireCalculation>; // Map of wireId -> calculation
@@ -432,121 +434,13 @@ function calculateInverterDCInput(
   components: SchematicComponent[] = [],
   systemVoltage: number = 12,
   inverterEfficiency: number = 0.875
-): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number } {
+): { acLoadWatts: number; dcInputWatts: number; dcInputCurrent: number; acVoltage: number; reason?: string } {
   const inverter = components.find(c => c.id === inverterId);
-  if (!inverter || (inverter.type !== "multiplus" && inverter.type !== "phoenix-inverter" && inverter.type !== "quattro" && inverter.type !== "inverter")) {
-    return { acLoadWatts: 0, dcInputWatts: 0, dcInputCurrent: 0, acVoltage: 120 };
-  }
-
-  // Find all AC loads connected to this inverter
-  // Trace from inverter AC output terminals to AC loads
-  const inverterACOutputTerminals = ["ac-out-hot", "ac-out-neutral"];
-  let totalACWatts = 0;
-  let acVoltage = 120; // Default
-
-  // Helper to find AC loads connected through AC panels
-  const findACLoads = (componentId: string, visited: Set<string> = new Set()): { watts: number; voltage: number } => {
-    if (visited.has(componentId)) return { watts: 0, voltage: 120 };
-    visited.add(componentId);
-
-    const comp = components.find(c => c.id === componentId);
-    if (!comp) return { watts: 0, voltage: 120 };
-
-    // If this is an AC load, return its watts and voltage
-    if (comp.type === "ac-load") {
-      const loadWatts = (comp.properties?.watts || comp.properties?.power || 0) as number;
-      const loadVoltage = comp.properties?.acVoltage || comp.properties?.voltage || 120;
-      return { watts: loadWatts, voltage: loadVoltage };
-    }
-
-    // If this is an AC panel, trace through to its loads
-    // Only trace from "hot" wires to avoid double-counting
-    if (comp.type === "ac-panel") {
-      let panelWatts = 0;
-      let panelVoltage = 120;
-      const panelWires = wires.filter(
-        w => (w.fromComponentId === componentId || w.toComponentId === componentId) &&
-             w.polarity === "hot" // Only trace from hot wires
-      );
-      
-      const panelVisited = new Set<string>();
-      for (const panelWire of panelWires) {
-        const otherCompId = panelWire.fromComponentId === componentId 
-          ? panelWire.toComponentId 
-          : panelWire.fromComponentId;
-        
-        // Only count each load once
-        if (!panelVisited.has(otherCompId)) {
-          panelVisited.add(otherCompId);
-          const result = findACLoads(otherCompId, new Set(visited));
-          panelWatts += result.watts;
-          if (result.voltage !== 120) panelVoltage = result.voltage; // Use first non-default voltage
-        }
-      }
-      return { watts: panelWatts, voltage: panelVoltage };
-    }
-
-    // For other AC components, trace through
-    const connectedWires = wires.filter(
-      w => (w.fromComponentId === componentId || w.toComponentId === componentId) &&
-           (w.polarity === "hot" || w.polarity === "neutral" || w.polarity === "ground")
-    );
-
-    for (const connectedWire of connectedWires) {
-      const otherCompId = connectedWire.fromComponentId === componentId 
-        ? connectedWire.toComponentId 
-        : connectedWire.fromComponentId;
-      const result = findACLoads(otherCompId, new Set(visited));
-      if (result.watts > 0) {
-        return result;
-      }
-    }
-
-    return { watts: 0, voltage: 120 };
-  };
-
-  // Find wires connected to inverter AC output terminals
-  // Only trace from "hot" wire to avoid double-counting (hot and neutral go to same loads)
-  const inverterACWires = wires.filter(
-    w => (w.fromComponentId === inverterId || w.toComponentId === inverterId) &&
-         ((w.fromTerminal === "ac-out-hot" && w.fromComponentId === inverterId) ||
-          (w.toTerminal === "ac-out-hot" && w.toComponentId === inverterId))
-  );
-
-  // Track visited components to avoid double-counting
-  const visitedComponents = new Set<string>();
-  
-  for (const acWire of inverterACWires) {
-    const otherCompId = acWire.fromComponentId === inverterId 
-      ? acWire.toComponentId 
-      : acWire.fromComponentId;
-    
-    // Only process each component once
-    if (!visitedComponents.has(otherCompId)) {
-      visitedComponents.add(otherCompId);
-      const result = findACLoads(otherCompId, new Set());
-      totalACWatts += result.watts;
-      if (result.voltage !== 120) acVoltage = result.voltage;
-    }
-  }
-
-  // If no AC loads found via tracing, check if inverter has a power rating
-  // and assume it's being used at that capacity
-  if (totalACWatts === 0) {
-    const inverterRating = (inverter.properties?.powerRating || inverter.properties?.watts || inverter.properties?.power || 0) as number;
-    if (inverterRating > 0) {
-      // Assume 80% utilization
-      totalACWatts = inverterRating * 0.8;
-    }
-  }
-
-  // Calculate DC input power: AC output / efficiency
-  const dcInputWatts = totalACWatts / inverterEfficiency;
-  
-  // Calculate DC current: DC power / DC voltage
-  const dcInputCurrent = systemVoltage > 0 ? dcInputWatts / systemVoltage : 0;
-
-  return { acLoadWatts: totalACWatts, dcInputWatts, dcInputCurrent, acVoltage };
+  const value = analyzeElectricalDesign({ components, wires, systemVoltage }, { inverterEfficiency }).components[inverterId];
+  const known = value?.status === 'known';
+  const dcInputCurrent = known ? value.currentA ?? 0 : 0;
+  const dcInputWatts = dcInputCurrent * systemVoltage;
+  return { dcInputCurrent, dcInputWatts, acLoadWatts: value?.source.includes('connected AC') ? dcInputWatts * inverterEfficiency : 0, acVoltage: inverter ? getInverterACVoltage(inverter) : 120, reason: known ? undefined : value?.reason ?? 'Add the intended AC loads or a reviewed DC input sizing current.' };
 }
 
 export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculation, wireCalculations = {}, validationResult, wires = [], components = [], systemVoltage = 12, lengthUnit = "ft", onEditWire, onUpdateComponent, onUpdateWire, onWireSelect, onComponentSelect, onCreateParallelWires, onDeleteComponent, onDeleteWire }: PropertiesPanelProps) {
@@ -769,7 +663,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
     if (!selectedWire || !onUpdateWire) return;
     const displayValue = parseFloat(value) || 0;
     setWireLength(value);
-    onUpdateWire(selectedWire.id, { length: displayLengthToFeet(displayValue, lengthUnit) });
+    onUpdateWire(selectedWire.id, { length: displayLengthToFeet(displayValue, lengthUnit), lengthEstimated: false });
     triggerSaveFeedback();
   };
 
@@ -977,7 +871,7 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Length ({lengthUnitLabel(lengthUnit)})</Label>
+                    <Label>Length ({lengthUnitLabel(lengthUnit)}){selectedWire.lengthEstimated ? ' · AI estimate' : ''}</Label>
                     <Input
                       type="number"
                       value={wireLength}
@@ -1047,6 +941,22 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                 )}
 
                 <Separator />
+
+                {['battery', 'inverter', 'multiplus', 'quattro', 'phoenix-inverter', 'orion-dc-dc'].includes(selectedComponent.type) && <div className="space-y-2 my-3">
+                  <h3 className="text-sm font-medium">Reviewed calculation inputs</h3>
+                  <p className="text-xs text-muted-foreground">Leave unknown values blank. Use manufacturer ratings or reviewed design inputs.</p>
+                  {(selectedComponent.type === 'battery' ? [{ key: 'batteryBankId', label: 'Parallel battery bank name', type: 'text' }] :
+                    selectedComponent.type === 'orion-dc-dc' ? [{ key: 'inputAmps', label: 'Maximum DC input current (A)', type: 'number' }, { key: 'inputVoltage', label: 'DC input voltage (V)', type: 'number' }, { key: 'outputVoltage', label: 'DC output voltage (V)', type: 'number' }] :
+                    [{ key: 'dcInputAmps', label: 'DC input sizing current without AC loads (A)', type: 'number' }]).map(field => <div key={field.key} className="space-y-1">
+                    <Label>{field.label}</Label>
+                    <Input aria-label={field.label} type={field.type} min={field.type === 'number' ? 0 : undefined} value={selectedComponent.properties?.[field.key] ?? ''} onChange={event => {
+                      const properties = { ...selectedComponent.properties };
+                      if (event.target.value === '') delete properties[field.key];
+                      else properties[field.key] = field.type === 'number' ? Number(event.target.value) : event.target.value;
+                      onUpdateComponent?.(selectedComponent.id, { properties }); triggerSaveFeedback();
+                    }} />
+                  </div>)}
+                </div>}
 
                 {/* Bus bar options */}
                 {(selectedComponent.type === 'busbar-positive' || selectedComponent.type === 'busbar-negative') && (
@@ -1326,10 +1236,12 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                     </div>
                     <Separator />
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      <div className="font-medium mb-1">DC Input (Calculated from AC Loads)</div>
-                      <div>Total AC Loads: {inverterDC.acLoadWatts.toFixed(0)}W @ {inverterDC.acVoltage}V</div>
-                      <div>DC Input Power: {inverterDC.dcInputWatts.toFixed(0)}W (87.5% efficiency)</div>
+                      <div className="font-medium mb-1">Reviewed DC input demand</div>
+                      {inverterDC.reason ? <div>{inverterDC.reason}</div> : <>
+                      {inverterDC.acLoadWatts > 0 && <div>Total AC Loads: {inverterDC.acLoadWatts.toFixed(0)}W @ {inverterDC.acVoltage}V</div>}
+                      <div>DC Input Power: {inverterDC.dcInputWatts.toFixed(0)}W</div>
                       <div>DC Input Current: {inverterDC.dcInputCurrent.toFixed(1)}A @ {voltage}V</div>
+                      </>}
                     </div>
                   </div>
                   );
@@ -1511,6 +1423,20 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                           </SelectItem>
                         ))}
                       </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="charger-ac-input">Rated AC Input Current (A)</Label>
+                      <Input id="charger-ac-input" type="number" min="0" step="0.1"
+                        value={selectedComponent.properties.acInputAmps ?? ''}
+                        onChange={e => onUpdateComponent?.(selectedComponent.id, {properties: {...selectedComponent.properties,
+                          acInputAmps: e.target.value === '' ? undefined : Number(e.target.value)}})} />
+                      <p className="text-xs text-muted-foreground">Enter the maximum AC input current from the charger label or datasheet. The charge current above is its DC output.</p>
+                      <Label>AC Input Voltage</Label>
+                      <Select value={String(selectedComponent.properties.acVoltage ?? 120)} onValueChange={v => onUpdateComponent?.(selectedComponent.id,
+                        {properties: {...selectedComponent.properties, acVoltage:Number(v)}})}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{[110,120,220,230,240].map(v => <SelectItem key={v} value={String(v)}>{v}V AC</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
@@ -1740,10 +1666,12 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                       </div>
                       <Separator />
                       <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                        <div className="font-medium mb-1">DC Input (Calculated from AC Loads)</div>
-                        <div>Total AC Loads: {inverterDC.acLoadWatts.toFixed(0)}W @ {inverterDC.acVoltage}V</div>
-                        <div>DC Input Power: {inverterDC.dcInputWatts.toFixed(0)}W (87.5% efficiency)</div>
+                        <div className="font-medium mb-1">Reviewed DC input demand</div>
+                      {inverterDC.reason ? <div>{inverterDC.reason}</div> : <>
+                        {inverterDC.acLoadWatts > 0 && <div>Total AC Loads: {inverterDC.acLoadWatts.toFixed(0)}W @ {inverterDC.acVoltage}V</div>}
+                        <div>DC Input Power: {inverterDC.dcInputWatts.toFixed(0)}W</div>
                         <div>DC Input Current: {inverterDC.dcInputCurrent.toFixed(1)}A @ {voltage}V</div>
+                      </>}
                       </div>
                     </div>
                   );
@@ -2306,6 +2234,26 @@ export function PropertiesPanel({ selectedComponent, selectedWire, wireCalculati
                         Current at Vmp: {(watts / voltage).toFixed(1)}A
                       </div>
                     )}
+                    {(['isc', 'voc'] as const).map((rating) => (
+                      <div className="space-y-2" key={rating}>
+                        <Label htmlFor={`panel-${rating}`}>{rating === 'isc' ? 'Short-circuit current (Isc, A)' : 'Open-circuit voltage (Voc, V)'}</Label>
+                        <Input
+                          id={`panel-${rating}`}
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          placeholder="From panel datasheet"
+                          value={selectedComponent.properties?.[rating] ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value === '' ? undefined : Number(e.target.value);
+                            if (value !== undefined && (!Number.isFinite(value) || value < 0)) return;
+                            onUpdateComponent?.(selectedComponent.id, { properties: { ...selectedComponent.properties, [rating]: value } });
+                            triggerSaveFeedback();
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">Isc sets the PV conductor sizing current. Voc checks the MPPT input voltage limit. Without these ratings, sizing is provisional and open-circuit voltage is unverified.</p>
                   </div>
                 )}
 

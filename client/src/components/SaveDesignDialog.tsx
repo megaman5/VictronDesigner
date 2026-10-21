@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas";
 import {
   Dialog,
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Save, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SessionExpiredDialog } from "@/components/SessionExpiredDialog";
+import type { DesignDocument } from "@shared/design-document";
 import type { SchematicComponent, Wire } from "@shared/schema";
 
 interface SaveDesignDialogProps {
@@ -25,7 +26,9 @@ interface SaveDesignDialogProps {
   systemVoltage: number;
   existingDesignId?: string;
   existingName?: string;
-  onSaved?: (designId: string, name: string) => void;
+  document?: DesignDocument;
+  existingVersion?: number;
+  onSaved?: (designId: string, name: string, version?: number, design?: any) => void;
   onSessionExpired?: () => void;
 }
 
@@ -37,12 +40,16 @@ export function SaveDesignDialog({
   systemVoltage,
   existingDesignId,
   existingName,
+  document,
+  existingVersion,
   onSaved,
   onSessionExpired,
 }: SaveDesignDialogProps) {
   const { toast } = useToast();
   const [name, setName] = useState(existingName || "");
   const [description, setDescription] = useState("");
+  const request = useRef<{key:string;id:string}|null>(null);
+  const [conflict, setConflict] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMode, setSaveMode] = useState<"update" | "copy" | null>(null);
   const [sessionExpiredOpen, setSessionExpiredOpen] = useState(false);
@@ -51,7 +58,9 @@ export function SaveDesignDialog({
   useEffect(() => {
     if (open) {
       setName(existingName || "");
-      setDescription("");
+      setDescription(document?.metadata.description || "");
+      setConflict(false);
+      request.current=null;
       setSaveMode(null);
     }
   }, [open, existingName]);
@@ -61,7 +70,7 @@ export function SaveDesignDialog({
 
   const captureScreenshot = async (): Promise<string | undefined> => {
     try {
-      const canvasElement = document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
+      const canvasElement = window.document.querySelector('[data-testid="canvas-drop-zone"]') as HTMLElement;
       if (!canvasElement) return undefined;
       
       const canvas = await html2canvas(canvasElement, {
@@ -99,10 +108,16 @@ export function SaveDesignDialog({
       const url = isNewDesign ? "/api/designs" : `/api/designs/${existingDesignId}`;
       const method = isNewDesign ? "POST" : "PUT";
 
+      const requestKey=JSON.stringify({isNewDesign,name,description,document,components,wires,systemVoltage,existingVersion});
+      if(request.current?.key!==requestKey) request.current={key:requestKey,id:crypto.randomUUID()};
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          requestId:request.current.id,
+          expectedVersion:existingVersion,
+          source:"manual",
+          document:document ? {...document,metadata:{...document.metadata,name:name.trim(),description:description.trim()}} : undefined,
           name: name.trim(),
           description: description.trim() || undefined,
           systemVoltage,
@@ -113,6 +128,7 @@ export function SaveDesignDialog({
       });
 
       if (!response.ok) {
+        if(response.status===409){setConflict(true);return;}
         if (response.status === 401) {
           // Session expired - show login dialog
           setSessionExpiredOpen(true);
@@ -131,7 +147,7 @@ export function SaveDesignDialog({
           : `Design "${name}" saved successfully`,
       });
 
-      onSaved?.(design.id, name.trim());
+      onSaved?.(design.id, name.trim(),design.version,design);
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error saving design:", error);
@@ -176,6 +192,7 @@ export function SaveDesignDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {conflict && <p role="alert" className="text-sm text-destructive">Another session saved a newer version. Your work is kept. Save as Copy to keep both, or cancel and open the cloud design.</p>}
           <div className="space-y-2">
             <Label htmlFor="design-name">
               Name <span className="text-destructive">*</span>
@@ -245,7 +262,7 @@ export function SaveDesignDialog({
             </Button>
           )}
           
-          <Button onClick={() => handleSave(false)} disabled={saving}>
+          <Button onClick={() => handleSave(false)} disabled={saving || conflict}>
             {saving && saveMode === "update" ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

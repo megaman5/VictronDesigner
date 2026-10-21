@@ -117,6 +117,69 @@ export function deviceDetails(type: string, w: number, h: number, d: number, ter
     box(w / 2, h / 2, d / 2, w, h, d, '#d0d5d5', 6);
     stud(w / 2, h * 0.65, d + 1, Math.min(w, h) * 0.25, 2, '#34414b');
     for (let i = -3; i <= 3; i++) box(w / 2, h * 0.65 + i * 3, d + 2.5, Math.min(w, h) * 0.35, 1.2, 1, '#a7b2b7', 0.3);
+  } else if (type === 'cerbo') {
+    // Low-profile communications hub, with mounting ears and actual port shapes.
+    for (const x of [w * 0.06, w * 0.94]) {
+      box(x, h / 2, 2, w * 0.1, h * 0.88, 4, '#20272c', 2);
+      for (const y of [h * 0.16, h * 0.84]) screw(x, y, 4.8);
+    }
+    box(w / 2, h / 2, d / 2, w * 0.86, h * 0.92, d, '#1d292f', 3);
+    box(w / 2, h * 0.48, d - 0.7, w * 0.84, h * 0.85, 2.2, '#167fb0', 2);
+    for (let i = 0; i < 3; i++) {
+      const x = w * (0.29 + i * 0.2);
+      // Recessed USB sockets with silver rims and dark connector tongues.
+      box(x, h * 0.8, d + 0.7, w * 0.12, h * 0.15, 2, '#acb7bd', 0.5, 0.7);
+      box(x, h * 0.8, d + 1.8, w * 0.1, h * 0.11, 0.4, '#121d25', 0.3);
+      box(x, h * 0.81, d + 2.1, w * 0.075, 1.5, 0.3, '#4c6c86', 0.1);
+    }
+    box(w * 0.72, h * 0.58, d + 0.6, w * 0.12, h * 0.11, 1.5, '#1c2b31', 0.6);
+    stud(w * 0.22, h * 0.58, d + 1, 1.4, 0.7, '#a7c992');
+    for (const t of terminals) {
+      const power = t.x < w / 2;
+      box(t.x, t.y, d * 0.76, power ? 11 : 14, 13, d * 0.56, power ? '#3d785c' : '#bcc3c5', 0.7);
+      box(t.x, t.y, d + 1.3, power ? 7 : 10, 8, 0.5, '#101a20', 0.2);
+      if (!power) for (let i = 0; i < 4; i++) box(t.x - 3 + i * 2, t.y + 1.5, d + 1.65, 0.55, 3, 0.3, '#d2ae6e', 0.1, 0.7);
+    }
+  } else if (type === 'multiplus' || type === 'quattro') {
+    const quattro = type === 'quattro';
+    const blue = '#167fb0';
+    // Deep folded-metal enclosure with a separate lower connection cover.
+    feet();
+    box(w / 2, h / 2, d * 0.46, w * 0.94, h * 0.96, d * 0.9, '#20343e', 3, 0.5);
+    for (const x of [w * 0.04, w * 0.96]) box(x, h * 0.46, d * 0.55, w * 0.045, h * 0.88, d * 0.76, '#145d83', 1, 0.4);
+    box(w / 2, h * 0.405, d - 1.8, w * 0.91, h * 0.76, 4, blue, 2, 0.35);
+    box(w / 2, h * 0.884, d - 2, w * 0.91, h * 0.175, 4, '#12668e', 1.5, 0.35);
+    box(w / 2, h * 0.791, d + 0.35, w * 0.88, 1.5, 0.5, '#103749', 0.1);
+    for (const x of [w * 0.09, w * 0.91]) for (const y of [h * 0.06, h * 0.74, h * 0.94]) screw(x, y, d + 0.8);
+    // Status legend and individual indicators rather than a fictitious LCD.
+    box(w * 0.49, h * 0.44, d + 0.5, w * 0.59, h * 0.19, 1.2, '#11577b', 0.5);
+    for (let i = 0; i < 4; i++) for (const x of [w * 0.24, w * 0.54]) {
+      const y = h * (0.385 + i * 0.036);
+      stud(x, y, d + 1.7, 1.2, 0.65, i === 0 ? '#99b8a2' : '#617c83');
+      box(x + w * 0.095, y, d + 1.3, w * 0.12, 0.85, 0.3, '#d3e2e6', 0.1);
+    }
+    box(w * 0.82, h * 0.42, d + 1, 9, 17, 2.5, '#172730', 0.7);
+    box(w * 0.82, h * 0.4, d + 2.7, 5, 5, 1, '#b7c1c4', 0.3);
+    // Vent banks and fan grilles give each family a recognizable face.
+    const fanXs = quattro ? [w * 0.3, w * 0.7] : [w / 2];
+    const r = Math.min(w * (quattro ? 0.14 : 0.18), h * 0.105);
+    for (const x of fanXs) {
+      const y = h * 0.665;
+      stud(x, y, d + 0.8, r, 1.5, '#173845', 48);
+      for (const ratio of [0.45, 0.67, 0.87]) {
+        add(new THREE.TorusGeometry(r * ratio, 0.65, 5, 36), x, y, d + 1.8, '#50717f', 0.5);
+      }
+      for (const angle of [0, Math.PI / 3, Math.PI * 2 / 3]) {
+        const bar = box(x, y, d + 2, r * 1.9, 1.1, 0.7, '#50717f', 0.2, 0.5); bar.rotation.z = angle;
+      }
+    }
+    for (let i = 0; i < 8; i++) for (const x of [w * 0.1, w * 0.9])
+      box(x, h * (0.55 + i * 0.024), d + 0.7, w * 0.08, 1.4, 0.6, '#0d4865', 0.2);
+    // Every exposed schematic anchor is physically supported by a connector bed.
+    for (const t of terminals) {
+      box(t.x, t.y - 4, d * 0.72, 13, 24, d * 0.56, '#27323a', 1);
+      box(t.x, t.y, d + 0.1, 10, 13, 1.4, '#849393', 0.5, 0.7);
+    }
   } else {
     feet();
     const mppt = type === 'mppt';

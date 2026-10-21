@@ -208,16 +208,17 @@ describe('Iterative refinement', () => {
   beforeEach(() => { process.env.OPENAI_API_KEY = 'test-key'; });
   afterEach(() => { vi.restoreAllMocks(); delete process.env.OPENAI_API_KEY; });
 
-  it('stops early once the target score is reached', async () => {
+  it('does not accept a score threshold while equipment expectations remain unmet', async () => {
     const chat = vi.spyOn(PROVIDERS.openai, 'chat').mockResolvedValue({
       text: design(), usage: { inputTokens: 10, outputTokens: 10 }, samplingApplied: false,
     });
     const summary = await runBenchmark({
       suiteId: 'core-designs', model: 'gpt-5.4', iterations: 5, targetScore: 0,
     });
-    // targetScore 0 is met on the first pass, so only one call per case
-    expect(summary.results.every(r => r.iterationsUsed === 1)).toBe(true);
-    expect(chat).toHaveBeenCalledTimes(CORE_SUITE.cases.length);
+    // Repeated non-improving repairs stop, but missing equipment never counts as a pass.
+    expect(summary.results.every(r => r.iterationsUsed <= 3)).toBe(true);
+    expect(summary.stats.acceptableRate).toBe(0);
+    expect(chat.mock.calls.length).toBeGreaterThan(CORE_SUITE.cases.length);
   });
 
   it('keeps iterating while below target and records the score path', async () => {

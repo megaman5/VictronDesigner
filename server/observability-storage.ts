@@ -45,6 +45,14 @@ export interface AILogData {
   /** False only for BYOK calls, where the spend is the user's, not ours. */
   billedToPlatform?: boolean;
   response?: {
+    review?: unknown;
+    stopReason?: string;
+    abortCause?: string;
+    field?: string;
+    attemptContext?: unknown;
+    requirements?: unknown;
+    requirementCheck?: unknown;
+    runStatus?: unknown;
     components?: any[];
     wires?: any[];
     description?: string;
@@ -169,7 +177,7 @@ class ObservabilityStorage {
   async logAIRequest(data: AILogData): Promise<{ id: string }> {
     // Start delivery independently so database trouble cannot suppress alerts
     // and SMTP trouble cannot fail or delay an AI response.
-    if (!data.success) void notifyAIFailure(data).catch(error => {
+    if (!data.success && data.response?.stopReason !== 'preflight-blocked' && !['client-disconnected', 'client-cancelled'].includes(data.response?.abortCause ?? '')) void notifyAIFailure(data).catch(error => {
       console.error("[ai-alerts] Unexpected alert error:", error);
     });
     // Store enhanced debugging data in response metadata
@@ -575,6 +583,10 @@ class ObservabilityStorage {
       successful: sql<number>`sum(case when ${aiLogs.success} then 1 else 0 end)`,
       failed: sql<number>`sum(case when not ${aiLogs.success} then 1 else 0 end)`,
       avgDuration: sql<number>`coalesce(avg(${aiLogs.durationMs}), 0)`,
+      electricalPassed: sql<number>`count(*) filter (where ${aiLogs.response}->'runStatus'->>'electricalCheck' = 'passed')`,
+      electricalIncomplete: sql<number>`count(*) filter (where ${aiLogs.response}->'runStatus'->>'electricalCheck' = 'incomplete')`,
+      electricalFailed: sql<number>`count(*) filter (where ${aiLogs.response}->'runStatus'->>'electricalCheck' = 'failed')`,
+      requirementsComplete: sql<number>`count(*) filter (where ${aiLogs.response}->'runStatus'->>'requirementsCheck' = 'complete')`,
       avgQuality: sql<number>`coalesce(avg(case when ${aiLogs.qualityScore} is not null then ${aiLogs.qualityScore} end), 0)`,
     })
       .from(aiLogs)
@@ -586,6 +598,10 @@ class ObservabilityStorage {
       failed: number;
       avgDuration: number;
       avgQuality: number;
+      electricalPassed: number;
+      electricalIncomplete: number;
+      electricalFailed: number;
+      requirementsComplete: number;
     }> = {};
 
     for (const row of breakdown) {
@@ -593,6 +609,10 @@ class ObservabilityStorage {
         total: row.total,
         successful: Number(row.successful) || 0,
         failed: Number(row.failed) || 0,
+        electricalPassed: Number(row.electricalPassed) || 0,
+        electricalIncomplete: Number(row.electricalIncomplete) || 0,
+        electricalFailed: Number(row.electricalFailed) || 0,
+        requirementsComplete: Number(row.requirementsComplete) || 0,
         avgDuration: Math.round(row.avgDuration),
         avgQuality: Math.round(row.avgQuality * 10) / 10,
       };

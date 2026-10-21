@@ -1,4 +1,13 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { isLayoutOnlyRequest, tidyComponentLayout } from "@/lib/tidy-layout";
+import { aiResultNotice } from "@/lib/ai-result-notice";
+import { wirePreflight, type AIBlocker } from "@shared/ai-policy";
+import { useCloudAutosave, readDraft, readDraftAsync, autosaveFingerprint } from "@/hooks/use-cloud-autosave";
+import { useDesignValidation } from "@/hooks/use-design-validation";
+import { useDesignDocument } from "@/hooks/use-design-document";
+import { loadDesignDocument, type DesignDocument } from "@shared/design-document";
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+import { analyzeElectricalDesign } from "@shared/electrical-analysis";
+import { designRequirementsSchema, checkDesignRequirements, type DesignRequirements } from "@shared/design-requirements";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CanvasViewTransition, View3DLoadError } from "@/components/CanvasViewTransition";
 import { TopBar } from "@/components/TopBar";
@@ -16,7 +25,7 @@ import { CustomComponentDialog } from "@/components/CustomComponentDialog";
 import { CustomComponentEditor } from "@/components/CustomComponentEditor";
 import { toPlacedProperties, type CustomComponentDefinition } from "@/lib/custom-components";
 import { DisclaimerDialog } from "@/components/DisclaimerDialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
@@ -58,7 +67,7 @@ function setCookie(name: string, value: string, days = 365): void {
   const maxAge = days * 24 * 60 * 60;
   document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax`;
 }
-import { IterationProgress } from "@/components/IterationProgress";
+import { AIGenerationProgress, type AIGenerationProgressState } from "@/components/AIGenerationProgress";
 import type { Schematic, SchematicComponent, Wire, WireCalculation, ValidationResult } from "@shared/schema";
 import { findBatteryBanks } from "@shared/battery-bank";
 import { solveDcWireCurrents } from "@/lib/dc-current-solver";
@@ -125,11 +134,23 @@ interface AuthUser {
   isAdmin: boolean;
 }
 
+function normalizeEditorDocument(next: DesignDocument, previous: DesignDocument): DesignDocument {
+  if (next.components === previous.components && next.wires === previous.wires) return next;
+  if (next.wires === previous.wires && next.components.length === previous.components.length && next.components.every((component, index) => {
+    const { x, y, ...equipment } = component;
+    const { x: oldX, y: oldY, ...oldEquipment } = previous.components[index];
+    return JSON.stringify(equipment) === JSON.stringify(oldEquipment);
+  })) return next;
+  const systemVoltage = inferSystemVoltage(next.components, next.wires);
+  return systemVoltage === next.systemVoltage ? next : { ...next, systemVoltage };
+}
+
 export default function SchematicDesigner() {
   const [canvasMode, setCanvasMode] = useState<"2d" | "3d">("2d");
   const { toast } = useToast();
   const [currentSchematicId, setCurrentSchematicId] = useState<string | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [wireBlockers, setWireBlockers] = useState<AIBlocker[]>([]);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [designQualitySheetOpen, setDesignQualitySheetOpen] = useState(false);
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
@@ -187,8 +208,6 @@ export default function SchematicDesigner() {
     setDisclaimerReviewOnly(true);
     setDisclaimerOpen(true);
   };
-  const [currentDesignId, setCurrentDesignId] = useState<string | null>(null);
-  const [currentDesignName, setCurrentDesignName] = useState<string | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<SchematicComponent | null>(null);
   const [selectedWire, setSelectedWire] = useState<Wire | null>(null);
   const [wireCalculations, setWireCalculations] = useState<Record<string, WireCalculation>>({});
@@ -260,7 +279,6 @@ export default function SchematicDesigner() {
   };
   const [copiedComponents, setCopiedComponents] = useState<SchematicComponent[]>([]);
   const [copiedWires, setCopiedWires] = useState<Wire[]>([]);
-  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   // Initialize state from localStorage if available (lazy initialization)
   const initializeState = () => {
@@ -272,50 +290,73 @@ export default function SchematicDesigner() {
       return { components: [], wires: [], systemVoltage: 12 };
     }
     
-    const autoSavedState = localStorage.getItem("autoSavedDiagramState");
-    if (autoSavedState) {
-      try {
-        const state = JSON.parse(autoSavedState);
-        // Only restore if it was saved within the last 24 hours
-        const savedAt = new Date(state.savedAt);
-        const now = new Date();
-        const oneDay = 24 * 60 * 60 * 1000;
-        
-        if (now.getTime() - savedAt.getTime() < oneDay) {
-          console.log("Restoring auto-saved diagram state on mount:", {
-            components: state.components?.length || 0,
-            wires: state.wires?.length || 0,
-          });
-          return {
-            components: state.components || [],
-            wires: state.wires || [],
-            systemVoltage: state.systemVoltage || 12,
-          };
-        } else {
-          console.log("Auto-saved state is too old, clearing");
-          localStorage.removeItem("autoSavedDiagramState");
-        }
-      } catch (error) {
-        console.error("Error parsing auto-saved state:", error);
-        localStorage.removeItem("autoSavedDiagramState");
-      }
+    const scoped = readDraft();
+    if (scoped && !scoped.metadata?.cloudOwnerId) {
+      try { return loadDesignDocument(scoped); } catch { /* Keep invalid drafts for recovery. */ }
     }
-    
+    const legacy = localStorage.getItem("autoSavedDiagramState");
+    if (legacy) {
+      try {
+        const record = JSON.parse(legacy);
+        if (!record.metadata?.id && !record.id) return loadDesignDocument(record);
+      } catch { localStorage.setItem("invalidAutoSavedDiagramState", legacy); }
+    }
     return { components: [], wires: [], systemVoltage: 12 };
   };
 
-  // Local state for editing - initialized from localStorage if available
-  const initialState = initializeState();
-  const [components, setComponents] = useState<SchematicComponent[]>(initialState.components);
-  const [wires, setWires] = useState<Wire[]>(initialState.wires);
-  // Infer system voltage from components (will be recalculated when components change)
-  const [systemVoltage, setSystemVoltage] = useState(initialState.systemVoltage);
-  
-  // Update system voltage when components or wiring change (wiring matters for
-  // detecting series battery banks).
+  // All persistent canvas changes share one document boundary.
+  const { document: designDocument, sequence: documentSequence, setComponents, setWires, setSystemVoltage,
+    replaceDocument, updateDocument, undo, redo, canUndo, canRedo, undoLabel, redoLabel, beginTransaction, endTransaction } = useDesignDocument(initializeState, normalizeEditorDocument);
+  const { components, wires, systemVoltage } = designDocument;
+  const recoveryDocumentRef=useRef(designDocument);
+  recoveryDocumentRef.current=designDocument;
+  const aiGenerationController = useRef<AbortController | null>(null);
+  const aiWireInputDocument = useRef<DesignDocument | null>(null);
+  const applyAIChanges = (candidate: {
+    components: SchematicComponent[]; wires: Wire[]; requirements?: DesignRequirements; systemVoltage?: number;
+  }) => {
+    try {
+      const validated = loadDesignDocument({ ...designDocument, components: candidate.components, wires: candidate.wires,
+        systemVoltage: candidate.systemVoltage ?? designDocument.systemVoltage,
+        ...(candidate.requirements ? { requirements: candidate.requirements } : {}),
+      });
+      updateDocument(previous => ({ ...validated, metadata: previous.metadata }), { label: "AI changes" });
+      return true;
+    } catch {
+      toast({ title: "AI changes could not be applied", description: "The returned data is incomplete. Your design has been kept.", variant: "destructive" });
+      return false;
+    }
+  };
+  const currentDesignId = designDocument.metadata.id ?? null;
+  const currentDesignName = designDocument.metadata.name === "Untitled design" ? null : designDocument.metadata.name;
+  const setCurrentDesignId = (id: string | null) => updateDocument(previous => ({
+    ...previous, metadata: { ...previous.metadata, id: id ?? undefined },
+  }), { recordHistory: false });
+  const setCurrentDesignName = (name: string | null) => updateDocument(previous => ({
+    ...previous, metadata: { ...previous.metadata, name: name ?? "Untitled design" },
+  }), { recordHistory: false });
   useEffect(() => {
-    const newVoltage = inferSystemVoltage(components, wires);
-    setSystemVoltage(newVoltage);
+    if (localStorage.getItem("invalidAutoSavedDiagramState")) {
+      toast({ title: "Draft could not be loaded", description: "The original draft has been kept on this device for recovery.", variant: "destructive" });
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleHistoryShortcut = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+      else if (key === "y" && event.ctrlKey) { event.preventDefault(); redo(); }
+    };
+    window.addEventListener("keydown", handleHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleHistoryShortcut);
+  }, [undo, redo]);
+
+  useEffect(() => {
+    setSelectedComponent(previous => previous ? components.find(component => component.id === previous.id) ?? null : null);
+    setSelectedWire(previous => previous ? wires.find(wire => wire.id === previous.id) ?? null : null);
   }, [components, wires]);
 
   // Load public app config (wire routing beta flag + default style)
@@ -341,23 +382,13 @@ export default function SchematicDesigner() {
   }, []);
 
   // Validation state
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const designReview = useDesignValidation({ components, wires, systemVoltage, options: designDocument.calculationOptions, requirements: designDocument.requirements }, documentSequence);
+  const sharedElectricalAnalysis = useMemo(() => analyzeElectricalDesign({ components, wires, systemVoltage }, designDocument.calculationOptions), [components, wires, systemVoltage, designDocument.calculationOptions]);
+  const validationResult = designReview.currentResult;
+  const validateDesign = designReview.validate;
 
   // Iteration progress for AI generation
-  const [iterationProgress, setIterationProgress] = useState<{
-    iteration: number;
-    maxIterations: number;
-    score?: number;
-    errorCount?: number;
-    warningCount?: number;
-    isBest?: boolean;
-    // Token streaming state
-    isStreaming?: boolean;
-    tokenCount?: number;
-    promptTokens?: number;
-    completionTokens?: number;
-    streamingText?: string;
-  } | null>(null);
+  const [iterationProgress, setIterationProgress] = useState<AIGenerationProgressState | null>(null);
 
   // Load schematic
   const { data: schematic } = useQuery<Schematic>({
@@ -368,23 +399,32 @@ export default function SchematicDesigner() {
   // Update local state when schematic loads
   useEffect(() => {
     if (schematic) {
-      setComponents(schematic.components as SchematicComponent[]);
-      setWires(schematic.wires as Wire[]);
-      // System voltage will be inferred from components, but use saved value as initial
-      const schematicComponents = (schematic.components || []) as SchematicComponent[];
-      const inferred = inferSystemVoltage(schematicComponents, (schematic.wires || []) as Wire[]);
-      setSystemVoltage(inferred || schematic.systemVoltage || 12);
+      try {
+        replaceDocument(schematic);
+      } catch (error) {
+        toast({ title: "Design could not be loaded", description: error instanceof Error ? error.message : "Invalid saved document", variant: "destructive" });
+      }
     }
   }, [schematic]);
 
   // Check auth status on mount
   useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('auth') === 'failed') {
+      toast({ title: 'Sign-in did not finish', description: 'Try Sign In again. Your local draft is still on this device.' });
+      url.searchParams.delete('auth');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    }
     const checkAuth = async () => {
       try {
         const response = await fetch("/auth/user");
         if (response.ok) {
           const userData = await response.json();
+          const draft=await readDraftAsync(userData.id);
           setUser(userData);
+          if(draft && draft.metadata?.cloudOwnerId === userData.id && recoveryDocumentRef.current.components.length === 0 && recoveryDocumentRef.current.wires.length === 0 && !currentSchematicId && !localStorage.getItem("pendingAuthDiagramState") && !localStorage.getItem("loadedFeedbackState")) {
+            try { replaceDocument(draft); } catch { toast({title:"Draft could not be restored",description:"The original remains on this device.",variant:"destructive"}); }
+          }
 
           // Reconcile disclaimer acceptance with the account (cross-device).
           try {
@@ -418,11 +458,7 @@ export default function SchematicDesigner() {
     if (loadedState) {
       try {
         const state = JSON.parse(loadedState);
-        setComponents(state.components || []);
-        setWires(state.wires || []);
-        // System voltage will be inferred from components
-        const inferred = inferSystemVoltage(state.components || [], state.wires || []);
-        setSystemVoltage(inferred || state.systemVoltage || 12);
+        replaceDocument(state);
 
         // Clear the loaded state
         localStorage.removeItem("loadedFeedbackState");
@@ -449,11 +485,7 @@ export default function SchematicDesigner() {
         const fiveMinutes = 5 * 60 * 1000;
         
         if (now.getTime() - savedAt.getTime() < fiveMinutes) {
-          setComponents(state.components || []);
-          setWires(state.wires || []);
-          // System voltage will be inferred from components
-        const inferred = inferSystemVoltage(state.components || [], state.wires || []);
-        setSystemVoltage(inferred || state.systemVoltage || 12);
+          replaceDocument(state);
           
           toast({
             title: "Diagram restored",
@@ -465,88 +497,17 @@ export default function SchematicDesigner() {
         localStorage.removeItem("pendingAuthDiagramState");
       } catch (error) {
         console.error("Error restoring diagram state:", error);
-        localStorage.removeItem("pendingAuthDiagramState");
+        toast({ title: "Draft could not be restored", description: "The original login draft remains on this device for recovery.", variant: "destructive" });
       }
     }
   }, []);
 
-  // Auto-save diagram state to localStorage periodically
-  useEffect(() => {
-    // Only auto-save if there's actual content
-    if (components.length === 0 && wires.length === 0) {
-      // Clear auto-save if diagram is empty
-      localStorage.removeItem("autoSavedDiagramState");
-      return;
-    }
-
-    // Debounce the save to avoid too many writes
-    const timeoutId = setTimeout(() => {
-      const diagramState = {
-        components,
-        wires,
-        systemVoltage,
-        savedAt: new Date().toISOString(),
-      };
-      localStorage.setItem("autoSavedDiagramState", JSON.stringify(diagramState));
-      console.log("Auto-saved diagram state:", { 
-        components: components.length, 
-        wires: wires.length,
-        systemVoltage 
-      });
-    }, 2000); // Save 2 seconds after last change
-
-    return () => clearTimeout(timeoutId);
-  }, [components, wires, systemVoltage]);
-
-  // Force immediate save before page unload
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (components.length > 0 || wires.length > 0) {
-        const diagramState = {
-          components,
-          wires,
-          systemVoltage,
-          savedAt: new Date().toISOString(),
-        };
-        // Use synchronous storage API for beforeunload
-        try {
-          localStorage.setItem("autoSavedDiagramState", JSON.stringify(diagramState));
-          console.log("Force-saved diagram state before unload");
-        } catch (e) {
-          console.error("Failed to save before unload:", e);
-        }
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [components, wires, systemVoltage]);
-
-  // Show toast notification if state was restored from localStorage
-  useEffect(() => {
-    // Only show toast if we have components/wires on initial mount and no schematic is being loaded
-    if (components.length > 0 && !currentSchematicId) {
-      // Check if there's a matching auto-save (likely what we just restored)
-      const autoSavedState = localStorage.getItem("autoSavedDiagramState");
-      if (autoSavedState) {
-        try {
-          const state = JSON.parse(autoSavedState);
-          // If the counts match, we likely restored this
-          if (state.components?.length === components.length && state.wires?.length === wires.length) {
-            // Use a small delay to ensure toast system is ready
-            setTimeout(() => {
-              toast({
-                title: "Auto-saved design restored",
-                description: `Restored your previous work with ${components.length} components`,
-              });
-            }, 100);
-          }
-        } catch (e) {
-          // Ignore errors
-        }
-      }
-    }
-  }, []); // Only run once on mount
+  const cloudSave = useCloudAutosave({ document: designDocument, userId: user?.id, paused: saveDialogOpen,
+    onSaved: (saved) => updateDocument(previous => ({ ...previous, metadata: { ...previous.metadata,
+      cloudVersion: saved.version, cloudSavedFingerprint: saved.cloudSavedFingerprint,
+    } }), { recordHistory: false }),
+  });
+ // Only run once on mount
 
   // Automatically recalculate wire loads when diagram changes
   // Calculate all wires when diagram changes or Load View is activated
@@ -575,6 +536,7 @@ export default function SchematicDesigner() {
     // Save current diagram state to localStorage before redirecting to OAuth
     if (components.length > 0 || wires.length > 0) {
       const diagramState = {
+        ...designDocument,
         components,
         wires,
         systemVoltage,
@@ -588,6 +550,7 @@ export default function SchematicDesigner() {
   const handleLogout = async () => {
     try {
       await fetch("/auth/logout", { method: "POST" });
+      replaceDocument({components:[],wires:[],systemVoltage:12});
       setUser(null);
       toast({
         title: "Signed out",
@@ -605,6 +568,8 @@ export default function SchematicDesigner() {
     components: any[];
     wires: any[];
     systemVoltage: number;
+    version?: number;
+    [key:string]:any;
   }) => {
     // Track load action
     trackAction("load_design", "load", {
@@ -617,17 +582,22 @@ export default function SchematicDesigner() {
     // Clear auto-save when explicitly loading a saved design
     localStorage.removeItem("autoSavedDiagramState");
     
-    setComponents(design.components);
-    setWires(design.wires);
-    setSystemVoltage(design.systemVoltage);
-    setCurrentDesignId(design.id);
-    setCurrentDesignName(design.name);
+    try {
+      const document=loadDesignDocument(design);
+      document.metadata={...document.metadata,cloudVersion:design.version,cloudOwnerId:user?.id};
+      document.metadata.cloudSavedFingerprint=autosaveFingerprint(document);
+      replaceDocument(document);
+      cloudSave.clearConflict();
+    } catch (error) {
+      toast({ title: "Design could not be loaded", description: error instanceof Error ? error.message : "Invalid saved document", variant: "destructive" });
+      return;
+    }
     setSelectedComponent(null);
     setSelectedWire(null);
   };
 
   // Handle design saved
-  const handleDesignSaved = (designId: string, name: string) => {
+  const handleDesignSaved = (designId: string, name: string, version?: number, saved?: any) => {
     // Track save action
     trackAction("save_design", "save", {
       designId,
@@ -636,42 +606,11 @@ export default function SchematicDesigner() {
       systemVoltage,
     });
     
-    setCurrentDesignId(designId);
-    setCurrentDesignName(name);
-  };
-
-  // Auto-validate design when components or wires change
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      validateDesign();
-    }, 500); // Debounce validation
-
-    return () => clearTimeout(timer);
-  }, [components, wires, systemVoltage]);
-
-  // Validation function
-  const validateDesign = async () => {
-    if (components.length === 0 && wires.length === 0) {
-      setValidationResult(null);
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/validate-design", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components, wires, systemVoltage }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Validation failed");
-      }
-
-      const result: ValidationResult = await response.json();
-      setValidationResult(result);
-    } catch (error) {
-      console.error("Validation error:", error);
-    }
+    updateDocument(previous => {
+      const next={...previous,metadata:{...previous.metadata,id:designId,name,description:saved?.description ?? previous.metadata.description,cloudVersion:version,cloudOwnerId:user?.id}};
+      return {...next,metadata:{...next.metadata,cloudSavedFingerprint:autosaveFingerprint(next)}};
+    }, {recordHistory:false});
+    cloudSave.clearConflict();
   };
 
   // Save schematic mutation
@@ -732,9 +671,18 @@ export default function SchematicDesigner() {
   // AI generation with SSE streaming
   const [isAiGenerating, setIsAiGenerating] = useState(false);
 
-  const handleAIGenerateWithStreaming = async (prompt: string) => {
+  const handleAIGenerateWithStreaming = async (prompt: string, requirements?: DesignRequirements) => {
+    if (components.length && isLayoutOnlyRequest(prompt)) {
+      updateDocument(previous => ({ ...previous, components: tidyComponentLayout(previous.components) }), { label: "tidy icon layout" });
+      setAiDialogOpen(false);
+      toast({ title: "Icons aligned", description: "Equipment and wiring kept. Undo is available." });
+      return;
+    }
+    aiGenerationController.current?.abort();
+    const abort = new AbortController();
+    aiGenerationController.current = abort;
     setIsAiGenerating(true);
-    setIterationProgress(null);
+    setIterationProgress({ iteration: 1, maxIterations: 6, phase: 'waiting', startedAt: Date.now(), streamingText: '' });
 
     // Track AI generation action
     const isIterating = components.length > 0;
@@ -753,11 +701,13 @@ export default function SchematicDesigner() {
     try {
       const response = await fetch("/api/ai-generate-system-stream", {
         method: "POST",
+        signal: abort.signal,
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           prompt,
+          requirements,
           systemVoltage,
           minQualityScore: 70,
           maxIterations: 6,
@@ -777,6 +727,7 @@ export default function SchematicDesigner() {
       const decoder = new TextDecoder();
       let buffer = "";
       let currentEventType = ""; // Move outside while loop to persist across chunks
+      let receivedTerminalEvent = false;
 
       if (!reader) {
         throw new Error("No response body");
@@ -784,6 +735,7 @@ export default function SchematicDesigner() {
 
       while (true) {
         const { done, value } = await reader.read();
+        if (abort.signal.aborted || aiGenerationController.current !== abort) return;
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -800,73 +752,54 @@ export default function SchematicDesigner() {
             const data = JSON.parse(line.substring(5).trim());
 
             if (currentEventType === "iteration-start") {
-              setIterationProgress({
-                iteration: data.iteration,
-                maxIterations: data.maxIterations,
-                isStreaming: false,
-                streamingText: "",
-                tokenCount: 0,
-              });
+              setIterationProgress(prev => ({
+                ...prev, startedAt: prev?.startedAt ?? Date.now(),
+                iteration: data.iteration, maxIterations: data.maxIterations,
+                phase: data.iteration > 1 ? 'refining' : 'waiting',
+                streamingText: '', receivedCharacters: 0, lastActivityAt: undefined,
+              }));
             } else if (currentEventType === "ai-fallback") {
-              toast({ title: "Using backup AI", description: "The primary AI is unavailable. Continuing with OpenRouter." });
-              setIterationProgress(prev => prev ? { ...prev, streamingText: "", tokenCount: 0 } : null);
+              toast({ title: "Using backup AI", description: "The main AI isn't responding. Continuing with a backup AI." });
+              setIterationProgress(prev => prev ? { ...prev, phase: 'waiting', usedFallback: true, streamingText: '', receivedCharacters: 0, lastActivityAt: undefined } : null);
             } else if (currentEventType === "ai-request-start") {
-              setIterationProgress(prev => prev ? {
-                ...prev,
-                isStreaming: true,
-                streamingText: "",
-                tokenCount: 0,
-                promptTokens: 0,
-                completionTokens: 0,
-              } : null);
+              setIterationProgress(prev => prev ? { ...prev, phase: prev.iteration > 1 ? 'refining' : 'waiting', streamingText: '', receivedCharacters: 0, lastActivityAt: undefined } : null);
+            } else if (currentEventType === "ai-activity") {
+              setIterationProgress(prev => prev ? { ...prev, phase: data.phase === 'drawing' ? 'drawing' : 'planning', lastActivityAt: Date.now() } : null);
             } else if (currentEventType === "ai-token") {
               setIterationProgress(prev => prev ? {
-                ...prev,
-                isStreaming: true,
-                streamingText: (prev.streamingText || "") + (data.token || ""),
-                tokenCount: data.accumulatedLength || 0,
+                ...prev, phase: 'drawing', lastActivityAt: Date.now(),
+                streamingText: (prev.streamingText || '') + (data.token || ''),
+                receivedCharacters: data.accumulatedLength || 0,
               } : null);
             } else if (currentEventType === "ai-response-complete") {
-              setIterationProgress(prev => prev ? {
-                ...prev,
-                isStreaming: false,
-                promptTokens: data.promptTokens || 0,
-                completionTokens: data.completionTokens || 0,
-                tokenCount: data.totalTokens || 0,
-              } : null);
+              setIterationProgress(prev => prev ? { ...prev, phase: 'checking', lastActivityAt: Date.now() } : null);
             } else if (currentEventType === "iteration-complete") {
               setIterationProgress(prev => prev ? {
-                ...prev,
-                iteration: data.iteration,
-                maxIterations: data.maxIterations,
-                score: data.score,
-                errorCount: data.errorCount,
-                warningCount: data.warningCount,
-                isBest: data.isBest,
-                isStreaming: false,
+                ...prev, phase: 'checking', iteration: data.iteration,
+                maxIterations: data.maxIterations ?? prev.maxIterations,
+                score: data.score, errorCount: data.errorCount, warningCount: data.warningCount, isBest: data.isBest,
               } : null);
             } else if (currentEventType === "complete") {
+              receivedTerminalEvent = true;
               console.log("AI Generated System - Full Data:", data);
               console.log("Components count:", data.components?.length || 0);
               console.log("Wires count:", data.wires?.length || 0);
               console.log("Components:", data.components);
               console.log("Wires:", data.wires);
 
-              setComponents(data.components || []);
-
               const wiresWithIds = (data.wires || []).map((wire: any, index: number) => ({
                 ...wire,
-                id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+                id: wire.id || `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
               }));
 
-              setWires(wiresWithIds);
-              toast({
-                title: "System Generated",
-                description: `Design complete! ${data.components?.length || 0} components, ${data.wires?.length || 0} wires. Quality score: ${data.validation?.score || 'N/A'}`,
-              });
+              if (applyAIChanges({ components: data.components || [], wires: wiresWithIds, systemVoltage,
+                requirements: data.requirements })) {
+                toast(aiResultNotice(data, 'Design'));
+              }
               setAiDialogOpen(false);
               setIterationProgress(null);
             } else if (currentEventType === "error") {
+              receivedTerminalEvent = true;
               console.error("AI generation error:", data.error);
               toast({
                 title: "AI Generation Failed",
@@ -881,7 +814,11 @@ export default function SchematicDesigner() {
           }
         }
       }
+      if (!receivedTerminalEvent) {
+        throw new Error("The AI connection ended before the design arrived. Your current design is unchanged. Please try again.");
+      }
     } catch (error: any) {
+      if (abort.signal.aborted) return;
       console.error("AI generation error:", error);
       toast({
         title: "Error",
@@ -890,16 +827,20 @@ export default function SchematicDesigner() {
       });
       setIterationProgress(null);
     } finally {
-      setIsAiGenerating(false);
+      if (aiGenerationController.current === abort) setIsAiGenerating(false);
     }
   };
 
   // AI wire generation mutation
   const aiWireMutation = useMutation({
     mutationFn: async () => {
+      aiWireInputDocument.current = designDocument;
       if (components.length === 0) {
         throw new Error("Please add components to the canvas first");
       }
+      const parsedRequirements = designRequirementsSchema.safeParse(designDocument.requirements);
+      const preflight = wirePreflight(components, parsedRequirements.success ? parsedRequirements.data : undefined);
+      if (preflight.length) return { preflight };
 
       // Prepare validation feedback and wire calculations for AI
       const validationFeedback = validationResult ? {
@@ -956,68 +897,24 @@ export default function SchematicDesigner() {
         components,
         wires: wires.length > 0 ? wires : undefined, // Include existing wires if any
         systemVoltage,
+        requirements: designRequirementsSchema.safeParse(designDocument.requirements).success ? designDocument.requirements : undefined,
         validationFeedback,
         wireCalculationIssues: wireCalculationIssues.length > 0 ? wireCalculationIssues : undefined,
       });
       return res.json();
     },
     onSuccess: (data) => {
-      console.log("AI Generated Wires:", data);
-
-      // Generate unique IDs for the new wires
-      const newWires = (data.wires || []).map((wire: any, index: number) => ({
-        ...wire,
-        id: `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-      }));
-
-      console.log("Setting wires with IDs:", newWires.map((w: Wire) => ({ id: w.id, from: w.fromComponentId, to: w.toComponentId })));
-
-      // If there were existing wires, merge intelligently:
-      // - Keep existing wires that don't have errors
-      // - Replace wires that have errors with new ones
-      // - Add any new wires that don't conflict
-      if (wires.length > 0 && validationResult) {
-        const errorWireIds = new Set(
-          validationResult.issues
-            .filter(i => i.severity === "error" && i.wireId)
-            .map(i => i.wireId!)
-        );
-        
-        // Keep existing wires that don't have errors
-        const validExistingWires = wires.filter(w => !errorWireIds.has(w.id));
-        
-        // Create a map of new wires by connection signature to avoid duplicates
-        const newWireMap = new Map<string, Wire>();
-        newWires.forEach((wire: Wire) => {
-          const key = `${wire.fromComponentId}:${wire.fromTerminal}→${wire.toComponentId}:${wire.toTerminal}`;
-          newWireMap.set(key, wire);
-        });
-        
-        // Remove existing wires that conflict with new ones (same connection)
-        const existingWireKeys = new Set(
-          validExistingWires.map(w => `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`)
-        );
-        
-        // Only keep existing wires that don't conflict with new ones
-        const preservedWires = validExistingWires.filter(w => {
-          const key = `${w.fromComponentId}:${w.fromTerminal}→${w.toComponentId}:${w.toTerminal}`;
-          return !newWireMap.has(key);
-        });
-        
-        // Combine preserved wires with new wires
-        const mergedWires = [...preservedWires, ...newWires];
-        
-        console.log(`Merged wires: ${preservedWires.length} preserved, ${newWires.length} new, ${mergedWires.length} total`);
-        setWires(mergedWires);
-      } else {
-        // No existing wires or no validation - just set new wires
-        setWires(newWires);
+      if (data.preflight?.length) {
+        setWireBlockers(data.preflight);
+        return;
       }
-      
-      toast({
-        title: "Wiring Generated",
-        description: data.description || "AI has wired your components",
-      });
+      const newWires = (data.wires || []).map((wire: any, index: number) => ({
+        ...wire, id: wire.id || `wire-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+      }));
+      if (applyAIChanges({ components: aiWireInputDocument.current?.components || components, wires: newWires,
+        systemVoltage: aiWireInputDocument.current?.systemVoltage ?? systemVoltage, requirements: data.requirements })) {
+        toast(aiResultNotice(data, 'Wiring'));
+      }
     },
     onError: (error: any) => {
       toast({
@@ -1139,6 +1036,15 @@ export default function SchematicDesigner() {
   const calculateWire = (wire: Wire, overrideVoltage?: number, componentsOverride?: SchematicComponent[], solverMapOverride?: Map<string, number>) => {
     const comps = componentsOverride || components;
     try {
+      // Supported nominal circuits use the exact result shown in review and
+      // exports. Other scenarios retain their legacy estimate and are marked
+      // unresolved by the review rather than presented as verified there.
+      const shared = sharedElectricalAnalysis.wires[wire.id];
+      if (loadMode === "nominal" && shared?.calculation && (!componentsOverride || componentsOverride === components) && (!overrideVoltage || overrideVoltage === shared.voltageV)) {
+        const result = { ...shared.calculation, totalCurrent: shared.currentA, parallelCount: 1 };
+        setWireCalculations(previous => ({ ...previous, [wire.id]: result }));
+        return;
+      }
       // Find parallel wires (same from/to components, same polarity)
       const parallelWires = wires.filter(w => 
         w.id !== wire.id &&
@@ -1650,6 +1556,10 @@ export default function SchematicDesigner() {
       // Store the total current in the result for display purposes
       result.totalCurrent = current;
       result.parallelCount = parallelCount;
+      if (shared?.status !== "known" || loadMode !== "nominal") {
+        if (result.status === "valid") result.status = "warning";
+        result.message = `Legacy estimate (unverified): ${shared?.reason || "This display scenario is outside the shared analyzer's supported checks."} ${result.message || ""}`;
+      }
       
       // Store the full calculation result including message
       setWireCalculations(prev => ({
@@ -1818,8 +1728,10 @@ export default function SchematicDesigner() {
   };
 
   const handleComponentDelete = (componentId: string) => {
-    setComponents(prev => prev.filter(c => c.id !== componentId));
-    setWires(prev => prev.filter(w => w.fromComponentId !== componentId && w.toComponentId !== componentId));
+    updateDocument(previous => ({ ...previous,
+      components: previous.components.filter(c => c.id !== componentId),
+      wires: previous.wires.filter(w => w.fromComponentId !== componentId && w.toComponentId !== componentId),
+    }), { label: "delete component" });
     if (selectedComponent?.id === componentId) {
       setSelectedComponent(null);
     }
@@ -1881,8 +1793,9 @@ export default function SchematicDesigner() {
     }));
     
     // Add new components and wires
-    setComponents(prev => [...prev, ...newComponents]);
-    setWires(prev => [...prev, ...newWires]);
+    updateDocument(previous => ({ ...previous,
+      components: [...previous.components, ...newComponents], wires: [...previous.wires, ...newWires],
+    }), { label: "paste selection" });
     
     // Select the newly pasted components
     setSelectedComponent(newComponents[0]);
@@ -1895,28 +1808,24 @@ export default function SchematicDesigner() {
 
   const handleClearAll = () => {
     // Clear all components and wires
-    setComponents([]);
-    setWires([]);
+    updateDocument(previous => ({ ...previous, components: [], wires: [] }), { label: "clear canvas" });
     setSelectedComponent(null);
     setSelectedWire(null);
     setWireCalculations({});
     setCopiedComponents([]);
     setCopiedWires([]);
-    setCurrentDesignId(null);
-    setCurrentDesignName(null);
     
     // Clear auto-saved state
     localStorage.removeItem("autoSavedDiagramState");
     
     // Clear validation
-    setValidationResult(null);
+
     
     toast({
       title: "Cleared",
       description: "All components and wires have been removed",
     });
     
-    setClearDialogOpen(false);
   };
 
   const handleWireConnectionComplete = async (wireData: import("@/components/SchematicCanvas").WireConnectionData) => {
@@ -2187,7 +2096,26 @@ export default function SchematicDesigner() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      <Dialog open={wireBlockers.length > 0} onOpenChange={open => { if (!open) setWireBlockers([]); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Before AI Wire</DialogTitle>
+            <DialogDescription>Review these missing items and settings so the AI can wire your equipment.</DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-[55vh] overflow-y-auto space-y-4">
+            {wireBlockers.map((issue, index) => <li key={index} className="text-sm space-y-2">
+              <p>{issue.message}</p>
+              {issue.componentIds.some(id => components.some(c => c.id === id)) && <Button variant="outline" size="sm" onClick={() => {
+                const component = components.find(c => issue.componentIds.includes(c.id));
+                if (component) { setSelectedComponent(component); setSelectedWire(null); setRightPanelOpen(true); setCanvasMode('2d'); }
+                setWireBlockers([]);
+              }}>Show equipment</Button>}
+            </li>)}
+          </ul>
+        </DialogContent>
+      </Dialog>
       <TopBar
+        onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} undoLabel={undoLabel} redoLabel={redoLabel}
         canvasMode={canvasMode}
         onCanvasModeChange={mode => { setWireConnectionMode(false); setCanvasMode(mode); }}
         onAIPrompt={() => setAiDialogOpen(true)}
@@ -2201,11 +2129,13 @@ export default function SchematicDesigner() {
         onFeedback={() => { setCanvasMode("2d"); setFeedbackDialogOpen(true); }}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        onClear={() => setClearDialogOpen(true)}
+        onClear={handleClearAll}
         onShowDisclaimer={showDisclaimer}
         wireMode={wireConnectionMode}
         hasComponents={components.length > 0}
-        designQualityScore={validationResult?.score}
+        reviewStatus={designReview.status}
+        reviewErrorCount={validationResult?.issues.filter(i => i.severity === "error").length}
+        reviewUnresolvedCount={validationResult?.issues.filter(i => i.category === "unresolved").length}
         user={user}
         currentDesignName={currentDesignName || undefined}
         isAIWiring={aiWireMutation.isPending}
@@ -2224,6 +2154,11 @@ export default function SchematicDesigner() {
         hasWireIssues={hasWireIssues}
       />
 
+      <div className="flex items-center justify-end gap-2 border-b px-4 py-1 text-xs text-muted-foreground" aria-live="polite">
+        <span>{cloudSave.status}</span>
+        {(cloudSave.status === "Save failed" || cloudSave.status === "Sign-in required") && <Button size="sm" variant="ghost" onClick={cloudSave.retry}>Retry save</Button>}
+        {cloudSave.conflict && <><span>Another session saved this design. Your local work is kept.</span><Button size="sm" variant="outline" onClick={()=>handleLoadDesign(cloudSave.conflict)}>Load cloud copy</Button><Button size="sm" variant="outline" onClick={()=>setSaveDialogOpen(true)}>Save local copy</Button></>}
+      </div>
       <DisclaimerDialog
         open={disclaimerOpen}
         onOpenChange={setDisclaimerOpen}
@@ -2286,6 +2221,8 @@ export default function SchematicDesigner() {
           onWireSelect={handleWireSelect}
           onDrop={handleComponentDrop}
           onComponentMove={handleComponentMove}
+          onEditStart={beginTransaction}
+          onEditEnd={endTransaction}
           onComponentDelete={handleComponentDelete}
           onWireConnectionComplete={handleWireConnectionComplete}
           onWireDelete={handleWireDelete}
@@ -2322,6 +2259,11 @@ export default function SchematicDesigner() {
         </Tooltip>
 
         {rightPanelOpen && (
+        <div className="contents" onFocusCapture={event => {
+          if ((event.target as HTMLElement).matches('input, textarea, [contenteditable="true"]')) beginTransaction("edit properties");
+        }} onBlurCapture={event => {
+          if ((event.target as HTMLElement).matches('input, textarea, [contenteditable="true"]')) endTransaction();
+        }}>
         <PropertiesPanel
           selectedComponent={selectedComponent || undefined}
           selectedWire={selectedWire ? {
@@ -2390,13 +2332,24 @@ export default function SchematicDesigner() {
             }
           }}
         />
+        </div>
         )}
       </div>
 
       <AIPromptDialog
         open={aiDialogOpen}
+        // Closing (Esc, outside click, X) only hides the dialog; the run keeps
+        // going in the floating progress panel. Only Stop cancels it - a stray
+        // click used to silently kill users' generations.
         onOpenChange={setAiDialogOpen}
-        onGenerate={(prompt) => handleAIGenerateWithStreaming(prompt)}
+        onStop={() => {
+          aiGenerationController.current?.abort();
+          setIterationProgress(null);
+          setAiDialogOpen(false);
+        }}
+        onGenerate={(prompt, requirements) => handleAIGenerateWithStreaming(prompt, requirements)}
+        systemVoltage={systemVoltage}
+        existingComponents={components}
         isGenerating={isAiGenerating}
         iterationProgress={iterationProgress}
         isIterating={components.length > 0}
@@ -2410,8 +2363,16 @@ export default function SchematicDesigner() {
         wires={wires}
         systemVoltage={systemVoltage}
         designName={currentDesignName || "Design"}
+        revision={designDocument.metadata.cloudVersion ? `Cloud version ${designDocument.metadata.cloudVersion}` : undefined}
         wireGaugeFormat={wireGaugeFormat}
         lengthUnit={lengthUnit}
+        requirementIssues={(() => {
+          if (!designDocument.requirements) return [];
+          const parsed = designRequirementsSchema.safeParse(designDocument.requirements);
+          if (!parsed.success) return ["The saved requirements checklist could not be checked."];
+          const check = checkDesignRequirements(parsed.data, components, wires, systemVoltage);
+          return check.issues.map(issue => issue.message);
+        })()}
       />
 
       <FeedbackDialog
@@ -2430,6 +2391,8 @@ export default function SchematicDesigner() {
         systemVoltage={systemVoltage}
         existingDesignId={currentDesignId || undefined}
         existingName={currentDesignName || undefined}
+        document={designDocument}
+        existingVersion={Number(designDocument.metadata.cloudVersion) || undefined}
         onSaved={handleDesignSaved}
       />
 
@@ -2476,29 +2439,14 @@ export default function SchematicDesigner() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Iteration Progress Overlay */}
-      {iterationProgress && (
-        <IterationProgress
-          currentIteration={iterationProgress.iteration}
-          maxIterations={iterationProgress.maxIterations}
-          currentScore={iterationProgress.score || 0}
-          status={
-            iterationProgress.isStreaming
-              ? "🤖 AI is generating response..."
-              : iterationProgress.errorCount && iterationProgress.errorCount > 0
-              ? `⚠️ Iteration ${iterationProgress.iteration} complete with ${iterationProgress.errorCount} errors`
-              : iterationProgress.warningCount && iterationProgress.warningCount > 0
-              ? `⚠️ Iteration ${iterationProgress.iteration} complete with ${iterationProgress.warningCount} warnings`
-              : iterationProgress.score && iterationProgress.score >= 70
-              ? `✅ Iteration ${iterationProgress.iteration} complete - Quality score: ${iterationProgress.score}`
-              : `🔄 Iteration ${iterationProgress.iteration} complete - Quality score: ${iterationProgress.score || 0}`
-          }
-          isStreaming={iterationProgress.isStreaming}
-          tokenCount={iterationProgress.tokenCount}
-          promptTokens={iterationProgress.promptTokens}
-          completionTokens={iterationProgress.completionTokens}
-          streamingText={iterationProgress.streamingText}
-        />
+      {/* Keep the same progress view if the dialog is hidden while running. */}
+      {iterationProgress && !aiDialogOpen && (
+        <div className="fixed top-20 right-4 z-50 w-[min(32rem,calc(100vw-2rem))] rounded-lg border bg-background p-4 shadow-xl">
+          <AIGenerationProgress progress={iterationProgress} onStop={() => {
+            aiGenerationController.current?.abort();
+            setIterationProgress(null);
+          }} />
+        </div>
       )}
 
       <Dialog open={designQualitySheetOpen} onOpenChange={setDesignQualitySheetOpen}>
@@ -2511,8 +2459,13 @@ export default function SchematicDesigner() {
               components={components}
               wires={wires}
               systemVoltage={systemVoltage}
-              validationResult={validationResult}
+              validationResult={designReview.result}
+              status={designReview.status}
+              error={designReview.error}
               onValidate={validateDesign}
+              onApplyGaugeFix={(wireId, gauge) => updateDocument(previous => ({ ...previous,
+                wires: previous.wires.map(wire => wire.id === wireId ? { ...wire, gauge } : wire),
+              }), { label: "apply reviewed wire gauge" })}
               onIssueClick={(issue) => {
                 // Close the modal
                 setDesignQualitySheetOpen(false);
@@ -2568,31 +2521,6 @@ export default function SchematicDesigner() {
         systemVoltage={systemVoltage}
       />
 
-      {/* Clear All Confirmation Dialog */}
-      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear All Components and Wires?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove all components, wires, and connections from the canvas. This action cannot be undone.
-              {currentDesignName && (
-                <span className="block mt-2 font-semibold">
-                  Current design: "{currentDesignName}"
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleClearAll}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Clear All
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

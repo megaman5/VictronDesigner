@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import type {
   ChatRequest,
   ChatResponse,
@@ -61,6 +61,8 @@ export class GeminiProvider implements Provider {
         model: req.model,
         contents,
         config: {
+          ...(req.signal ? { abortSignal: req.signal } : {}),
+          ...(req.reasoningEffort ? { thinkingConfig: { thinkingLevel: ThinkingLevel[req.reasoningEffort.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH'] } } : {}),
           ...(systemInstruction ? { systemInstruction } : {}),
           ...(req.json ? { responseMimeType: "application/json" } : {}),
           ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
@@ -75,7 +77,7 @@ export class GeminiProvider implements Provider {
         samplingApplied: req.temperature !== undefined,
         usage: {
           inputTokens: usage.promptTokenCount ?? 0,
-          outputTokens: usage.candidatesTokenCount ?? 0,
+          outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
           reasoningTokens: usage.thoughtsTokenCount,
           cachedInputTokens: usage.cachedContentTokenCount,
         },

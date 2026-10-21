@@ -1,4 +1,4 @@
-import { Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator, Settings, AlertTriangle } from "lucide-react";
+import { Undo2, Redo2, Save, FolderOpen, Download, Sparkles, Cable, CheckCircle2, MessageSquare, LogIn, LogOut, User, Loader2, Activity, Tag, Trash2, Calculator, Settings, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -79,6 +79,12 @@ function AIAction({
 }
 
 interface TopBarProps {
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  undoLabel?: string;
+  redoLabel?: string;
   canvasMode?: "2d" | "3d";
   onCanvasModeChange?: (mode: "2d" | "3d") => void;
   onAIPrompt?: () => void;
@@ -96,6 +102,9 @@ interface TopBarProps {
   wireMode?: boolean;
   hasComponents?: boolean;
   designQualityScore?: number;
+  reviewStatus?: string;
+  reviewErrorCount?: number;
+  reviewUnresolvedCount?: number;
   user?: AuthUser | null;
   currentDesignName?: string;
   isAIWiring?: boolean;
@@ -117,6 +126,7 @@ interface TopBarProps {
 }
 
 export function TopBar({
+  onUndo, onRedo, canUndo = false, canRedo = false, undoLabel, redoLabel,
   canvasMode = "2d", onCanvasModeChange,
   onAIPrompt, 
   onAIWire, 
@@ -133,6 +143,7 @@ export function TopBar({
   wireMode = false, 
   hasComponents = false, 
   designQualityScore,
+  reviewStatus, reviewErrorCount, reviewUnresolvedCount,
   user,
   currentDesignName,
   isAIWiring = false,
@@ -177,6 +188,12 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
+          {onUndo && <Button variant="ghost" size="icon" onClick={onUndo} disabled={!canUndo}
+            title={canUndo ? `Undo ${undoLabel ?? "edit"} (Ctrl/Cmd+Z)` : "Nothing to undo"}
+            aria-label="Undo" data-testid="button-undo"><Undo2 className="h-4 w-4" /></Button>}
+          {onRedo && <Button variant="ghost" size="icon" onClick={onRedo} disabled={!canRedo}
+            title={canRedo ? `Redo ${redoLabel ?? "edit"} (Ctrl/Cmd+Shift+Z)` : "Nothing to redo"}
+            aria-label="Redo" data-testid="button-redo"><Redo2 className="h-4 w-4" /></Button>}
           {onCanvasModeChange && <div className="inline-flex shrink-0 rounded-md border p-0.5" role="group" aria-label="Design view">
             {(["2d", "3d"] as const).map(mode => <Button key={mode} size="sm"
               variant={canvasMode === mode ? "default" : "ghost"} className="h-7 px-2.5"
@@ -238,10 +255,8 @@ export function TopBar({
             className="gap-2"
           >
             <CheckCircle2 className="h-4 w-4" />
-            Quality
-            {designQualityScore !== undefined && (
-              <span className="ml-1 font-semibold">{designQualityScore}</span>
-            )}
+            Review
+            <span className="ml-1 text-xs">{reviewStatus === 'current' ? reviewErrorCount ? `${reviewErrorCount} errors` : reviewUnresolvedCount ? `${reviewUnresolvedCount} unresolved` : 'Checked' : reviewStatus === 'checking' ? 'Checking…' : reviewStatus === 'failed' ? 'Failed' : reviewStatus === 'stale' ? 'Out of date' : 'Unchecked'}</span>
           </Button>
 
           <Button
